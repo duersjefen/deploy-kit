@@ -10,24 +10,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-    
+
     steps:
       - uses: actions/checkout@v3
-      
+
       - uses: actions/setup-node@v3
         with:
           node-version: '18'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@duersjefen'
-      
+
       - name: Install dependencies
         run: npm install
-      
+
       - name: Build
         run: npm run build
-      
+
       - name: Publish to GitHub Packages
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
