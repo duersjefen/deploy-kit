@@ -47,6 +47,13 @@ export class DeploymentKit {
   }
 
   /**
+   * Detect if this is an SST project
+   */
+  private isSSTProject(): boolean {
+    return existsSync(join(this.projectRoot, 'sst.config.ts'));
+  }
+
+  /**
    * Full deployment workflow
    */
   async deploy(stage: DeploymentStage): Promise<DeploymentResult> {
@@ -81,8 +88,13 @@ export class DeploymentKit {
 
       // Stage 3: Build & Deploy
       console.log(chalk.bold.cyan('📦 STAGE 3: Building and deploying...\n'));
-      await this.runBuild();
-      result.details.buildsOk = true;
+      // For SST projects, build is handled by sst deploy, skip separate build
+      if (!this.isSSTProject()) {
+        await this.runBuild();
+        result.details.buildsOk = true;
+      } else {
+        result.details.buildsOk = true;
+      }
 
       await this.runDeploy(stage);
       result.details.deploymentOk = true;
