@@ -29,9 +29,12 @@ export function getPostDeploymentChecks(config: ProjectConfig) {
       const protocol = stage === 'dev' ? 'http' : 'https';
       const url = `${protocol}://${domain}/health`;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
       const response = await fetch(url, {
-        timeout: 5000,
-      }).catch(() => null);
+        signal: controller.signal as any,
+      }).catch(() => null).finally(() => clearTimeout(timeoutId));
 
       if (response && (response.status === 200 || response.status === 404)) {
         spinner.succeed(`✅ Application responding (${response.status})`);
@@ -62,7 +65,7 @@ export function getPostDeploymentChecks(config: ProjectConfig) {
       const distId = process.env[`CLOUDFRONT_DIST_ID_${stage.toUpperCase()}`];
 
       if (!distId) {
-        spinner.skip('CloudFront distribution ID not available');
+        spinner.info('CloudFront distribution ID not available');
         return;
       }
 
@@ -93,7 +96,7 @@ export function getPostDeploymentChecks(config: ProjectConfig) {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       if (errorMsg.includes('InvalidDistribution')) {
-        spinner.skip('Distribution still initializing (normal after deployment)');
+        spinner.info('Distribution still initializing (normal after deployment)');
       } else {
         spinner.warn(`⚠️  CloudFront validation inconclusive: ${errorMsg.split('\n')[0]}`);
       }
@@ -108,7 +111,7 @@ export function getPostDeploymentChecks(config: ProjectConfig) {
 
     try {
       if (!config.database) {
-        spinner.skip('Database not configured');
+        spinner.info('Database not configured');
         return;
       }
 

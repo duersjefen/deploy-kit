@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import chalk from 'chalk';
 import ora from 'ora';
 import { ProjectConfig, DeploymentStage, HealthCheck } from '../types.js';
@@ -48,7 +47,6 @@ export function getHealthChecker(config: ProjectConfig) {
 
         const response = await fetch(url, {
           signal: controller.signal as any,
-          timeout: check.timeout || 5000,
         });
 
         clearTimeout(timeoutId);
@@ -110,8 +108,8 @@ export function getHealthChecker(config: ProjectConfig) {
     }
 
     let allPass = true;
-    for (const check of checks) {
-      const passed = await check(check, stage);
+    for (const healthCheck of checks) {
+      const passed = await check(healthCheck, stage);
       if (!passed) allPass = false;
     }
 
