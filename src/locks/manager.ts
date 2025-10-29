@@ -102,7 +102,7 @@ export function getLockManager(projectRoot: string) {
           (existingLock.expiresAt.getTime() - new Date().getTime()) / 60000
         );
         const message = `❌ Deployment for ${stage} is already in progress (${minutesLeft} min remaining)\n` +
-          `To force recovery, run: make recover-${stage}`;
+          `To force recovery, run: npx deploy-kit recover ${stage}`;
         throw new Error(message);
       } else {
         // Lock expired, clean it up
