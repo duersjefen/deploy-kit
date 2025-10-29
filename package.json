@@ -1,5 +1,5 @@
 {
-  "name": "@martijn/deploy-kit",
+  "name": "@duersjefen/deploy-kit",
   "version": "1.0.0",
   "description": "Reusable deployment system for SST + Next.js + DynamoDB applications with safety checks and CloudFront validation",
   "main": "dist/index.js",
@@ -16,7 +16,7 @@
     }
   },
   "bin": {
-    "martijn-deploy": "./bin/cli.js"
+    "deploy-kit": "./bin/cli.js"
   },
   "files": [
     "dist",
