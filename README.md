@@ -1,4 +1,4 @@
-# @martijn/deploy-kit
+# @duersjefen/deploy-kit
 
 Reusable deployment system for SST + Next.js + DynamoDB applications with comprehensive safety checks and CloudFront validation.
 
@@ -14,7 +14,7 @@ Reusable deployment system for SST + Next.js + DynamoDB applications with compre
 ## Installation
 
 ```bash
-npm install --save-dev @martijn/deploy-kit
+npm install --save-dev @duersjefen/deploy-kit
 ```
 
 ## Quick Start
@@ -25,23 +25,23 @@ Copy and customize a template:
 
 ```bash
 # For SST + Next.js projects
-cp node_modules/@martijn/deploy-kit/templates/config.sst-example.json .deploy-config.json
+cp node_modules/@duersjefen/deploy-kit/templates/config.sst-example.json .deploy-config.json
 
 # For EC2 + Docker projects
-cp node_modules/@martijn/deploy-kit/templates/config.ec2-example.json .deploy-config.json
+cp node_modules/@duersjefen/deploy-kit/templates/config.ec2-example.json .deploy-config.json
 ```
 
 ### 2. Update Makefile
 
 ```makefile
 deploy-staging:
-	npx @martijn/deploy-kit deploy staging
+	npx @duersjefen/deploy-kit deploy staging
 
 deploy-production:
-	npx @martijn/deploy-kit deploy production
+	npx @duersjefen/deploy-kit deploy production
 
 deployment-status:
-	npx @martijn/deploy-kit status
+	npx @duersjefen/deploy-kit status
 ```
 
 ### 3. Deploy!
@@ -166,19 +166,19 @@ make deploy-production
 
 ```bash
 # Deploy to a stage
-npx @martijn/deploy-kit deploy staging
-npx @martijn/deploy-kit deploy production
+npx @duersjefen/deploy-kit deploy staging
+npx @duersjefen/deploy-kit deploy production
 
 # Check deployment status
-npx @martijn/deploy-kit status          # All stages
-npx @martijn/deploy-kit status staging  # Specific stage
+npx @duersjefen/deploy-kit status          # All stages
+npx @duersjefen/deploy-kit status staging  # Specific stage
 
 # Recover from failed deployment
-npx @martijn/deploy-kit recover staging
-npx @martijn/deploy-kit recover production
+npx @duersjefen/deploy-kit recover staging
+npx @duersjefen/deploy-kit recover production
 
 # Validate health checks
-npx @martijn/deploy-kit health staging
+npx @duersjefen/deploy-kit health staging
 ```
 
 ## Deployment Process
@@ -315,7 +315,7 @@ make recover-staging
 If you see 403 errors:
 1. Verify S3 bucket policy allows CloudFront
 2. Check Origin Access Control is configured
-3. Run: `npx @martijn/deploy-kit health staging`
+3. Run: `npx @duersjefen/deploy-kit health staging`
 
 ## Version History
 
