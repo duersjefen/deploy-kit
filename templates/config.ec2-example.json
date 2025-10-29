@@ -1,0 +1,47 @@
+{
+  "projectName": "filter-ical",
+  "displayName": "Filter iCal - Docker/EC2 Deployment",
+  "infrastructure": "ec2-docker",
+  "database": "postgresql",
+  "stages": ["dev", "staging", "production"],
+  "mainDomain": "filter-ical.de",
+  "awsProfile": "filter-ical",
+  "requireCleanGit": true,
+  "runTestsBeforeDeploy": false,
+  "customDeployScript": "./scripts/deploy-ec2.sh",
+  "stageConfig": {
+    "dev": {
+      "domain": "localhost:8000",
+      "skipHealthChecks": true,
+      "skipCacheInvalidation": true
+    },
+    "staging": {
+      "domain": "staging.filter-ical.de",
+      "requiresConfirmation": false,
+      "awsRegion": "eu-central-1"
+    },
+    "production": {
+      "domain": "filter-ical.de",
+      "requiresConfirmation": true,
+      "awsRegion": "eu-central-1"
+    }
+  },
+  "healthChecks": [
+    {
+      "url": "/health",
+      "expectedStatus": 200,
+      "timeout": 5000,
+      "name": "Health check"
+    },
+    {
+      "url": "/api/filters",
+      "expectedStatus": 200,
+      "timeout": 10000,
+      "name": "API endpoint"
+    }
+  ],
+  "hooks": {
+    "preDeploy": "docker-compose build",
+    "postBuild": "echo 'Docker image built'"
+  }
+}

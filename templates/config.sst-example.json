@@ -1,0 +1,56 @@
+{
+  "projectName": "my-app",
+  "displayName": "My App - SST Deployment",
+  "infrastructure": "sst-serverless",
+  "database": "dynamodb",
+  "stages": ["dev", "staging", "production"],
+  "mainDomain": "example.com",
+  "awsProfile": "my-app",
+  "requireCleanGit": true,
+  "runTestsBeforeDeploy": true,
+  "stageConfig": {
+    "dev": {
+      "domain": "localhost:3000",
+      "skipHealthChecks": true,
+      "skipCacheInvalidation": true,
+      "sstStageName": "dev"
+    },
+    "staging": {
+      "domain": "staging.example.com",
+      "requiresConfirmation": false,
+      "awsRegion": "eu-north-1",
+      "dynamoTableName": "MyAppData-staging"
+    },
+    "production": {
+      "domain": "example.com",
+      "requiresConfirmation": true,
+      "awsRegion": "eu-north-1",
+      "dynamoTableName": "MyAppData-prod",
+      "sstStageName": "prod"
+    }
+  },
+  "healthChecks": [
+    {
+      "url": "/api/health",
+      "expectedStatus": 200,
+      "timeout": 5000,
+      "name": "Health endpoint"
+    },
+    {
+      "url": "/api/services",
+      "expectedStatus": 200,
+      "timeout": 5000,
+      "name": "Services endpoint"
+    },
+    {
+      "url": "/",
+      "expectedStatus": 200,
+      "searchText": "My App",
+      "name": "Homepage"
+    }
+  ],
+  "hooks": {
+    "preDeploy": "npm test",
+    "postBuild": "npm run build"
+  }
+}
