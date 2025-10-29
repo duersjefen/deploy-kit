@@ -1,6 +1,6 @@
 {
   "name": "@duersjefen/deploy-kit",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "Reusable deployment system for SST + Next.js + DynamoDB applications with safety checks and CloudFront validation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
