@@ -58,6 +58,7 @@ export class DeploymentKit {
    */
   async deploy(stage: DeploymentStage): Promise<DeploymentResult> {
     const startTime = new Date();
+    const stageTimings: { name: string; duration: number }[] = [];
     const result: DeploymentResult = {
       success: false,
       stage,
@@ -75,19 +76,30 @@ export class DeploymentKit {
     };
 
     try {
-      // Stage 1: Check lock and get previous status
-      console.log(chalk.bold.cyan('\n🔐 STAGE 1: Pre-deployment checks...\n'));
+      // Print deployment header
+      console.log(chalk.bold.cyan('\n' + '═'.repeat(60)));
+      console.log(chalk.bold.cyan(`🚀 DEPLOYMENT PIPELINE: ${stage.toUpperCase()}`));
+      console.log(chalk.bold.cyan('═'.repeat(60)) + '\n');
+
+      // Stage 1: Pre-deployment safety checks
+      let stage1Start = Date.now();
+      console.log(chalk.bold.white('▸ Stage 1: Pre-Deployment Checks'));
+      console.log(chalk.gray('  Validating: git status, AWS credentials, tests, SSL\n'));
+      
       await this.lockManager.checkAndCleanPulumiLock(stage);
       const newLock = await this.lockManager.acquireLock(stage);
 
       // Stage 2: Safety checks
-      console.log(chalk.bold.cyan('🔐 STAGE 2: Safety checks...\n'));
       await this.preChecks.run(stage);
       result.details.gitStatusOk = true;
       result.details.testsOk = true;
+      stageTimings.push({ name: 'Pre-Deployment Checks', duration: Date.now() - stage1Start });
 
       // Stage 3: Build & Deploy
-      console.log(chalk.bold.cyan('📦 STAGE 3: Building and deploying...\n'));
+      let stage2Start = Date.now();
+      console.log(chalk.bold.white('\n▸ Stage 2: Build & Deploy'));
+      console.log(chalk.gray('  Building application and deploying to AWS\n'));
+
       // For SST projects, build is handled by sst deploy, skip separate build
       if (!this.isSSTProject()) {
         await this.runBuild();
@@ -98,18 +110,27 @@ export class DeploymentKit {
 
       await this.runDeploy(stage);
       result.details.deploymentOk = true;
+      stageTimings.push({ name: 'Build & Deploy', duration: Date.now() - stage2Start });
 
       // Stage 4: Post-deployment validation
-      console.log(chalk.bold.cyan('✅ STAGE 4: Post-deployment validation...\n'));
+      let stage3Start = Date.now();
+      console.log(chalk.bold.white('\n▸ Stage 3: Post-Deployment Validation'));
+      console.log(chalk.gray('  Testing health checks and CloudFront configuration\n'));
+
       await this.postChecks.run(stage);
       result.details.healthChecksOk = true;
+      stageTimings.push({ name: 'Health Checks', duration: Date.now() - stage3Start });
 
       // Stage 5: Cache invalidation (background)
+      let stage4Start = Date.now();
       if (!this.config.stageConfig[stage].skipCacheInvalidation) {
-        console.log(chalk.bold.cyan('🔄 STAGE 5: Cache invalidation (background)...\n'));
+        console.log(chalk.bold.white('\n▸ Stage 4: Cache Invalidation'));
+        console.log(chalk.gray('  Clearing CloudFront cache (runs in background)\n'));
+
         await this.invalidateCache(stage);
         result.details.cacheInvalidatedOk = true;
       }
+      stageTimings.push({ name: 'Cache Invalidation', duration: Date.now() - stage4Start });
 
       result.success = true;
       result.message = `✅ Deployment to ${stage} successful!`;
@@ -117,10 +138,16 @@ export class DeploymentKit {
       // Release lock
       await this.lockManager.releaseLock(newLock);
 
+      // Print deployment summary
+      this.printDeploymentSummary(result, stageTimings);
+
     } catch (error) {
       result.success = false;
       result.message = `❌ Deployment to ${stage} failed`;
       result.error = error instanceof Error ? error.message : String(error);
+
+      // Print failure summary
+      this.printDeploymentFailureSummary(result, stageTimings);
 
       // Don't release lock on failure - allows recovery
     }
@@ -131,6 +158,55 @@ export class DeploymentKit {
     );
 
     return result;
+  }
+
+  /**
+   * Print deployment summary on success
+   */
+  private printDeploymentSummary(result: DeploymentResult, stageTimings: { name: string; duration: number }[]): void {
+    console.log('\n' + chalk.bold.green('═'.repeat(60)));
+    console.log(chalk.bold.green('✨ DEPLOYMENT SUCCESSFUL'));
+    console.log(chalk.bold.green('═'.repeat(60)));
+
+    console.log('\n📊 Deployment Summary:');
+    console.log(chalk.green(`  Stage: ${result.stage}`));
+    console.log(chalk.green(`  Total Duration: ${result.durationSeconds}s`));
+    console.log(chalk.green(`  Status: ✅ All checks passed\n`));
+
+    if (stageTimings.length > 0) {
+      console.log('⏱️  Stage Timing Breakdown:');
+      for (const timing of stageTimings) {
+        const durationMs = timing.duration;
+        const durationSecs = (durationMs / 1000).toFixed(1);
+        const barLength = Math.round((durationMs / 5000)); // Scale: 5s = full bar
+        const bar = '█'.repeat(Math.min(barLength, 20));
+        console.log(`  ${timing.name.padEnd(25)} ${bar.padEnd(20)} ${durationSecs}s`);
+      }
+      console.log('');
+    }
+
+    console.log(chalk.green(`✅ Application is now live on ${result.stage}`));
+    console.log(chalk.gray(`   Deployment completed at ${result.endTime.toLocaleTimeString()}\n`));
+  }
+
+  /**
+   * Print deployment summary on failure
+   */
+  private printDeploymentFailureSummary(result: DeploymentResult, stageTimings: { name: string; duration: number }[]): void {
+    console.log('\n' + chalk.bold.red('═'.repeat(60)));
+    console.log(chalk.bold.red('❌ DEPLOYMENT FAILED'));
+    console.log(chalk.bold.red('═'.repeat(60)));
+
+    console.log('\n❌ Deployment Summary:');
+    console.log(chalk.red(`  Stage: ${result.stage}`));
+    console.log(chalk.red(`  Duration: ${(result.endTime.getTime() - result.startTime.getTime()) / 1000}s`));
+    console.log(chalk.red(`  Error: ${result.error}\n`));
+
+    console.log(chalk.yellow('🔧 Recovery Options:'));
+    console.log(chalk.yellow(`  1. Review error message above`));
+    console.log(chalk.yellow(`  2. Fix the issue locally`));
+    console.log(chalk.yellow(`  3. Retry deployment: npx deploy-kit deploy ${result.stage}`));
+    console.log(chalk.yellow(`  4. Or force recovery: npx deploy-kit recover ${result.stage}\n`));
   }
 
   /**
