@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import chalk from 'chalk';
 import ora from 'ora';
 import { ProjectConfig, DeploymentStage } from '../types.js';
+import { ensureCertificateExists } from '../certificates/manager.js';
 
 const execAsync = promisify(exec);
 
@@ -91,10 +92,42 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Ensure SSL certificate exists and is configured
+   */
+  async function checkSslCertificate(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  SSL certificate check skipped (non-SST infrastructure)'));
+      return;
+    }
+
+    try {
+      const domain = config.stageConfig?.[stage]?.domain || config.mainDomain;
+      if (!domain) {
+        console.log(chalk.gray('ℹ️  SSL certificate check skipped (no domain configured)'));
+        return;
+      }
+
+      const spinner = ora(`Checking SSL certificate for ${domain}...`).start();
+
+      try {
+        const arn = await ensureCertificateExists(domain, stage, projectRoot, config.awsProfile);
+        spinner.succeed(`✅ SSL certificate ready: ${arn.split('/').pop()}`);
+      } catch (certError) {
+        spinner.fail('❌ SSL certificate check failed');
+        throw certError;
+      }
+    } catch (error) {
+      // If certificate setup fails, warn but don't block deployment
+      console.log(chalk.yellow(`⚠️  SSL certificate check failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      console.log(chalk.yellow('   You may need to set up the certificate manually.'));
+    }
+  }
+
+  /**
    * Run all pre-deployment checks
    */
   async function run(stage: DeploymentStage): Promise<void> {
-    console.log(chalk.bold(`Pre-deployment checks for ${stage}:\n`));
+    console.log(chalk.bold(`\n🔐 Pre-deployment checks for ${stage}:\n`));
 
     try {
       await checkGitStatus();
@@ -104,6 +137,8 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
         await runTests();
       }
 
+      await checkSslCertificate(stage);
+
       console.log(chalk.green(`\n✅ All pre-deployment checks passed!\n`));
     } catch (error) {
       console.log(chalk.red(`\n❌ Pre-deployment checks failed!\n`));
@@ -111,5 +146,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkSslCertificate, run };
 }
