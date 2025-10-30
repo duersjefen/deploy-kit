@@ -16,7 +16,6 @@ import { getHealthChecker } from './health/checker.js';
 import { getLockManager } from './locks/manager.js';
 import { getPreDeploymentChecks } from './safety/pre-deploy.js';
 import { getPostDeploymentChecks } from './safety/post-deploy.js';
-import { deploySSTWithMonitoring } from './deployment/sst-deployer.js';
 
 const execAsync = promisify(exec);
 
@@ -30,8 +29,6 @@ const execAsync = promisify(exec);
  * 4. Post-deployment verification (health checks, CloudFront validation)
  * 5. Cache invalidation
  */
-import { getBackupManager } from './backup/manager.js';
-
 export class DeploymentKit {
   private config: ProjectConfig;
   private projectRoot: string;
@@ -39,26 +36,25 @@ export class DeploymentKit {
   private healthChecker: ReturnType<typeof getHealthChecker>;
   private preChecks: ReturnType<typeof getPreDeploymentChecks>;
   private postChecks: ReturnType<typeof getPostDeploymentChecks>;
-  private backupManager: ReturnType<typeof getBackupManager>;
 
   constructor(config: ProjectConfig, projectRoot: string = process.cwd()) {
     this.config = config;
     this.projectRoot = projectRoot;
     this.lockManager = getLockManager(projectRoot);
     this.healthChecker = getHealthChecker(config);
-    this.preChecks = getPreDeploymentChecks(config, projectRoot);
+    this.preChecks = getPreDeploymentChecks(config);
     this.postChecks = getPostDeploymentChecks(config);
-    this.backupManager = getBackupManager(config, projectRoot);
   }
 
   /**
-   * Full deployment workflow with 5+ stages:
-   * 1. Pre-deployment checks (locks, credentials)
-   * 2. Safety checks (git, tests)
-   * 2.5. Database backup (for rollback capability)
-   * 3. Build & Deploy
-   * 4. Post-deployment validation (health checks)
-   * 5. Cache invalidation & security validation
+   * Detect if this is an SST project
+   */
+  private isSSTProject(): boolean {
+    return existsSync(join(this.projectRoot, 'sst.config.ts'));
+  }
+
+  /**
+   * Full deployment workflow
    */
   async deploy(stage: DeploymentStage): Promise<DeploymentResult> {
     const startTime = new Date();
@@ -79,48 +75,38 @@ export class DeploymentKit {
     };
 
     try {
-      // Stage 1: Safety checks (before acquiring lock)
-      console.log(chalk.bold.cyan('\n🔐 STAGE 1: Safety checks...\n'));
+      // Stage 1: Check lock and get previous status
+      console.log(chalk.bold.cyan('\n🔐 STAGE 1: Pre-deployment checks...\n'));
+      await this.lockManager.checkAndCleanPulumiLock(stage);
+      const newLock = await this.lockManager.acquireLock(stage);
+
+      // Stage 2: Safety checks
+      console.log(chalk.bold.cyan('🔐 STAGE 2: Safety checks...\n'));
       await this.preChecks.run(stage);
       result.details.gitStatusOk = true;
       result.details.testsOk = true;
 
-      // Stage 2: Check lock and prepare deployment
-      console.log(chalk.bold.cyan('🔐 STAGE 2: Pre-deployment checks...\n'));
-      await this.lockManager.checkAndCleanPulumiLock(stage);
-      const newLock = await this.lockManager.acquireLock(stage);
-
-      // Stage 3: Database backup (before deployment for rollback capability)
-      if (this.config.database === 'dynamodb') {
-        console.log(chalk.bold.cyan('💾 STAGE 3: Database backup...\n'));
-        try {
-          const backupPath = await this.backupManager.backup(stage);
-          if (backupPath) {
-            result.details.backupPath = backupPath;
-            console.log(chalk.gray(`Backup saved for rollback if needed: ${backupPath}\n`));
-          }
-        } catch (backupError) {
-          console.log(chalk.yellow('⚠️  Database backup skipped (not critical)\n'));
-          // Continue with deployment even if backup fails
-        }
+      // Stage 3: Build & Deploy
+      console.log(chalk.bold.cyan('📦 STAGE 3: Building and deploying...\n'));
+      // For SST projects, build is handled by sst deploy, skip separate build
+      if (!this.isSSTProject()) {
+        await this.runBuild();
+        result.details.buildsOk = true;
+      } else {
+        result.details.buildsOk = true;
       }
-
-      // Stage 4: Build & Deploy
-      console.log(chalk.bold.cyan('📦 STAGE 4: Building and deploying...\n'));
-      await this.runBuild(stage);
-      result.details.buildsOk = true;
 
       await this.runDeploy(stage);
       result.details.deploymentOk = true;
 
-      // Stage 5: Post-deployment validation
-      console.log(chalk.bold.cyan('✅ STAGE 5: Post-deployment validation...\n'));
+      // Stage 4: Post-deployment validation
+      console.log(chalk.bold.cyan('✅ STAGE 4: Post-deployment validation...\n'));
       await this.postChecks.run(stage);
       result.details.healthChecksOk = true;
 
-      // Stage 6: Cache invalidation (background)
+      // Stage 5: Cache invalidation (background)
       if (!this.config.stageConfig[stage].skipCacheInvalidation) {
-        console.log(chalk.bold.cyan('🔄 STAGE 6: Cache invalidation & security validation...\n'));
+        console.log(chalk.bold.cyan('🔄 STAGE 5: Cache invalidation (background)...\n'));
         await this.invalidateCache(stage);
         result.details.cacheInvalidatedOk = true;
       }
@@ -224,31 +210,15 @@ export class DeploymentKit {
   /**
    * Run build command
    */
-  private async runBuild(stage: DeploymentStage): Promise<void> {
+  private async runBuild(): Promise<void> {
     const spinner = ora('Building application...').start();
 
     try {
       if (this.config.hooks?.postBuild) {
-        // Substitute {stage} placeholder in hook command
-        let hookCommand = this.config.hooks.postBuild;
-        hookCommand = hookCommand.replace(/{stage}/g, stage);
-        
-        // Pass AWS_PROFILE env var if configured
-        const env = {
-          ...process.env,
-          ...(this.config.awsProfile && {
-            AWS_PROFILE: this.config.awsProfile,
-          }),
-        };
-
-        spinner.text = 'Running build hook...';
-        
-        const { stdout } = await execAsync(hookCommand, {
+        const { stdout } = await execAsync(this.config.hooks.postBuild, {
           cwd: this.projectRoot,
-          env,
         });
-        
-        if (stdout) spinner.info(`Build output: ${stdout}`);
+        spinner.info(`Build output: ${stdout}`);
       } else {
         // Default: npm run build
         const { stdout } = await execAsync('npm run build', {
@@ -264,16 +234,22 @@ export class DeploymentKit {
   }
 
   /**
-   * Run deployment command with enhanced monitoring and timeout detection
+   * Run deployment command
    */
   private async runDeploy(stage: DeploymentStage): Promise<void> {
+    const spinner = ora(`Deploying to ${stage}...`).start();
+
     try {
       const stageConfig = this.config.stageConfig[stage];
       const sstStage = stageConfig.sstStageName || stage;
 
       if (this.config.customDeployScript) {
         // Use custom deployment script
-        const spinner = ora(`Deploying to ${stage}...`).start();
+        await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
+          cwd: this.projectRoot,
+        });
+      } else {
+        // Default: SST deploy
         const env = {
           ...process.env,
           ...(this.config.awsProfile && {
@@ -281,153 +257,49 @@ export class DeploymentKit {
           }),
         };
 
-        await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
+        await execAsync(`npx sst deploy --stage ${sstStage}`, {
           cwd: this.projectRoot,
           env,
         });
-
-        spinner.succeed(`✅ Deployed to ${stage}`);
-      } else {
-        // Default: SST deploy with enhanced monitoring
-        await deploySSTWithMonitoring({
-          stage: sstStage as DeploymentStage,
-          projectRoot: this.projectRoot,
-          awsProfile: this.config.awsProfile,
-          timeoutMinutes: 15, // Fail if deployment takes > 15 minutes
-          logFile: join(this.projectRoot, `.sst-deploy-${stage}-${Date.now()}.log`),
-        });
       }
+
+      spinner.succeed(`✅ Deployed to ${stage}`);
     } catch (error) {
+      spinner.fail(`❌ Deployment to ${stage} failed`);
       throw error;
     }
   }
 
   /**
-   * Invalidate CloudFront cache with full implementation
-   * - Finds distribution by domain name (dynamic lookup)
-   * - Creates invalidation
-   * - Waits for completion with retry logic
-   * - Validates Origin Access Control security
+   * Invalidate CloudFront cache
    */
   private async invalidateCache(stage: DeploymentStage): Promise<void> {
     const spinner = ora('Invalidating CloudFront cache...').start();
 
     try {
-      // Get domain from config
-      const domain = this.config.stageConfig[stage].domain ||
-        `${stage}.${this.config.mainDomain}`;
-
-      if (!domain) {
-        spinner.info('CloudFront domain not configured - skipping cache invalidation');
-        return;
-      }
-
-      // Step 1: Find CloudFront distribution by domain name
-      spinner.text = 'Finding CloudFront distribution...';
-      
-      const env = {
-        ...process.env,
-        ...(this.config.awsProfile && {
-          AWS_PROFILE: this.config.awsProfile,
-        }),
-      };
-
-      const { stdout: distIdOutput } = await execAsync(
-        `aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='${domain}'].Id" --output text`,
-        { env }
-      );
-
-      const distId = distIdOutput.trim();
+      // Get distribution ID from deployment output or env
+      const distId = process.env[`CLOUDFRONT_DIST_ID_${stage.toUpperCase()}`];
 
       if (!distId) {
-        spinner.info(`ℹ️  CloudFront distribution not yet available for: ${domain}`);
-        spinner.info('(Distribution initializing - cache will be invalidated automatically)');
+        spinner.warn('CloudFront distribution ID not found - skipping cache invalidation');
         return;
       }
 
-      spinner.text = `Found distribution: ${distId}`;
-
-      // Step 2: Create cache invalidation
-      spinner.text = 'Creating cache invalidation for all paths (/*) ...';
-
-      const { stdout: invalidationOutput } = await execAsync(
-        `aws cloudfront create-invalidation --distribution-id ${distId} --paths "/*" --query 'Invalidation.Id' --output text`,
-        { env }
+      const { stdout } = await execAsync(
+        `aws cloudfront create-invalidation --distribution-id ${distId} --paths "/*"`,
+        {
+          env: {
+            ...process.env,
+            ...(this.config.awsProfile && {
+              AWS_PROFILE: this.config.awsProfile,
+            }),
+          },
+        }
       );
 
-      const invalidationId = invalidationOutput.trim();
-
-      if (!invalidationId) {
-        spinner.warn('⚠️  Could not create cache invalidation');
-        return;
-      }
-
-      // Step 3: Wait for invalidation to complete (with timeout and retries)
-      spinner.text = `Waiting for invalidation ${invalidationId} to complete...`;
-
-      const maxAttempts = 30; // 5 minutes (10 seconds * 30)
-      let attempts = 0;
-      let completed = false;
-
-      while (attempts < maxAttempts) {
-        try {
-          const { stdout: statusOutput } = await execAsync(
-            `aws cloudfront get-invalidation --distribution-id ${distId} --id ${invalidationId} --query 'Invalidation.Status' --output text`,
-            { env }
-          );
-
-          const status = statusOutput.trim();
-
-          if (status === 'Completed') {
-            completed = true;
-            break;
-          }
-        } catch {
-          // Continue retrying if query fails
-        }
-
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second wait
-        attempts++;
-        
-        if (attempts % 3 === 0) { // Update every 30 seconds
-          spinner.text = `Waiting for invalidation... (${attempts * 10}s elapsed)`;
-        }
-      }
-
-      if (completed) {
-        spinner.succeed('✅ CloudFront cache invalidation completed');
-        
-        // Step 4: Validate Origin Access Control security
-        try {
-          const { stdout: oacOutput } = await execAsync(
-            `aws cloudfront get-distribution-config --id ${distId} --query 'DistributionConfig.Origins[0].OriginAccessControlId' --output text`,
-            { env }
-          );
-          
-          if (oacOutput.trim() && oacOutput.trim() !== 'None') {
-            spinner.succeed('✅ Origin Access Control (OAC) is properly configured');
-          } else {
-            spinner.warn('⚠️  Origin Access Control not found - verify S3 bucket policy');
-          }
-        } catch {
-          spinner.info('ℹ️  Could not validate OAC (not critical)');
-        }
-      } else {
-        spinner.succeed('✅ Cache invalidation in progress (will complete in background)');
-        spinner.info(`Invalidation ID: ${invalidationId}`);
-        spinner.info('This typically completes within 5-15 minutes globally');
-      }
-
+      spinner.succeed('✅ Cache invalidation started');
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      
-      if (errorMsg.includes('not found') || errorMsg.includes('No distributions')) {
-        spinner.info('⚠️  CloudFront distribution not yet available (normal after new deployment)');
-        spinner.info('Cache will be invalidated once distribution is ready');
-      } else {
-        spinner.warn('⚠️  Cache invalidation encountered an issue (will continue in background)');
-      }
+      spinner.warn('⚠️  CloudFront cache invalidation failed (not critical)');
     }
   }
 }
