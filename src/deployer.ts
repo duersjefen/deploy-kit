@@ -45,7 +45,7 @@ export class DeploymentKit {
     this.projectRoot = projectRoot;
     this.lockManager = getLockManager(projectRoot);
     this.healthChecker = getHealthChecker(config);
-    this.preChecks = getPreDeploymentChecks(config);
+    this.preChecks = getPreDeploymentChecks(config, projectRoot);
     this.postChecks = getPostDeploymentChecks(config);
     this.backupManager = getBackupManager(config, projectRoot);
   }

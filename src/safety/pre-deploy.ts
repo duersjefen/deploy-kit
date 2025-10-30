@@ -10,7 +10,7 @@ const execAsync = promisify(exec);
  * Pre-deployment safety checks
  * Ensures the project is ready for deployment
  */
-export function getPreDeploymentChecks(config: ProjectConfig) {
+export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: string = process.cwd()) {
   /**
    * Check git status is clean
    */
@@ -23,7 +23,9 @@ export function getPreDeploymentChecks(config: ProjectConfig) {
         return;
       }
 
-      const { stdout: status } = await execAsync('git status --short');
+      const { stdout: status } = await execAsync('git status --short', {
+        cwd: projectRoot,
+      });
 
       if (status.trim()) {
         spinner.fail('❌ Uncommitted changes found');
@@ -78,7 +80,7 @@ export function getPreDeploymentChecks(config: ProjectConfig) {
 
     try {
       const { stdout } = await execAsync('npm test 2>&1', {
-        cwd: process.cwd(),
+        cwd: projectRoot,
       });
 
       spinner.succeed('✅ Tests passed');

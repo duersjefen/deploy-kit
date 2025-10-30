@@ -10,7 +10,7 @@ import { getRecoveryManager } from './recovery/manager.js';
 import type { DeploymentStage } from './types.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
 
 // Parse arguments
 const args = process.argv.slice(2);
@@ -19,8 +19,10 @@ const stage = args[1] as DeploymentStage;
 
 // Load config from current directory
 let config: any;
+let projectRoot: string;
 try {
   const configPath = resolve(process.cwd(), '.deploy-config.json');
+  projectRoot = dirname(configPath);
   const configContent = readFileSync(configPath, 'utf-8');
   config = JSON.parse(configContent);
 } catch (error) {
@@ -28,8 +30,8 @@ try {
   process.exit(1);
 }
 
-// Initialize kit
-const kit = new DeploymentKit(config, process.cwd());
+// Initialize kit with the project root where the config file is located
+const kit = new DeploymentKit(config, projectRoot);
 
 async function main() {
   switch (command) {
@@ -84,7 +86,7 @@ async function main() {
       }
 
       console.log(chalk.bold.yellow(`\n🔧 Recovering ${stage}...\n`));
-      const recovery = getRecoveryManager(config);
+      const recovery = getRecoveryManager(config, projectRoot);
       await recovery.performFullRecovery(stage);
       break;
 

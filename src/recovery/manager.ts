@@ -1,5 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { unlinkSync, existsSync } from 'fs';
+import { join } from 'path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { ProjectConfig, DeploymentStage } from '../types.js';
@@ -13,7 +15,7 @@ const execAsync = promisify(exec);
  * - Clean up stuck Pulumi state
  * - Reset locks safely
  */
-export function getRecoveryManager(config: ProjectConfig) {
+export function getRecoveryManager(config: ProjectConfig, projectRoot: string = process.cwd()) {
   /**
    * Detect orphaned CloudFront distributions
    */
@@ -161,6 +163,27 @@ export function getRecoveryManager(config: ProjectConfig) {
   }
 
   /**
+   * Clear file-based deployment locks
+   */
+  async function clearFileLocks(projectRoot: string, stage: DeploymentStage): Promise<void> {
+    const spinner = ora(`Clearing file-based locks for ${stage}...`).start();
+
+    try {
+      const lockFilePath = join(projectRoot, `.deployment-lock-${stage}`);
+
+      if (existsSync(lockFilePath)) {
+        unlinkSync(lockFilePath);
+        spinner.succeed(`✅ File-based lock cleared for ${stage}`);
+      } else {
+        spinner.info(`ℹ️  No file-based lock found for ${stage}`);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      spinner.warn(`⚠️  Could not clear file lock: ${errorMsg.split('\n')[0]}`);
+    }
+  }
+
+  /**
    * Full recovery procedure
    */
   async function performFullRecovery(stage: DeploymentStage): Promise<void> {
@@ -174,7 +197,11 @@ export function getRecoveryManager(config: ProjectConfig) {
     await cleanupIncompleteDeployment(stage);
     console.log('');
 
-    // Step 3: Unlock Pulumi state
+    // Step 3: Clear file-based locks
+    await clearFileLocks(projectRoot, stage);
+    console.log('');
+
+    // Step 4: Unlock Pulumi state
     await unlockPulumiState(stage);
     console.log('');
 
@@ -184,6 +211,7 @@ export function getRecoveryManager(config: ProjectConfig) {
   return {
     detectOrphanedDistributions,
     cleanupIncompleteDeployment,
+    clearFileLocks,
     unlockPulumiState,
     performFullRecovery,
   };
