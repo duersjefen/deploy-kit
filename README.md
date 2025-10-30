@@ -317,7 +317,102 @@ If you see 403 errors:
 2. Check Origin Access Control is configured
 3. Run: `npx @duersjefen/deploy-kit health staging`
 
+## Roadmap & Future Improvements
+
+### Planned Features (High Impact)
+
+1. **Plugin Architecture** - Support multiple deployment platforms
+   - Currently: SST/Next.js only
+   - Plan: Vercel, Netlify, Docker/ECS, Kubernetes, Lambda, Heroku plugins
+
+2. **Advanced Rollback Strategies** - Beyond full revert
+   - Instant rollback (code revert)
+   - Blue-green deployments
+   - Canary deployments (gradual rollout 5% → 10% → 100%)
+   - Feature flag toggles
+   - Database migration rollback
+
+3. **Deployment Notifications** - Team visibility
+   - Slack, Discord, email, webhooks
+   - Custom message templates
+   - Deployment timeline in notifications
+   - Mention @oncall on failures
+
+4. **Audit Logging & History** - Full accountability
+   - Persistent deployment records (S3/DynamoDB)
+   - Who deployed what, when, and why
+   - Git diff integration
+   - Compare deployments: `npx deploy-kit compare staging@v1 staging@v2`
+   - Query history: `npx deploy-kit history --author --since "2 weeks ago"`
+
+5. **Config Validation & Schema** - Prevent typos
+   - JSON Schema validation
+   - Helpful error messages with suggestions
+   - Check for command existence in hooks
+   - Validate AWS profile, domains, stages
+
+6. **Multi-Project Support** - Manage many projects
+   - Workspace management: `npx deploy-kit init-workspace`
+   - Deploy multiple projects: `npx deploy-kit deploy --all`
+   - Health check across portfolio: `npx deploy-kit status --all`
+   - Shared configuration templates
+
+7. **Cost Estimation & Monitoring** - Budget control
+   - Estimate infrastructure cost before deploy
+   - Compare current vs. new costs
+   - Alert on cost threshold exceeded
+   - Track cost trends over time
+
+8. **Advanced Health Checks** - Beyond HTTP status
+   - Custom smoke tests
+   - Performance thresholds (alert if >2s response time)
+   - Database query validation
+   - Authentication/authorization checks
+   - Cache hit rate verification
+
+9. **Security Scanning** - Prevent vulnerabilities
+   - Dependency vulnerability scan (npm audit)
+   - Hardcoded secret detection
+   - SAST code analysis
+   - License compliance check
+   - Block deploy on critical findings
+
+10. **Environment Templates** - Faster project setup
+    - Pre-built configs: `npx deploy-kit init --template nextjs-sst`
+    - Templates for: Remix/Vercel, FastAPI/ECS, Django/Heroku, static/Netlify
+    - Includes hooks, health checks, monitoring defaults
+
+11. **Deployment Diff & Preview** - See what will change
+    - Code diff (files, lines added/removed)
+    - Infrastructure diff (new/removed resources)
+    - Database migration preview
+    - Cost impact estimate
+    - Estimated deployment time
+
+12. **Enhanced Pre/Post Hooks** - Full customization
+    - Database migrations (`before_deployment`)
+    - Cache warming (`after_deployment`)
+    - Smoke tests (`post_deployment`)
+    - Custom cleanup (`on_failure`)
+    - Rollback triggers
+
+### Architecture Enhancements
+
+- **Plugin system** for deployment engines
+- **Event-driven** hook system with error handling
+- **Persistent storage** for deployment history
+- **Distributed tracing** for deployment steps
+- **Rate limiting** for multi-project deployments
+
 ## Version History
+
+### 1.1.0 (2024-10-30)
+- ✨ Automated SSL certificate manager
+  - Automatic certificate creation for ACM
+  - DNS validation with Route 53 integration
+  - Auto-injection of certificate ARN into sst.config.ts
+  - Interactive setup wizard
+  - Fixes "certificate in use" blocker
 
 ### 1.0.0 (2024-10-29)
 - Initial release
