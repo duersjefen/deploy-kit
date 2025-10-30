@@ -16,6 +16,7 @@ import { getHealthChecker } from './health/checker.js';
 import { getLockManager } from './locks/manager.js';
 import { getPreDeploymentChecks } from './safety/pre-deploy.js';
 import { getPostDeploymentChecks } from './safety/post-deploy.js';
+import { deploySSTWithMonitoring } from './deployment/sst-deployer.js';
 
 const execAsync = promisify(exec);
 
@@ -78,20 +79,20 @@ export class DeploymentKit {
     };
 
     try {
-      // Stage 1: Check lock and get previous status
-      console.log(chalk.bold.cyan('\n🔐 STAGE 1: Pre-deployment checks...\n'));
-      await this.lockManager.checkAndCleanPulumiLock(stage);
-      const newLock = await this.lockManager.acquireLock(stage);
-
-      // Stage 2: Safety checks
-      console.log(chalk.bold.cyan('🔐 STAGE 2: Safety checks...\n'));
+      // Stage 1: Safety checks (before acquiring lock)
+      console.log(chalk.bold.cyan('\n🔐 STAGE 1: Safety checks...\n'));
       await this.preChecks.run(stage);
       result.details.gitStatusOk = true;
       result.details.testsOk = true;
 
-      // Stage 2.5: Database backup (before deployment for rollback capability)
+      // Stage 2: Check lock and prepare deployment
+      console.log(chalk.bold.cyan('🔐 STAGE 2: Pre-deployment checks...\n'));
+      await this.lockManager.checkAndCleanPulumiLock(stage);
+      const newLock = await this.lockManager.acquireLock(stage);
+
+      // Stage 3: Database backup (before deployment for rollback capability)
       if (this.config.database === 'dynamodb') {
-        console.log(chalk.bold.cyan('💾 STAGE 2.5: Database backup...\n'));
+        console.log(chalk.bold.cyan('💾 STAGE 3: Database backup...\n'));
         try {
           const backupPath = await this.backupManager.backup(stage);
           if (backupPath) {
@@ -104,22 +105,22 @@ export class DeploymentKit {
         }
       }
 
-      // Stage 3: Build & Deploy
-      console.log(chalk.bold.cyan('📦 STAGE 3: Building and deploying...\n'));
+      // Stage 4: Build & Deploy
+      console.log(chalk.bold.cyan('📦 STAGE 4: Building and deploying...\n'));
       await this.runBuild(stage);
       result.details.buildsOk = true;
 
       await this.runDeploy(stage);
       result.details.deploymentOk = true;
 
-      // Stage 4: Post-deployment validation
-      console.log(chalk.bold.cyan('✅ STAGE 4: Post-deployment validation...\n'));
+      // Stage 5: Post-deployment validation
+      console.log(chalk.bold.cyan('✅ STAGE 5: Post-deployment validation...\n'));
       await this.postChecks.run(stage);
       result.details.healthChecksOk = true;
 
-      // Stage 5: Cache invalidation (background)
+      // Stage 6: Cache invalidation (background)
       if (!this.config.stageConfig[stage].skipCacheInvalidation) {
-        console.log(chalk.bold.cyan('🔄 STAGE 5: Cache invalidation & security validation...\n'));
+        console.log(chalk.bold.cyan('🔄 STAGE 6: Cache invalidation & security validation...\n'));
         await this.invalidateCache(stage);
         result.details.cacheInvalidatedOk = true;
       }
@@ -263,22 +264,16 @@ export class DeploymentKit {
   }
 
   /**
-   * Run deployment command
+   * Run deployment command with enhanced monitoring and timeout detection
    */
   private async runDeploy(stage: DeploymentStage): Promise<void> {
-    const spinner = ora(`Deploying to ${stage}...`).start();
-
     try {
       const stageConfig = this.config.stageConfig[stage];
       const sstStage = stageConfig.sstStageName || stage;
 
       if (this.config.customDeployScript) {
         // Use custom deployment script
-        await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
-          cwd: this.projectRoot,
-        });
-      } else {
-        // Default: SST deploy
+        const spinner = ora(`Deploying to ${stage}...`).start();
         const env = {
           ...process.env,
           ...(this.config.awsProfile && {
@@ -286,15 +281,23 @@ export class DeploymentKit {
           }),
         };
 
-        await execAsync(`npx sst deploy --stage ${sstStage}`, {
+        await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
           cwd: this.projectRoot,
           env,
         });
-      }
 
-      spinner.succeed(`✅ Deployed to ${stage}`);
+        spinner.succeed(`✅ Deployed to ${stage}`);
+      } else {
+        // Default: SST deploy with enhanced monitoring
+        await deploySSTWithMonitoring({
+          stage: sstStage as DeploymentStage,
+          projectRoot: this.projectRoot,
+          awsProfile: this.config.awsProfile,
+          timeoutMinutes: 15, // Fail if deployment takes > 15 minutes
+          logFile: join(this.projectRoot, `.sst-deploy-${stage}-${Date.now()}.log`),
+        });
+      }
     } catch (error) {
-      spinner.fail(`❌ Deployment to ${stage} failed`);
       throw error;
     }
   }
