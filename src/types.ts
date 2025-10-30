@@ -102,6 +102,9 @@ export interface ProjectConfig {
 
   /** Path to custom deployment script (relative to project root) */
   customDeployScript?: string;
+
+  /** S3 bucket for database backups (optional) */
+  backupBucket?: string;
 }
 
 export interface DeploymentResult {
@@ -119,6 +122,7 @@ export interface DeploymentResult {
     deploymentOk: boolean;
     healthChecksOk: boolean;
     cacheInvalidatedOk?: boolean;
+    backupPath?: string;
   };
 }
 

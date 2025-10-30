@@ -29,6 +29,8 @@ const execAsync = promisify(exec);
  * 4. Post-deployment verification (health checks, CloudFront validation)
  * 5. Cache invalidation
  */
+import { getBackupManager } from './backup/manager.js';
+
 export class DeploymentKit {
   private config: ProjectConfig;
   private projectRoot: string;
