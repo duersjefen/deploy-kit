@@ -81,7 +81,7 @@ export class DeploymentKit {
 
       // Stage 3: Build & Deploy
       console.log(chalk.bold.cyan('📦 STAGE 3: Building and deploying...\n'));
-      await this.runBuild(stage);
+      await this.runBuild();
       result.details.buildsOk = true;
 
       await this.runDeploy(stage);
@@ -198,31 +198,15 @@ export class DeploymentKit {
   /**
    * Run build command
    */
-  private async runBuild(stage: DeploymentStage): Promise<void> {
+  private async runBuild(): Promise<void> {
     const spinner = ora('Building application...').start();
 
     try {
       if (this.config.hooks?.postBuild) {
-        // Substitute {stage} placeholder in hook command
-        let hookCommand = this.config.hooks.postBuild;
-        hookCommand = hookCommand.replace(/{stage}/g, stage);
-        
-        // Pass AWS_PROFILE env var if configured
-        const env = {
-          ...process.env,
-          ...(this.config.awsProfile && {
-            AWS_PROFILE: this.config.awsProfile,
-          }),
-        };
-
-        spinner.text = 'Running build hook...';
-        
-        const { stdout } = await execAsync(hookCommand, {
+        const { stdout } = await execAsync(this.config.hooks.postBuild, {
           cwd: this.projectRoot,
-          env,
         });
-        
-        if (stdout) spinner.info(`Build output: ${stdout}`);
+        spinner.info(`Build output: ${stdout}`);
       } else {
         // Default: npm run build
         const { stdout } = await execAsync('npm run build', {
