@@ -1,5 +1,5 @@
 import { promisify } from 'util';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -334,6 +334,9 @@ export class DeploymentKit {
   /**
    * Run deployment command and extract CloudFront distribution ID
    */
+  /**
+   * Run deployment command with real-time streaming output
+   */
   private async runDeploy(stage: DeploymentStage): Promise<string | null> {
     const spinner = ora(`Deploying to ${stage}...`).start();
 
@@ -349,23 +352,12 @@ export class DeploymentKit {
           cwd: this.projectRoot,
         });
         deployOutput = stdout;
+        spinner.succeed(`✅ Deployed to ${stage}`);
       } else {
-        // Default: SST deploy
-        const env = {
-          ...process.env,
-          ...(this.config.awsProfile && {
-            AWS_PROFILE: this.config.awsProfile,
-          }),
-        };
-
-        const { stdout } = await execAsync(`npx sst deploy --stage ${sstStage}`, {
-          cwd: this.projectRoot,
-          env,
-        });
-        deployOutput = stdout;
+        // Default: SST deploy with streaming output
+        deployOutput = await this.runSSTDeployWithStreaming(stage, sstStage, spinner);
+        spinner.succeed(`✅ Deployed to ${stage}`);
       }
-
-      spinner.succeed(`✅ Deployed to ${stage}`);
 
       // Extract CloudFront distribution ID from deployment output
       const distId = this.extractCloudFrontDistributionId(deployOutput);
@@ -379,6 +371,101 @@ export class DeploymentKit {
       spinner.fail(`❌ Deployment to ${stage} failed`);
       throw error;
     }
+  }
+
+  /**
+   * Run SST deploy with real-time streaming output (last 3 lines)
+   */
+  /**
+   * Run SST deploy with real-time streaming output (last 3 lines)
+   */
+  private async runSSTDeployWithStreaming(
+    stage: DeploymentStage,
+    sstStage: string,
+    spinner: ReturnType<typeof ora>
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const env = {
+        ...process.env,
+        ...(this.config.awsProfile && {
+          AWS_PROFILE: this.config.awsProfile,
+        }),
+      };
+
+      const child = spawn('npx', ['sst', 'deploy', '--stage', sstStage], {
+        cwd: this.projectRoot,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+      const outputLines: string[] = []; // Keep last 3 lines for display
+      let lastUpdateTime = Date.now();
+
+      // Handle stdout
+      child.stdout.on('data', (data) => {
+        const chunk = data.toString();
+        stdout += chunk;
+
+        // Process new lines
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.trim()) {
+            outputLines.push(line.substring(0, 80)); // Limit line length
+            // Keep only last 3 lines
+            if (outputLines.length > 3) {
+              outputLines.shift();
+            }
+          }
+        }
+
+        // Update spinner with last 3 lines (throttled to avoid flicker)
+        const now = Date.now();
+        if (now - lastUpdateTime > 200 && outputLines.length > 0) {
+          lastUpdateTime = now;
+          const displayText = outputLines.map(l => `  ${l}`).join('\n');
+          spinner.text = `Deploying to ${stage}...\n${displayText}`;
+        }
+      });
+
+      // Handle stderr
+      child.stderr.on('data', (data) => {
+        const chunk = data.toString();
+        stderr += chunk;
+
+        // Also show stderr in last 3 lines
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.trim()) {
+            outputLines.push(chalk.yellow(line.substring(0, 80)));
+            if (outputLines.length > 3) {
+              outputLines.shift();
+            }
+          }
+        }
+
+        const now = Date.now();
+        if (now - lastUpdateTime > 200 && outputLines.length > 0) {
+          lastUpdateTime = now;
+          const displayText = outputLines.map(l => `  ${l}`).join('\n');
+          spinner.text = `Deploying to ${stage}...\n${displayText}`;
+        }
+      });
+
+      // Handle process exit
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve(stdout);
+        } else {
+          reject(new Error(`SST deploy failed with exit code ${code}\n${stderr}`));
+        }
+      });
+
+      child.on('error', (error) => {
+        reject(error);
+      });
+    });
   }
 
   /**
