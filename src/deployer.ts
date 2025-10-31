@@ -146,7 +146,7 @@ export class DeploymentKit {
       this.printDeploymentSummary(result, stageTimings);
 
       // Post-deployment: Audit CloudFront and offer cleanup
-      await this.postDeploymentCloudFrontAudit();
+      await this.postDeploymentCloudFrontAudit(stage);
 
     } catch (error) {
       result.success = false;
@@ -398,12 +398,22 @@ export class DeploymentKit {
   }
 
   /**
+   * Get AWS region for the deployment stage
+   * Falls back to us-east-1 if not configured
+   */
+  private getAwsRegion(stage: DeploymentStage): string {
+    return this.config.stageConfig[stage].awsRegion || 'us-east-1';
+  }
+
+  /**
    * Audit CloudFront after deployment and offer to cleanup orphans
    */
-  private async postDeploymentCloudFrontAudit(): Promise<void> {
+  private async postDeploymentCloudFrontAudit(stage: DeploymentStage): Promise<void> {
     try {
       const spinner = ora('🔍 Auditing CloudFront infrastructure...').start();
 
+      // Note: CloudFront is a global service with API endpoint always in us-east-1
+      // even though the deployment may be in a different region
       const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
       const distributions = await client.listDistributions();
       const dnsRecords: any[] = []; // TODO: Fetch from Route53
@@ -446,7 +456,7 @@ export class DeploymentKit {
         console.log(chalk.gray('   Check progress anytime with: make cloudfront-report\n'));
 
         // Start cleanup in background (don't wait)
-        this.startBackgroundCloudFrontCleanup().catch(err => {
+        this.startBackgroundCloudFrontCleanup(stage).catch(err => {
           console.error(chalk.red('⚠️  Background cleanup failed:'), err.message);
         });
       } else {
@@ -463,7 +473,7 @@ export class DeploymentKit {
   /**
    * Start CloudFront cleanup in background (non-blocking)
    */
-  private async startBackgroundCloudFrontCleanup(): Promise<void> {
+  private async startBackgroundCloudFrontCleanup(stage: DeploymentStage): Promise<void> {
     try {
       const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
       const distributions = await client.listDistributions();
