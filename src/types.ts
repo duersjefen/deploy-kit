@@ -60,6 +60,14 @@ export interface DeploymentHooks {
   onError?: string;
 }
 
+export interface HostedZone {
+  /** Domain name (e.g., 'gabs-massage.de') */
+  domain: string;
+
+  /** Route53 hosted zone ID (e.g., 'Z...') */
+  zoneId: string;
+}
+
 export interface ProjectConfig {
   /** Project name (e.g., 'gabs-massage') */
   projectName: string;
@@ -105,6 +113,9 @@ export interface ProjectConfig {
 
   /** S3 bucket for database backups (optional) */
   backupBucket?: string;
+
+  /** Route53 hosted zones for DNS validation (optional) */
+  hostedZones?: HostedZone[];
 }
 
 export interface DeploymentResult {

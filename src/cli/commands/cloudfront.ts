@@ -48,12 +48,23 @@ async function auditCloudFront(
   console.log(chalk.bold.cyan('\n🔍 CloudFront Infrastructure Audit\n'));
 
   try {
-    // Get distributions and DNS records
-    const distributions = await client.listDistributions();
+    // Fetch DNS records from Route53 hosted zones
+    console.log(chalk.gray('Fetching CloudFront distributions and DNS records...\n'));
+    const dnsRecords: any[] = [];
 
-    // For DNS lookup, we'd need hosted zone IDs from config
-    // For now, we'll just analyze based on distribution data
-    const dnsRecords: any[] = []; // TODO: Fetch from Route 53 using config
+    if (config.hostedZones && config.hostedZones.length > 0) {
+      for (const zone of config.hostedZones) {
+        try {
+          const records = await client.getDNSRecords(zone.zoneId);
+          dnsRecords.push(...records);
+        } catch (error) {
+          console.warn(chalk.yellow(`⚠️  Could not fetch DNS records for ${zone.domain}: ${(error as Error).message}`));
+        }
+      }
+    }
+
+    // Get distributions
+    const distributions = await client.listDistributions();
 
     // Generate audit report
     const report = CloudFrontAnalyzer.generateAuditReport(
@@ -91,8 +102,22 @@ async function cleanupOrphans(
   }
 
   try {
+    // Fetch DNS records from Route53 hosted zones
+    console.log(chalk.gray('Checking DNS records...\n'));
+    const dnsRecords: any[] = [];
+
+    if (config.hostedZones && config.hostedZones.length > 0) {
+      for (const zone of config.hostedZones) {
+        try {
+          const records = await client.getDNSRecords(zone.zoneId);
+          dnsRecords.push(...records);
+        } catch (error) {
+          console.warn(chalk.yellow(`⚠️  Could not fetch DNS records for ${zone.domain}: ${(error as Error).message}`));
+        }
+      }
+    }
+
     const distributions = await client.listDistributions();
-    const dnsRecords: any[] = []; // TODO: Fetch from Route 53
 
     // Find orphans
     const analyses = distributions.map((dist) =>
@@ -104,7 +129,7 @@ async function cleanupOrphans(
     );
 
     if (orphans.length === 0) {
-      console.log(chalk.green('✅ No orphaned distributions found'));
+      console.log(chalk.green('✅ No orphaned distributions found (all distributions are referenced)'));
       return;
     }
 
@@ -135,8 +160,22 @@ async function reportCloudFront(
   console.log(chalk.bold.cyan('\n📊 CloudFront Health Report\n'));
 
   try {
+    // Fetch DNS records from Route53 hosted zones
+    console.log(chalk.gray('Fetching data...\n'));
+    const dnsRecords: any[] = [];
+
+    if (config.hostedZones && config.hostedZones.length > 0) {
+      for (const zone of config.hostedZones) {
+        try {
+          const records = await client.getDNSRecords(zone.zoneId);
+          dnsRecords.push(...records);
+        } catch (error) {
+          console.warn(chalk.yellow(`⚠️  Could not fetch DNS records for ${zone.domain}: ${(error as Error).message}`));
+        }
+      }
+    }
+
     const distributions = await client.listDistributions();
-    const dnsRecords: any[] = []; // TODO: Fetch from Route 53
 
     const report = CloudFrontAnalyzer.generateAuditReport(
       distributions,

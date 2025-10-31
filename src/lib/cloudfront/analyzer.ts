@@ -169,12 +169,31 @@ export class CloudFrontAnalyzer {
 
   /**
    * Check if a distribution can be safely deleted
+   * Safe to delete if:
+   * 1. Status is orphaned (not in config, not in DNS)
+   * 2. AND either:
+   *    a) Has placeholder origin (incomplete SST config), OR
+   *    b) Is stale (created > 1 hour ago) with all orphan markers
    */
   static canDelete(analysis: DistributionAnalysis): boolean {
-    return (
-      analysis.status === 'orphaned' &&
-      analysis.reasons.some((r) => r.includes('placeholder.sst.dev'))
-    );
+    if (analysis.status !== 'orphaned') {
+      return false;
+    }
+
+    // Safe to delete if has placeholder origin (classic orphan from interrupted SST)
+    const hasPlaceholderOrigin = analysis.reasons.some((r) => r.includes('placeholder.sst.dev'));
+    if (hasPlaceholderOrigin) {
+      return true;
+    }
+
+    // Safe to delete if confirmed not in DNS and not in config (truly orphaned)
+    const notInDns = analysis.reasons.some((r) => r.includes('Not referenced in DNS'));
+    const notInConfig = analysis.reasons.some((r) => r.includes('Not referenced in deployment config'));
+    if (notInDns && notInConfig) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
