@@ -27,7 +27,6 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "prepublish": "npm run build",
     "test": "node --test dist/*.test.js"
   },
   "keywords": [
