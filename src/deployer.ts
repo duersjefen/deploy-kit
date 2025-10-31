@@ -397,43 +397,67 @@ export class DeploymentKit {
 
       let stdout = '';
       let stderr = '';
-      const outputLines: string[] = []; // Keep last 5 lines for display
-      const maxLines = 5;
-
-      // Helper function to clean ANSI codes and trim whitespace
-      const formatLine = (line: string): string => {
-        // Remove ANSI color codes
-        return line.replace(/\x1B\[[0-9;]*m/g, '').trim();
-      };
+      const outputLines: string[] = [];
+      const maxLines = 4; // Reduced for narrow terminals
       let lastUpdateTime = Date.now();
+      
+      // Detect terminal width (default to 80 if not available)
+      const terminalWidth = process.stdout.columns || 80;
+      // Reserve space for indicator (2 chars) and padding
+      const maxLineLength = Math.max(40, terminalWidth - 8);
+
+      // Helper to clean ANSI codes and truncate smartly
+      const formatLine = (line: string): string => {
+        const clean = line.replace(/\x1B\[[0-9;]*m/g, '').trim();
+        
+        // Extract the operation type for coloring
+        if (clean.includes('Building') || clean.includes('Bundling')) {
+          return chalk.blue(truncate(clean, maxLineLength));
+        } else if (clean.includes('Created')) {
+          return chalk.green(truncate(clean, maxLineLength));
+        } else if (clean.includes('Error') || clean.includes('Failed')) {
+          return chalk.red(truncate(clean, maxLineLength));
+        } else if (clean.includes('Applying') || clean.includes('Installing')) {
+          return chalk.yellow(truncate(clean, maxLineLength));
+        } else if (clean.includes('Waiting')) {
+          return chalk.cyan(truncate(clean, maxLineLength));
+        }
+        return truncate(clean, maxLineLength);
+      };
+      
+      const truncate = (str: string, len: number): string => {
+        if (str.length <= len) return str;
+        return str.substring(0, len - 1) + '…';
+      };
 
       // Handle stdout
       child.stdout.on('data', (data) => {
         const chunk = data.toString();
         stdout += chunk;
 
-        // Process new lines
         const lines = chunk.split('\n');
         for (const line of lines) {
-          const cleanLine = formatLine(line);
-          if (cleanLine) {
-            const displayLine = cleanLine.length > 85 
-              ? cleanLine.substring(0, 82) + '...'
-              : cleanLine;
-            outputLines.push(displayLine); // Limit line length
-            // Keep only last 3 lines
+          const formatted = formatLine(line);
+          if (formatted && formatted.length > 0) {
+            outputLines.push(formatted);
             if (outputLines.length > maxLines) {
               outputLines.shift();
             }
           }
         }
 
-        // Update spinner with last 3 lines (throttled to avoid flicker)
+        // Update spinner with smart formatting
         const now = Date.now();
         if (now - lastUpdateTime > 250 && outputLines.length > 0) {
           lastUpdateTime = now;
-          const displayText = outputLines.map(l => `  ${l}`).join('\n');
-          spinner.text = `Deploying to ${stage}...\n${displayText}`;
+          const displayText = outputLines
+            .map((l, i) => {
+              const indicator = i === outputLines.length - 1 ? '▸' : '·';
+              return `  ${chalk.dim(indicator)} ${l}`;
+            })
+            .join('\n');
+          
+          spinner.text = `Deploying to ${stage}...\n\n${displayText}\n`;
         }
       });
 
@@ -442,11 +466,11 @@ export class DeploymentKit {
         const chunk = data.toString();
         stderr += chunk;
 
-        // Also show stderr in last 3 lines
         const lines = chunk.split('\n');
         for (const line of lines) {
-          if (line.trim()) {
-            outputLines.push(chalk.yellow(line.substring(0, 80)));
+          const formatted = chalk.red(truncate(line.replace(/\x1B\[[0-9;]*m/g, '').trim(), maxLineLength));
+          if (formatted && formatted.length > 0) {
+            outputLines.push(formatted);
             if (outputLines.length > maxLines) {
               outputLines.shift();
             }
@@ -456,8 +480,14 @@ export class DeploymentKit {
         const now = Date.now();
         if (now - lastUpdateTime > 250 && outputLines.length > 0) {
           lastUpdateTime = now;
-          const displayText = outputLines.map(l => `  ${l}`).join('\n');
-          spinner.text = `Deploying to ${stage}...\n${displayText}`;
+          const displayText = outputLines
+            .map((l, i) => {
+              const indicator = i === outputLines.length - 1 ? '▸' : '·';
+              return `  ${chalk.dim(indicator)} ${l}`;
+            })
+            .join('\n');
+          
+          spinner.text = `Deploying to ${stage}...\n\n${displayText}\n`;
         }
       });
 
@@ -476,7 +506,7 @@ export class DeploymentKit {
     });
   }
 
-  /**
+    /**
    * Extract CloudFront distribution ID from SST deployment output
    * Looks for patterns like:
    *   - Outputs section with domain names
