@@ -170,29 +170,36 @@ export class CloudFrontAnalyzer {
   /**
    * Check if a distribution can be safely deleted
    * Safe to delete if:
-   * 1. Status is orphaned (not in config, not in DNS)
-   * 2. AND either:
-   *    a) Has placeholder origin (incomplete SST config), OR
+   * 1. Orphaned (not in config, not in DNS) with either:
+   *    a) Placeholder origin (incomplete SST config), OR
    *    b) Confirmed not in DNS and not in config (truly orphaned)
+   * 2. OR Misconfigured with placeholder origin (incomplete SST deployment)
    */
   static canDelete(analysis: DistributionAnalysis): boolean {
-    if (analysis.status !== 'orphaned') {
-      return false;
-    }
-
-    // Safe to delete if has placeholder origin (classic orphan from interrupted SST)
+    // Check for placeholder origin (sign of incomplete/failed SST deployment)
     const hasPlaceholderOrigin = analysis.reasons.some((r) => r.includes('placeholder.sst.dev'));
-    if (hasPlaceholderOrigin) {
+
+    // Misconfigured distributions with placeholder origins are safe to delete
+    // They're incomplete deployments that were never fully configured
+    if (analysis.status === 'misconfigured' && hasPlaceholderOrigin) {
       return true;
     }
 
-    // Safe to delete if confirmed not in DNS and not in config (truly orphaned)
-    // The analyzer uses a combined reason string for orphans not in config or DNS
-    const notInDnsAndConfig = analysis.reasons.some((r) =>
-      r.includes('Not referenced in deployment config or DNS')
-    );
-    if (notInDnsAndConfig) {
-      return true;
+    // Orphaned distributions are safe to delete
+    if (analysis.status === 'orphaned') {
+      // Safe if has placeholder origin (classic orphan from interrupted SST)
+      if (hasPlaceholderOrigin) {
+        return true;
+      }
+
+      // Safe if confirmed not in DNS and not in config (truly orphaned)
+      // The analyzer uses a combined reason string for orphans not in config or DNS
+      const notInDnsAndConfig = analysis.reasons.some((r) =>
+        r.includes('Not referenced in deployment config or DNS')
+      );
+      if (notInDnsAndConfig) {
+        return true;
+      }
     }
 
     return false;
