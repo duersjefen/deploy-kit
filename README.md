@@ -82,6 +82,28 @@ npm install --save-dev @duersjefen/deploy-kit
 
 ## Quick Start
 
+### Option A: Automated Setup (Recommended)
+
+Use the interactive setup wizard:
+
+```bash
+npx @duersjefen/deploy-kit init
+```
+
+This creates:
+- ✅ `.deploy-config.json` - Deployment configuration
+- ✅ `Makefile` - User-friendly deploy targets  
+- ✅ Updated `package.json` - Convenient npm scripts
+
+Then deploy:
+
+```bash
+make deploy-staging
+make deploy-prod
+```
+
+### Option B: Manual Setup
+
 ### 1. Create `.deploy-config.json`
 
 Copy and customize a template:
@@ -228,6 +250,9 @@ make deploy-production
 ## CLI Commands
 
 ```bash
+# Initialize a new project (one-command setup)
+npx @duersjefen/deploy-kit init
+
 # Deploy to a stage
 npx @duersjefen/deploy-kit deploy staging
 npx @duersjefen/deploy-kit deploy production
@@ -468,6 +493,21 @@ If you see 403 errors:
 - **Rate limiting** for multi-project deployments
 
 ## Version History
+
+### 1.3.0 (2024-10-31)
+- ✨ **Interactive Init Wizard**
+  - One-command project setup: `npx deploy-kit init`
+  - Beautiful terminal UI with prompts
+  - Auto-generates `.deploy-config.json`
+  - Auto-creates `Makefile` with deploy targets
+  - Auto-adds npm scripts for convenient deployment
+  - Validation of project names, domains, and AWS profiles
+  - Smart defaults and auto-population of related fields
+- 🎯 **Faster Onboarding**
+  - Eliminates 5 manual setup steps
+  - Reduces setup time from 10+ minutes to < 2 minutes
+  - Sensible defaults work for most projects
+  - Optional customization for advanced users
 
 ### 1.2.0 (2024-10-30)
 - ✨ Sophisticated Terminal UI

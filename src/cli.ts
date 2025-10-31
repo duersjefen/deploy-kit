@@ -7,6 +7,7 @@
 import { DeploymentKit } from './deployer.js';
 import { getStatusChecker } from './status/checker.js';
 import { getRecoveryManager } from './recovery/manager.js';
+import { runInit } from './cli/init.js';
 import type { DeploymentStage } from './types.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -16,6 +17,28 @@ import { resolve, dirname } from 'path';
 const args = process.argv.slice(2);
 const command = args[0];
 const stage = args[1] as DeploymentStage;
+
+// Handle commands that don't require config file
+if (command === 'init') {
+  runInit(process.cwd()).catch(error => {
+    console.error(chalk.red('\n❌ Init error:'));
+    console.error(chalk.red(error.message));
+    process.exit(1);
+  });
+  process.exit(0);
+}
+
+if (command === '--help' || command === '-h' || command === 'help') {
+  printHelpMessage();
+  process.exit(0);
+}
+
+if (command === '--version' || command === '-v') {
+  // Version is managed in package.json and updated during builds
+  const version = '1.3.0';
+  console.log(`deploy-kit ${version}`);
+  process.exit(0);
+}
 
 // Load config from current directory
 let config: any;
@@ -109,18 +132,6 @@ async function main() {
       }
       break;
 
-    case '--version':
-    case '-v':
-      const packageJson = JSON.parse(readFileSync(resolve(dirname(import.meta.url), '../package.json'), 'utf-8'));
-      console.log(`deploy-kit ${packageJson.version}`);
-      break;
-
-    case '--help':
-    case '-h':
-    case 'help':
-      printHelpMessage();
-      break;
-
     default:
       if (command) {
         console.error(chalk.red(`\n❌ Unknown command: ${command}`));
@@ -141,6 +152,11 @@ function printHelpMessage(): void {
   console.log(chalk.gray('  deploy-kit <command> [stage]\n'));
 
   console.log(chalk.bold('COMMANDS'));
+  console.log(chalk.green('  init'));
+  console.log(chalk.gray('    Interactive setup wizard for new projects'));
+  console.log(chalk.gray('    Creates .deploy-config.json, Makefile, and npm scripts'));
+  console.log(chalk.gray('    Example: deploy-kit init\n'));
+
   console.log(chalk.green('  deploy <stage>'));
   console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
   console.log(chalk.gray('    Stages: staging, production'));
@@ -177,6 +193,9 @@ function printHelpMessage(): void {
   console.log(chalk.gray('  ✅ Comprehensive error recovery\n'));
 
   console.log(chalk.bold('EXAMPLES'));
+  console.log(chalk.cyan('  # Initialize a new project'));
+  console.log(chalk.gray('  $ deploy-kit init\n'));
+
   console.log(chalk.cyan('  # Deploy to staging with full checks'));
   console.log(chalk.gray('  $ deploy-kit deploy staging\n'));
 
