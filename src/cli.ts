@@ -8,6 +8,7 @@ import { DeploymentKit } from './deployer.js';
 import { getStatusChecker } from './status/checker.js';
 import { getRecoveryManager } from './recovery/manager.js';
 import { runInit } from './cli/init.js';
+import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import type { DeploymentStage } from './types.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -35,7 +36,7 @@ if (command === '--help' || command === '-h' || command === 'help') {
 
 if (command === '--version' || command === '-v') {
   // Version is managed in package.json and updated during builds
-  const version = '1.3.0';
+  const version = '1.4.0';
   console.log(`deploy-kit ${version}`);
   process.exit(0);
 }
@@ -122,7 +123,7 @@ async function main() {
       console.log(chalk.bold.cyan(`\n🏥 Running health checks for ${stage}...`));
       console.log(chalk.gray('Testing deployed application health\n'));
       const healthy = await kit.validateHealth(stage);
-      
+
       if (healthy) {
         console.log(chalk.green('\n✅ All health checks passed\n'));
         process.exit(0);
@@ -130,6 +131,13 @@ async function main() {
         console.log(chalk.red('\n❌ Some health checks failed\n'));
         process.exit(1);
       }
+      break;
+
+    case 'cloudfront':
+      const cfSubcommand = stage; // For cloudfront, second arg is subcommand
+      const cfArgs = args.slice(2);
+      await handleCloudFrontCommand(cfSubcommand, cfArgs, config, projectRoot);
+      process.exit(0);
       break;
 
     default:
@@ -176,6 +184,11 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Run health checks for deployed application'));
   console.log(chalk.gray('    Tests: connectivity, database, API endpoints'));
   console.log(chalk.gray('    Example: deploy-kit health production\n'));
+
+  console.log(chalk.green('  cloudfront <subcommand>'));
+  console.log(chalk.gray('    Manage and audit CloudFront distributions'));
+  console.log(chalk.gray('    Subcommands: audit, cleanup, report'));
+  console.log(chalk.gray('    Example: deploy-kit cloudfront audit\n'));
 
   console.log(chalk.green('  --help, -h'));
   console.log(chalk.gray('    Show this help message\n'));
