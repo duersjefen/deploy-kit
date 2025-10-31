@@ -374,10 +374,7 @@ export class DeploymentKit {
   }
 
   /**
-   * Run SST deploy with real-time streaming output (last 3 lines)
-   */
-  /**
-   * Run SST deploy with real-time streaming output (last 3 lines)
+   * Run SST deploy with real-time streaming output (last 5 lines with improved UI)
    */
   private async runSSTDeployWithStreaming(
     stage: DeploymentStage,
@@ -400,7 +397,14 @@ export class DeploymentKit {
 
       let stdout = '';
       let stderr = '';
-      const outputLines: string[] = []; // Keep last 3 lines for display
+      const outputLines: string[] = []; // Keep last 5 lines for display
+      const maxLines = 5;
+
+      // Helper function to clean ANSI codes and trim whitespace
+      const formatLine = (line: string): string => {
+        // Remove ANSI color codes
+        return line.replace(/\x1B\[[0-9;]*m/g, '').trim();
+      };
       let lastUpdateTime = Date.now();
 
       // Handle stdout
@@ -411,10 +415,14 @@ export class DeploymentKit {
         // Process new lines
         const lines = chunk.split('\n');
         for (const line of lines) {
-          if (line.trim()) {
-            outputLines.push(line.substring(0, 80)); // Limit line length
+          const cleanLine = formatLine(line);
+          if (cleanLine) {
+            const displayLine = cleanLine.length > 85 
+              ? cleanLine.substring(0, 82) + '...'
+              : cleanLine;
+            outputLines.push(displayLine); // Limit line length
             // Keep only last 3 lines
-            if (outputLines.length > 3) {
+            if (outputLines.length > maxLines) {
               outputLines.shift();
             }
           }
@@ -422,7 +430,7 @@ export class DeploymentKit {
 
         // Update spinner with last 3 lines (throttled to avoid flicker)
         const now = Date.now();
-        if (now - lastUpdateTime > 200 && outputLines.length > 0) {
+        if (now - lastUpdateTime > 250 && outputLines.length > 0) {
           lastUpdateTime = now;
           const displayText = outputLines.map(l => `  ${l}`).join('\n');
           spinner.text = `Deploying to ${stage}...\n${displayText}`;
@@ -439,14 +447,14 @@ export class DeploymentKit {
         for (const line of lines) {
           if (line.trim()) {
             outputLines.push(chalk.yellow(line.substring(0, 80)));
-            if (outputLines.length > 3) {
+            if (outputLines.length > maxLines) {
               outputLines.shift();
             }
           }
         }
 
         const now = Date.now();
-        if (now - lastUpdateTime > 200 && outputLines.length > 0) {
+        if (now - lastUpdateTime > 250 && outputLines.length > 0) {
           lastUpdateTime = now;
           const displayText = outputLines.map(l => `  ${l}`).join('\n');
           spinner.text = `Deploying to ${stage}...\n${displayText}`;
