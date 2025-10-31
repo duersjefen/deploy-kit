@@ -84,19 +84,20 @@ export class DeploymentKit {
       console.log(chalk.bold.cyan(`🚀 DEPLOYMENT PIPELINE: ${stage.toUpperCase()}`));
       console.log(chalk.bold.cyan('═'.repeat(60)) + '\n');
 
-      // Stage 1: Pre-deployment safety checks
+      // Stage 1: Pre-deployment safety checks (BEFORE lock acquisition)
+      // This way, if pre-checks fail, lock is never acquired
       let stage1Start = Date.now();
       console.log(chalk.bold.white('▸ Stage 1: Pre-Deployment Checks'));
       console.log(chalk.gray('  Validating: git status, AWS credentials, tests, SSL\n'));
-      
-      await this.lockManager.checkAndCleanPulumiLock(stage);
-      const newLock = await this.lockManager.acquireLock(stage);
 
-      // Stage 2: Safety checks
       await this.preChecks.run(stage);
       result.details.gitStatusOk = true;
       result.details.testsOk = true;
       stageTimings.push({ name: 'Pre-Deployment Checks', duration: Date.now() - stage1Start });
+
+      // Only acquire lock AFTER pre-checks pass
+      await this.lockManager.checkAndCleanPulumiLock(stage);
+      const newLock = await this.lockManager.acquireLock(stage);
 
       // Stage 3: Build & Deploy
       let stage2Start = Date.now();
@@ -155,7 +156,18 @@ export class DeploymentKit {
       // Print failure summary
       this.printDeploymentFailureSummary(result, stageTimings);
 
-      // Don't release lock on failure - allows recovery
+      // Release lock if it was acquired
+      // Pre-check failures won't have lock, but deployment failures will
+      // Either way, release it so user doesn't have to manually recover
+      try {
+        // Try to get the lock to see if it was acquired
+        const existingLock = await this.lockManager.getFileLock(stage);
+        if (existingLock) {
+          await this.lockManager.releaseLock(existingLock);
+        }
+      } catch (lockErr) {
+        // Silently ignore if lock doesn't exist or can't be released
+      }
     }
 
     result.endTime = new Date();
