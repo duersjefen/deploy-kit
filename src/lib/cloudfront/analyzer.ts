@@ -173,7 +173,7 @@ export class CloudFrontAnalyzer {
    * 1. Status is orphaned (not in config, not in DNS)
    * 2. AND either:
    *    a) Has placeholder origin (incomplete SST config), OR
-   *    b) Is stale (created > 1 hour ago) with all orphan markers
+   *    b) Confirmed not in DNS and not in config (truly orphaned)
    */
   static canDelete(analysis: DistributionAnalysis): boolean {
     if (analysis.status !== 'orphaned') {
@@ -187,9 +187,11 @@ export class CloudFrontAnalyzer {
     }
 
     // Safe to delete if confirmed not in DNS and not in config (truly orphaned)
-    const notInDns = analysis.reasons.some((r) => r.includes('Not referenced in DNS'));
-    const notInConfig = analysis.reasons.some((r) => r.includes('Not referenced in deployment config'));
-    if (notInDns && notInConfig) {
+    // The analyzer uses a combined reason string for orphans not in config or DNS
+    const notInDnsAndConfig = analysis.reasons.some((r) =>
+      r.includes('Not referenced in deployment config or DNS')
+    );
+    if (notInDnsAndConfig) {
       return true;
     }
 
