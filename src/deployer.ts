@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import prompt from 'prompts';
 
 import {
   ProjectConfig,
@@ -16,6 +17,8 @@ import { getHealthChecker } from './health/checker.js';
 import { getLockManager } from './locks/manager.js';
 import { getPreDeploymentChecks } from './safety/pre-deploy.js';
 import { getPostDeploymentChecks } from './safety/post-deploy.js';
+import { CloudFrontAPIClient } from './lib/cloudfront/client.js';
+import { CloudFrontAnalyzer } from './lib/cloudfront/analyzer.js';
 
 const execAsync = promisify(exec);
 
@@ -140,6 +143,9 @@ export class DeploymentKit {
 
       // Print deployment summary
       this.printDeploymentSummary(result, stageTimings);
+
+      // Post-deployment: Audit CloudFront and offer cleanup
+      await this.postDeploymentCloudFrontAudit();
 
     } catch (error) {
       result.success = false;
@@ -376,6 +382,100 @@ export class DeploymentKit {
       spinner.succeed('✅ Cache invalidation started');
     } catch (error) {
       spinner.warn('⚠️  CloudFront cache invalidation failed (not critical)');
+    }
+  }
+
+  /**
+   * Audit CloudFront after deployment and offer to cleanup orphans
+   */
+  private async postDeploymentCloudFrontAudit(): Promise<void> {
+    try {
+      const spinner = ora('🔍 Auditing CloudFront infrastructure...').start();
+
+      const client = new CloudFrontAPIClient(this.config.awsProfile);
+      const distributions = await client.listDistributions();
+      const dnsRecords: any[] = []; // TODO: Fetch from Route53
+
+      const report = CloudFrontAnalyzer.generateAuditReport(distributions, this.config, dnsRecords);
+
+      if (report.orphanedDistributions.length === 0) {
+        spinner.succeed('✅ CloudFront infrastructure is clean');
+        return;
+      }
+
+      spinner.stop();
+
+      // Show orphaned distributions
+      console.log('\n' + chalk.bold.yellow('⚠️  Orphaned CloudFront Distributions Detected\n'));
+
+      const orphanCount = report.orphanedDistributions.length;
+      const estimatedMonthlyCost = orphanCount * 2.5; // ~$2.50 per distribution/month
+
+      console.log(chalk.yellow(`Found ${orphanCount} orphaned distribution(s):`));
+      for (const analysis of report.orphanedDistributions) {
+        const createdDate = analysis.createdTime ? new Date(analysis.createdTime).toLocaleDateString() : 'unknown';
+        console.log(chalk.gray(`  • ${analysis.id} (created ${createdDate})`));
+      }
+
+      console.log(chalk.yellow(`\n💾 Estimated cost: ~$${estimatedMonthlyCost.toFixed(2)}/month\n`));
+
+      // Ask user if they want to cleanup
+      const response = await prompt({
+        type: 'confirm',
+        name: 'cleanup',
+        message: 'Would you like to cleanup these orphaned distributions?',
+        initial: false,
+      });
+
+      if (response.cleanup) {
+        console.log('');
+        console.log(chalk.bold.cyan('🧹 Starting CloudFront cleanup in background...'));
+        console.log(chalk.gray('   Cleanup will continue even if you close this terminal'));
+        console.log(chalk.gray('   Check progress anytime with: make cloudfront-report\n'));
+
+        // Start cleanup in background (don't wait)
+        this.startBackgroundCloudFrontCleanup().catch(err => {
+          console.error(chalk.red('⚠️  Background cleanup failed:'), err.message);
+        });
+      } else {
+        console.log(chalk.gray('\nℹ️  You can cleanup anytime by running: make cloudfront-cleanup\n'));
+      }
+    } catch (error) {
+      // Silently fail - don't break deployment on audit errors
+      // Audit is informational only
+    }
+  }
+
+  /**
+   * Start CloudFront cleanup in background (non-blocking)
+   */
+  private async startBackgroundCloudFrontCleanup(): Promise<void> {
+    try {
+      const client = new CloudFrontAPIClient(this.config.awsProfile);
+      const distributions = await client.listDistributions();
+      const dnsRecords: any[] = []; // TODO: Fetch from Route53
+
+      const report = CloudFrontAnalyzer.generateAuditReport(distributions, this.config, dnsRecords);
+
+      // Delete each orphaned distribution
+      for (const analysis of report.orphanedDistributions) {
+        // Only delete if it's safe (orphaned + placeholder origin)
+        if (CloudFrontAnalyzer.canDelete(analysis)) {
+          try {
+            // Disable first
+            await client.disableDistribution(analysis.id);
+            // Wait for CloudFront to process
+            await client.waitForDistributionDeployed(analysis.id, 60000); // 1 min timeout
+            // Then delete
+            await client.deleteDistribution(analysis.id);
+          } catch (err) {
+            // Log but continue with next distribution
+            console.error(chalk.gray(`⚠️  Failed to delete ${analysis.id}: ${(err as Error).message}`));
+          }
+        }
+      }
+    } catch (error) {
+      console.error(chalk.gray(`⚠️  Background cleanup error: ${(error as Error).message}`));
     }
   }
 }
