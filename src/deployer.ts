@@ -404,7 +404,7 @@ export class DeploymentKit {
     try {
       const spinner = ora('🔍 Auditing CloudFront infrastructure...').start();
 
-      const client = new CloudFrontAPIClient(this.config.awsProfile);
+      const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
       const distributions = await client.listDistributions();
       const dnsRecords: any[] = []; // TODO: Fetch from Route53
 
@@ -453,8 +453,10 @@ export class DeploymentKit {
         console.log(chalk.gray('\nℹ️  You can cleanup anytime by running: make cloudfront-cleanup\n'));
       }
     } catch (error) {
-      // Silently fail - don't break deployment on audit errors
-      // Audit is informational only
+      // Don't break deployment on audit errors, but log for debugging
+      // Audit is informational only - not critical to deployment success
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.log(chalk.gray(`⚠️  CloudFront audit skipped: ${errorMsg}`));
     }
   }
 
@@ -463,7 +465,7 @@ export class DeploymentKit {
    */
   private async startBackgroundCloudFrontCleanup(): Promise<void> {
     try {
-      const client = new CloudFrontAPIClient(this.config.awsProfile);
+      const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
       const distributions = await client.listDistributions();
       const dnsRecords: any[] = []; // TODO: Fetch from Route53
 
