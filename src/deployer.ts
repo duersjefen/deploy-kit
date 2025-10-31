@@ -1,5 +1,5 @@
-import { exec } from 'child_process';
 import { promisify } from 'util';
+import { exec } from 'child_process';
 import chalk from 'chalk';
 import ora from 'ora';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -62,6 +62,7 @@ export class DeploymentKit {
   async deploy(stage: DeploymentStage): Promise<DeploymentResult> {
     const startTime = new Date();
     const stageTimings: { name: string; duration: number }[] = [];
+    let cloudFrontDistId: string | null = null;
     const result: DeploymentResult = {
       success: false,
       stage,
@@ -112,7 +113,7 @@ export class DeploymentKit {
         result.details.buildsOk = true;
       }
 
-      await this.runDeploy(stage);
+      cloudFrontDistId = await this.runDeploy(stage);
       result.details.deploymentOk = true;
       stageTimings.push({ name: 'Build & Deploy', duration: Date.now() - stage2Start });
 
@@ -131,7 +132,7 @@ export class DeploymentKit {
         console.log(chalk.bold.white('\n▸ Stage 4: Cache Invalidation'));
         console.log(chalk.gray('  Clearing CloudFront cache (runs in background)\n'));
 
-        await this.invalidateCache(stage);
+        await this.invalidateCache(stage, cloudFrontDistId);
         result.details.cacheInvalidatedOk = true;
       }
       stageTimings.push({ name: 'Cache Invalidation', duration: Date.now() - stage4Start });
@@ -330,18 +331,24 @@ export class DeploymentKit {
   /**
    * Run deployment command
    */
-  private async runDeploy(stage: DeploymentStage): Promise<void> {
+  /**
+   * Run deployment command and extract CloudFront distribution ID
+   */
+  private async runDeploy(stage: DeploymentStage): Promise<string | null> {
     const spinner = ora(`Deploying to ${stage}...`).start();
 
     try {
       const stageConfig = this.config.stageConfig[stage];
       const sstStage = stageConfig.sstStageName || stage;
 
+      let deployOutput = '';
+
       if (this.config.customDeployScript) {
         // Use custom deployment script
-        await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
+        const { stdout } = await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
           cwd: this.projectRoot,
         });
+        deployOutput = stdout;
       } else {
         // Default: SST deploy
         const env = {
@@ -351,13 +358,23 @@ export class DeploymentKit {
           }),
         };
 
-        await execAsync(`npx sst deploy --stage ${sstStage}`, {
+        const { stdout } = await execAsync(`npx sst deploy --stage ${sstStage}`, {
           cwd: this.projectRoot,
           env,
         });
+        deployOutput = stdout;
       }
 
       spinner.succeed(`✅ Deployed to ${stage}`);
+
+      // Extract CloudFront distribution ID from deployment output
+      const distId = this.extractCloudFrontDistributionId(deployOutput);
+      
+      if (distId) {
+        spinner.info(`CloudFront distribution ID: ${distId}`);
+      }
+
+      return distId;
     } catch (error) {
       spinner.fail(`❌ Deployment to ${stage} failed`);
       throw error;
@@ -365,14 +382,59 @@ export class DeploymentKit {
   }
 
   /**
+   * Extract CloudFront distribution ID from SST deployment output
+   * Looks for patterns like:
+   *   - Outputs section with domain names
+   *   - CloudFront distribution references
+   */
+  private extractCloudFrontDistributionId(output: string): string | null {
+    // SST outputs CloudFront URLs in format: https://d1234abcd.cloudfront.net
+    // Extract the distribution ID (the 'dXXXXabcd' part)
+    const cloudFrontMatch = output.match(/https:\/\/([a-z0-9]+)\.cloudfront\.net/i);
+    
+    if (cloudFrontMatch && cloudFrontMatch[1]) {
+      // The distribution ID starts with 'd' (or 'D') 
+      // For example: d1234abcd from d1234abcd.cloudfront.net
+      return cloudFrontMatch[1];
+    }
+
+    // Fallback: Look for distribution ID in JSON output (some SST versions output JSON)
+    try {
+      // Try to find JSON output that contains distribution info
+      const jsonMatch = output.match(/\{[\s\S]*?"distributionId"[\s\S]*?\}/);
+      if (jsonMatch) {
+        const json = JSON.parse(jsonMatch[0]);
+        if (json.distributionId) {
+          return json.distributionId;
+        }
+      }
+    } catch {
+      // JSON parsing failed, continue to next method
+    }
+
+    // Fallback: Query CloudFront for recent distributions
+    // This is slower but more reliable if output parsing fails
+    // We'll implement this if the above methods don't work
+    return null;
+  }
+
+  /**
    * Invalidate CloudFront cache
    */
-  private async invalidateCache(stage: DeploymentStage): Promise<void> {
+  /**
+   * Invalidate CloudFront cache
+   */
+  private async invalidateCache(stage: DeploymentStage, distributionId: string | null): Promise<void> {
     const spinner = ora('Invalidating CloudFront cache...').start();
 
     try {
-      // Get distribution ID from deployment output or env
-      const distId = process.env[`CLOUDFRONT_DIST_ID_${stage.toUpperCase()}`];
+      // Try to get distribution ID from parameter, then fall back to environment variable
+      let distId = distributionId || process.env[`CLOUDFRONT_DIST_ID_${stage.toUpperCase()}`] || null;
+
+      if (!distId) {
+        // If still not found, try to fetch it from CloudFront API by querying for recent distributions
+        distId = await this.findCloudFrontDistributionId(stage);
+      }
 
       if (!distId) {
         spinner.warn('CloudFront distribution ID not found - skipping cache invalidation');
@@ -391,9 +453,65 @@ export class DeploymentKit {
         }
       );
 
-      spinner.succeed('✅ Cache invalidation started');
+      // Extract invalidation ID from response
+      const invMatch = stdout.match(/"Id"[\s:]*"([^"]+)"/);
+      if (invMatch && invMatch[1]) {
+        spinner.succeed(`✅ Cache invalidation started (ID: ${invMatch[1]})`);
+      } else {
+        spinner.succeed('✅ Cache invalidation started');
+      }
     } catch (error) {
       spinner.warn('⚠️  CloudFront cache invalidation failed (not critical)');
+    }
+  }
+
+  /**
+   * Find CloudFront distribution ID by querying API
+   * Used as fallback if distribution ID is not extracted from deployment output
+   */
+  private async findCloudFrontDistributionId(stage: DeploymentStage): Promise<string | null> {
+    try {
+      const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
+      const distributions = await client.listDistributions();
+
+      // Get the domain we expect for this stage
+      const domain = this.config.stageConfig[stage].domain;
+      if (!domain) {
+        return null;
+      }
+
+      // Find the distribution that matches our domain
+      for (const dist of distributions) {
+        if (dist.DomainName === domain || dist.DomainName.includes(domain)) {
+          return dist.Id;
+        }
+
+        // Also check alternate domain names (CNAMEs)
+        if (dist.AliasedDomains && dist.AliasedDomains.length > 0) {
+          for (const alias of dist.AliasedDomains) {
+            if (alias === domain) {
+              return dist.Id;
+            }
+          }
+        }
+      }
+
+      // If exact match not found, return most recently modified distribution
+      // (assuming it's the one we just deployed)
+      if (distributions.length > 0) {
+        // Sort by LastModifiedTime (most recent first)
+        distributions.sort((a, b) => {
+          const timeA = a.LastModifiedTime?.getTime() || 0;
+          const timeB = b.LastModifiedTime?.getTime() || 0;
+          return timeB - timeA;
+        });
+        return distributions[0].Id;
+      }
+
+      return null;
+    } catch (error) {
+      // If API lookup fails, return null and skip cache invalidation
+      return null;
     }
   }
 
