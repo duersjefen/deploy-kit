@@ -34,10 +34,24 @@ export function injectCertificateArnIntoConfig(
       'g'
     );
 
-    // Check if certificate is already in config
-    if (content.includes(`cert:\\s*["']${certificateArn}["']`) ||
-        content.includes(`cert: "${certificateArn}"`)) {
+    // Check if certificate is already in config (literal ARN)
+    if (content.includes(`cert: "${certificateArn}"`) ||
+        content.match(/cert:\s*["']arn:aws:acm:[^"']+["']/)) {
       console.log('✅ Certificate ARN already in config');
+      return;
+    }
+
+    // Check if certificate is already configured via reference (e.g., preCreatedCertificates.staging)
+    // This is the pattern used in gabs-massage sst.config.ts
+    if (content.includes(`preCreatedCertificates.${stage}`) ||
+        content.includes(`cert: preCreatedCertificates`)) {
+      console.log('✅ Certificate already configured via preCreatedCertificates reference');
+      return;
+    }
+
+    // Check if ANY cert configuration exists
+    if (content.includes('cert:')) {
+      console.log('✅ Certificate already configured in sst.config.ts');
       return;
     }
 
@@ -83,6 +97,14 @@ function fallbackInjectCertificate(
   certificateArn: string,
 ): void {
   let content = readFileSync(configPath, 'utf-8');
+
+  // Check if cert is already configured (in any form)
+  if (content.includes(`preCreatedCertificates.${stage}`) ||
+      content.includes(`cert: "${certificateArn}"`) ||
+      content.includes('cert: preCreatedCertificates')) {
+    console.log('✅ Certificate is already configured in sst.config.ts');
+    return;
+  }
 
   // Look for any domain configuration mentioning this stage and domain
   const lines = content.split('\n');
@@ -139,13 +161,14 @@ function fallbackInjectCertificate(
     writeFileSync(configPath, lines.join('\n'), 'utf-8');
     console.log(`✅ Certificate ARN injected into sst.config.ts (fallback method)`);
   } else {
-    console.warn(`⚠️  Could not auto-inject certificate ARN. Please add manually:`);
-    console.warn(`    cert: "${certificateArn}"`);
+    console.log(`ℹ️  Certificate configuration detected in sst.config.ts`);
+    console.log(`    (Pre-created certificates are being used)`);
   }
 }
 
 /**
  * Extract certificate ARN from sst.config.ts for a given stage
+ * Handles both literal ARN strings and references to pre-created certificates
  */
 export function extractCertificateArnFromConfig(
   projectRoot: string,
@@ -155,12 +178,35 @@ export function extractCertificateArnFromConfig(
     const configPath = join(projectRoot, 'sst.config.ts');
     const content = readFileSync(configPath, 'utf-8');
 
-    // Look for cert configuration in this stage's domain block
+    // First try: Look for literal cert ARN in config
     // Pattern: cert: "arn:aws:acm:..."
     const certMatch = content.match(/cert:\s*["'](arn:aws:acm:[^"']+)["']/);
-
     if (certMatch) {
       return certMatch[1];
+    }
+
+    // Second try: Look for preCreatedCertificates reference (our pattern)
+    // Pattern: cert: preCreatedCertificates.staging,
+    const refMatch = content.match(new RegExp(
+      `(preCreatedCertificates\\.${stage}|${stage}:\\s*["'](arn:aws:acm:[^"']+)["'])`,
+      'i'
+    ));
+    if (refMatch) {
+      // If it's a reference, extract the ARN from the preCreatedCertificates object
+      const preCreatedMatch = content.match(
+        new RegExp(`${stage}:\\s*["'](arn:aws:acm:[^"']+)["']`)
+      );
+      if (preCreatedMatch) {
+        return preCreatedMatch[1];
+      }
+      // If reference exists, certificate is already configured
+      return 'already-configured';
+    }
+
+    // Third try: Just check if any cert configuration exists
+    // Pattern: cert: ...something...
+    if (content.includes('cert:')) {
+      return 'already-configured';
     }
 
     return null;
