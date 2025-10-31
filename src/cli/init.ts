@@ -261,7 +261,7 @@ function printSummary(answers: InitAnswers): void {
   console.log(chalk.green('  3. Deploy to staging: make deploy-staging'));
   console.log(chalk.green('  4. Deploy to production: make deploy-prod'));
 
-  console.log('\n📚 Commands:\n');
+  console.log('\n📚 Deployment Commands:\n');
   console.log(chalk.cyan('  make help                 ') + 'Show all available make targets');
   console.log(chalk.cyan('  make deploy-staging       ') + `Deploy to staging (${answers.stagingDomain})`);
   console.log(chalk.cyan('  make deploy-prod          ') + `Deploy to production (${answers.productionDomain})`);
@@ -269,9 +269,16 @@ function printSummary(answers: InitAnswers): void {
   console.log(chalk.cyan('  make recover-staging      ') + 'Recover from failed staging deployment');
   console.log(chalk.cyan('  make recover-prod         ') + 'Recover from failed production deployment');
 
+  console.log('\n🏗️  Infrastructure Management (v1.4.0+):\n');
+  console.log(chalk.cyan('  make cloudfront-audit     ') + 'Audit CloudFront distributions (detect orphans/issues)');
+  console.log(chalk.cyan('  make cloudfront-cleanup   ') + 'Remove orphaned CloudFront distributions');
+  console.log(chalk.cyan('  make cloudfront-report    ') + 'View CloudFront health summary');
+
   console.log('\n💡 Tips:\n');
   console.log(chalk.gray('  • Ensure your AWS credentials are configured before deploying'));
   console.log(chalk.gray('  • Commit .deploy-config.json to version control'));
+  console.log(chalk.gray('  • Use "make cloudfront-audit" periodically to check infrastructure health'));
+  console.log(chalk.gray('  • If deployments fail, use "make recovery-staging" or "make recovery-prod"'));
   console.log(chalk.gray('  • Review https://github.com/duersjefen/deploy-kit for more info'));
 
   console.log('\n' + chalk.bold.cyan('═'.repeat(60)) + '\n');
