@@ -48,23 +48,20 @@ export class CloudFrontAPIClient {
     this.awsRegion = region;
     this.awsProfile = profile;
 
+    // Set AWS_PROFILE BEFORE creating clients so credential providers can find it
+    // AWS SDK v3 credential chain reads this environment variable during client initialization
+    if (profile) {
+      process.env.AWS_PROFILE = profile;
+    }
+
     // CloudFront is always in us-east-1
     this.cfClient = new CloudFrontClient({
       region: 'us-east-1',
-      ...(profile && { credentials: this.getCredentials(profile) }),
     });
 
     this.route53Client = new Route53Client({
       region: this.awsRegion,
-      ...(profile && { credentials: this.getCredentials(profile) }),
     });
-  }
-
-  private getCredentials(profile: string) {
-    // AWS SDK v3 handles profiles via environment variables
-    // Set AWS_PROFILE before instantiating client
-    process.env.AWS_PROFILE = profile;
-    return undefined; // SDK will pick up from environment
   }
 
   /**
