@@ -130,4 +130,25 @@ export interface CloudFrontInvalidateOptions {
     paths: string[];
     profile?: string;
 }
+/**
+ * Type for unvalidated configuration (before validation)
+ * Used when loading config files before schema validation
+ */
+export type UnvalidatedConfig = Record<string, unknown>;
+/**
+ * Lock manager interface (for rollback manager dependency)
+ */
+export interface LockManager {
+    acquireLock(stage: DeploymentStage): Promise<DeploymentLock>;
+    releaseLock(lock: DeploymentLock): Promise<void>;
+    checkLock(stage: DeploymentStage): Promise<DeploymentLock | null>;
+}
+/**
+ * Extended lock manager interface with Pulumi-specific methods
+ */
+export interface ExtendedLockManager extends LockManager {
+    getFileLock(stage: DeploymentStage): Promise<DeploymentLock | null>;
+    clearPulumiLock(stage: DeploymentStage): Promise<void>;
+    isPulumiLocked(stage: DeploymentStage): Promise<boolean>;
+}
 //# sourceMappingURL=types.d.ts.map

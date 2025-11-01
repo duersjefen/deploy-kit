@@ -10,6 +10,7 @@ import { join } from 'path';
 import { execSync } from 'child_process';
 import { validateConfig } from '../utils/config-validator.js';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
+import type { UnvalidatedConfig } from '../../types.js';
 
 interface DoctorCheck {
   name: string;

@@ -5,6 +5,7 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import type { ProjectConfig } from './types.js';
 
 /**
  * Create a temporary directory for testing
@@ -93,7 +94,7 @@ export function assertThrows(fn: () => void, message?: string): void {
 /**
  * Create a mock ProjectConfig for testing
  */
-export function createMockProjectConfig(overrides?: Record<string, any>): any {
+export function createMockProjectConfig(overrides?: Partial<ProjectConfig>): ProjectConfig {
   return {
     projectName: 'test-project',
     displayName: 'Test Project',
@@ -109,11 +110,20 @@ export function createMockProjectConfig(overrides?: Record<string, any>): any {
         domain: 'staging.test.example.com',
         requiresConfirmation: false,
         awsRegion: 'us-east-1',
+        skipHealthChecks: false,
+        skipCacheInvalidation: false,
       },
       production: {
         domain: 'test.example.com',
         requiresConfirmation: true,
         awsRegion: 'us-east-1',
+        skipHealthChecks: false,
+        skipCacheInvalidation: false,
+      },
+      dev: {
+        domain: 'dev.test.example.com',
+        skipHealthChecks: false,
+        skipCacheInvalidation: false,
       },
     },
     healthChecks: [],

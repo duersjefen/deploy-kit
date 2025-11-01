@@ -1,6 +1,7 @@
 /**
  * Shared test utilities for deploy-kit
  */
+import type { ProjectConfig } from './types.js';
 /**
  * Create a temporary directory for testing
  * Automatically cleans up after tests complete
@@ -29,5 +30,5 @@ export declare function assertThrows(fn: () => void, message?: string): void;
 /**
  * Create a mock ProjectConfig for testing
  */
-export declare function createMockProjectConfig(overrides?: Record<string, any>): any;
+export declare function createMockProjectConfig(overrides?: Partial<ProjectConfig>): ProjectConfig;
 //# sourceMappingURL=test-utils.d.ts.map

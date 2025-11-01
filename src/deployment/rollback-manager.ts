@@ -17,7 +17,7 @@ import { DeploymentStage } from '../types.js';
  * ```
  */
 export class RollbackManager {
-  private lockManager: any; // Interface from locks/manager.ts
+  private lockManager: any;
 
   /**
    * Create a new rollback manager

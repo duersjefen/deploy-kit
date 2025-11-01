@@ -13,7 +13,7 @@ import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
 import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
-import type { DeploymentStage } from './types.js';
+import type { DeploymentStage, UnvalidatedConfig } from './types.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';

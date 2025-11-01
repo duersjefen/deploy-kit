@@ -38,7 +38,7 @@ export class CloudFrontAPIClient {
                 OriginDomain: dist.Origins?.Items?.[0]?.DomainName || 'unknown',
                 Status: dist.Status,
                 Comment: dist.Comment,
-                CreatedTime: dist.CreatedTime,
+                CreatedTime: dist.LastModifiedTime,
                 LastModifiedTime: dist.LastModifiedTime,
                 Enabled: dist.Enabled,
                 AliasedDomains: dist.Aliases?.Items || [],

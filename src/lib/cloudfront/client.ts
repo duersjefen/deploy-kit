@@ -12,6 +12,7 @@ import {
   GetDistributionConfigCommand,
   type Distribution,
   type DistributionList,
+  type DistributionSummary,
 } from '@aws-sdk/client-cloudfront';
 import { Route53Client, ListResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
 import chalk from 'chalk';
@@ -83,15 +84,15 @@ export class CloudFrontAPIClient {
         return [];
       }
 
-      return response.DistributionList.Items.map((dist: any) => ({
-        Id: dist.Id,
-        DomainName: dist.DomainName,
+      return response.DistributionList.Items.map((dist: DistributionSummary) => ({
+        Id: dist.Id!,
+        DomainName: dist.DomainName!,
         OriginDomain: dist.Origins?.Items?.[0]?.DomainName || 'unknown',
-        Status: dist.Status,
+        Status: dist.Status!,
         Comment: dist.Comment,
-        CreatedTime: dist.CreatedTime,
+        CreatedTime: dist.LastModifiedTime,
         LastModifiedTime: dist.LastModifiedTime,
-        Enabled: dist.Enabled,
+        Enabled: dist.Enabled!,
         AliasedDomains: dist.Aliases?.Items || [],
       }));
     } catch (error) {

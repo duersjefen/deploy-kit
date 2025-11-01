@@ -12,9 +12,18 @@ import { join } from 'path';
 import type { CheckResult } from './types.js';
 
 /**
+ * Package.json structure (relevant fields only)
+ */
+interface PackageJson {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  scripts?: Record<string, string>;
+}
+
+/**
  * Detect which framework the project uses based on package.json dependencies
  */
-function detectFramework(packageJson: any): string {
+function detectFramework(packageJson: PackageJson): string {
   if (packageJson.dependencies?.next) return 'next dev';
   if (packageJson.dependencies?.remix) return 'remix dev';
   if (packageJson.dependencies?.astro) return 'astro dev';
@@ -33,7 +42,7 @@ export function createRecursiveSstDevCheck(projectRoot: string): () => Promise<C
       return { passed: true };
     }
 
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as PackageJson;
     const devScript = packageJson.scripts?.dev;
 
     // Check if dev script calls sst dev
@@ -52,10 +61,10 @@ export function createRecursiveSstDevCheck(projectRoot: string): () => Promise<C
         manualFix: `Separate SST from framework dev scripts:\n  "dev": "${frameworkDevCommand}",\n  "sst:dev": "${devScript}"`,
         autoFix: async () => {
           // Move sst dev to separate script
-          packageJson.scripts['sst:dev'] = devScript;
+          packageJson.scripts!['sst:dev'] = devScript;
 
           // Replace dev with framework-only command
-          packageJson.scripts['dev'] = frameworkDevCommand;
+          packageJson.scripts!['dev'] = frameworkDevCommand;
 
           writeFileSync(
             packageJsonPath,
