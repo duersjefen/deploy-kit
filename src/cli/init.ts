@@ -3,6 +3,39 @@
  * Creates .deploy-config.json, updates package.json, and creates Makefile
  */
 
+/**
+ * Generate InitAnswers from non-interactive flags
+ */
+function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): InitAnswers {
+  // Try to auto-detect project name from package.json or directory name
+  let projectName = flags.projectName;
+  if (!projectName) {
+    try {
+      const packagePath = join(projectRoot, 'package.json');
+      const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
+      projectName = packageJson.name || projectRoot.split('/').pop() || 'my-app';
+    } catch {
+      projectName = projectRoot.split('/').pop() || 'my-app';
+    }
+  }
+
+  // Ensure projectName is always a string
+  projectName = projectName || 'my-app';
+  const domain = flags.domain || `${projectName}.com`;
+  const awsProfile = flags.awsProfile || projectName;
+  const awsRegion = flags.awsRegion || 'eu-north-1';
+
+  return {
+    projectName,
+    mainDomain: domain,
+    awsProfile: awsProfile,
+    stagingDomain: `staging.${domain}`,
+    productionDomain: domain,
+    awsRegion,
+    runTests: true, // Default to true for safety
+  };
+}
+
 import chalk from 'chalk';
 import ora from 'ora';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -24,6 +57,12 @@ export interface InitFlags {
   configOnly?: boolean;
   scriptsOnly?: boolean;
   makefileOnly?: boolean;
+  nonInteractive?: boolean;
+  withQualityTools?: boolean;
+  projectName?: string;
+  domain?: string;
+  awsProfile?: string;
+  awsRegion?: string;
 }
 
 /**
@@ -352,14 +391,205 @@ function printSummary(answers: InitAnswers, optionalFiles?: any): void {
 /**
  * Main init command
  */
+/**
+ * Create .lintstagedrc.js configuration file
+ */
+function createLintStagedConfig(projectRoot: string): void {
+  const spinner = ora('Creating .lintstagedrc.js...').start();
+
+  try {
+    const configPath = join(projectRoot, '.lintstagedrc.js');
+    const content = `export default {
+  '*.{ts,tsx}': ['eslint --fix', 'tsc-files --noEmit'],
+};
+`;
+
+    writeFileSync(configPath, content, 'utf-8');
+    spinner.succeed(chalk.green('✅ Created .lintstagedrc.js'));
+  } catch (error) {
+    spinner.fail('Failed to create .lintstagedrc.js');
+    throw error;
+  }
+}
+
+/**
+ * Create .husky/pre-commit hook
+ */
+function createHuskyPreCommitHook(projectRoot: string): void {
+  const spinner = ora('Configuring Husky pre-commit hook...').start();
+
+  try {
+    const huskyDir = join(projectRoot, '.husky');
+    const hookPath = join(huskyDir, 'pre-commit');
+    
+    // Create .husky directory if it doesn't exist
+    if (!existsSync(huskyDir)) {
+      const fs = require('fs');
+      fs.mkdirSync(huskyDir, { recursive: true });
+    }
+
+    const content = `#!/usr/bin/env sh
+npx lint-staged --config .lintstagedrc.js
+`;
+
+    writeFileSync(hookPath, content, 'utf-8');
+    // Make hook executable
+    require('fs').chmodSync(hookPath, 0o755);
+    spinner.succeed(chalk.green('✅ Configured Husky pre-commit hook'));
+  } catch (error) {
+    spinner.fail('Failed to configure Husky pre-commit hook');
+    throw error;
+  }
+}
+
+/**
+ * Update .gitignore with SST-specific entries
+ */
+function updateGitIgnore(projectRoot: string): void {
+  const spinner = ora('Updating .gitignore...').start();
+
+  try {
+    const gitignorePath = join(projectRoot, '.gitignore');
+    let content = '';
+
+    // Read existing .gitignore if it exists
+    if (existsSync(gitignorePath)) {
+      content = readFileSync(gitignorePath, 'utf-8');
+    }
+
+    // Check if SST entries already exist
+    const sstComment = '# sst';
+    if (!content.includes(sstComment)) {
+      // Add SST-specific ignores
+      if (content && !content.endsWith('\n')) {
+        content += '\n';
+      }
+      content += `\n${sstComment}\n.sst/\nsst-env.d.ts\n`;
+    }
+
+    writeFileSync(gitignorePath, content, 'utf-8');
+    spinner.succeed(chalk.green('✅ Updated .gitignore with SST entries'));
+  } catch (error) {
+    spinner.fail('Failed to update .gitignore');
+    throw error;
+  }
+}
+
+/**
+ * Install quality tools dependencies
+ */
+async function installQualityTools(projectRoot: string): Promise<void> {
+  const spinner = ora('Installing quality tools...').start();
+
+  try {
+    const { execSync } = require('child_process');
+    
+    // Install husky, lint-staged, and tsc-files as dev dependencies
+    spinner.text = 'Installing husky, lint-staged, tsc-files...';
+    execSync('npm install -D husky lint-staged tsc-files', {
+      cwd: projectRoot,
+      stdio: 'pipe',
+    });
+
+    // Initialize Husky
+    spinner.text = 'Initializing Husky...';
+    execSync('npx husky init', {
+      cwd: projectRoot,
+      stdio: 'pipe',
+    });
+
+    spinner.succeed(chalk.green('✅ Installed quality tools'));
+  } catch (error) {
+    spinner.fail('Failed to install quality tools');
+    throw error;
+  }
+}
+
+/**
+ * Add prepare script to package.json for Husky
+ */
+function addPrepareScript(projectRoot: string): void {
+  const spinner = ora('Adding prepare script to package.json...').start();
+
+  try {
+    const packagePath = join(projectRoot, 'package.json');
+    const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
+
+    if (!packageJson.scripts) {
+      packageJson.scripts = {};
+    }
+
+    // Only add if not already present
+    if (!packageJson.scripts.prepare) {
+      packageJson.scripts.prepare = 'husky';
+    }
+
+    writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
+    spinner.succeed(chalk.green('✅ Added prepare script to package.json'));
+  } catch (error) {
+    spinner.fail('Failed to add prepare script');
+    throw error;
+  }
+}
+
 export async function runInit(projectRoot: string = process.cwd(), flags: InitFlags = {}): Promise<void> {
   try {
+    // Handle non-interactive mode (for Claude Code automation)
+    if (flags.nonInteractive) {
+      console.log(chalk.bold.cyan('\n🚀 Deploy-Kit: Non-Interactive Project Setup\n'));
+      
+      const answers = generateAnswersFromFlags(flags, projectRoot);
+      
+      console.log(chalk.cyan('Using defaults:'));
+      console.log(chalk.gray(`  Project: ${answers.projectName}`));
+      console.log(chalk.gray(`  Domain: ${answers.mainDomain}`));
+      console.log(chalk.gray(`  AWS Profile: ${answers.awsProfile}`));
+      console.log(chalk.gray(`  Region: ${answers.awsRegion}`));
+      console.log(chalk.gray(`  Quality Tools: ${flags.withQualityTools ? '✅ enabled' : '❌ disabled'}\n`));
+      
+      // Create config
+      createDeployConfig(answers, projectRoot);
+      
+      // Update package.json with scripts
+      updatePackageJson(answers, projectRoot);
+      
+      // Create Makefile
+      createMakefile(answers, projectRoot);
+      
+      // Setup quality tools if requested
+      if (flags.withQualityTools) {
+        console.log();
+        await installQualityTools(projectRoot);
+        createLintStagedConfig(projectRoot);
+        createHuskyPreCommitHook(projectRoot);
+        addPrepareScript(projectRoot);
+        updateGitIgnore(projectRoot);
+      }
+      
+      // Print summary
+      console.log('\n' + chalk.bold.green('═'.repeat(60)));
+      console.log(chalk.bold.green('✅ Setup Complete!'));
+      console.log(chalk.bold.green('═'.repeat(60)));
+      console.log(chalk.green('\n✅ Created .deploy-config.json'));
+      console.log(chalk.green('✅ Updated package.json'));
+      console.log(chalk.green('✅ Created Makefile'));
+      if (flags.withQualityTools) {
+        console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
+        console.log(chalk.green('✅ Configured pre-commit hooks'));
+        console.log(chalk.green('✅ Updated .gitignore'));
+      }
+      
+      console.log(chalk.yellow('\n⚠️  Next: Review .deploy-config.json and update domain settings'));
+      console.log(chalk.bold.cyan('═'.repeat(60)) + '\n');
+      return;
+    }
+    
     // If only updating scripts or Makefile, load existing config
     if (flags.scriptsOnly || flags.makefileOnly) {
       const configPath = join(projectRoot, '.deploy-config.json');
       if (!existsSync(configPath)) {
         console.error(chalk.red('❌ Error: .deploy-config.json not found'));
-        console.error(chalk.gray('   Run "npx deploy-kit init" without flags to create a new configuration'));
+        console.error(chalk.gray('   Run \"npx deploy-kit init\" without flags to create a new configuration'));
         process.exit(1);
       }
       
