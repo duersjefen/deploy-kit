@@ -142,6 +142,26 @@ make deploy-staging
 make deploy-production
 ```
 
+### Partial Initialization Flags
+
+If you already have a `.deploy-config.json` or want to set up components separately, use these flags:
+
+```bash
+# Only create configuration file (skip Makefile and npm scripts)
+npx @duersjefen/deploy-kit init --config-only
+
+# Only add npm scripts to package.json (requires existing config)
+npx @duersjefen/deploy-kit init --scripts-only
+
+# Only create Makefile (requires existing config)
+npx @duersjefen/deploy-kit init --makefile-only
+```
+
+**Use cases:**
+- **`--config-only`** - Create config first, then decide about scripts/Makefile later
+- **`--scripts-only`** - Add npm scripts to existing project without recreating config
+- **`--makefile-only`** - Create Makefile without touching configuration or scripts
+
 ## Configuration
 
 ### Minimal SST Project
@@ -267,6 +287,79 @@ npx @duersjefen/deploy-kit recover production
 
 # Validate health checks
 npx @duersjefen/deploy-kit health staging
+```
+
+### Command Reference
+
+#### `validate` - Configuration Validation
+Validates `.deploy-config.json` for errors before deployment.
+
+**Checks:**
+- ✅ JSON syntax validity
+- ✅ Required fields (projectName, infrastructure, stages)
+- ✅ Domain format validation
+- ✅ Stage configuration completeness
+- ✅ AWS profile existence (if specified)
+- ✅ Health check endpoint format
+
+**Usage:** `npx @duersjefen/deploy-kit validate`
+
+---
+
+#### `doctor` - Pre-Deployment Health Check
+Comprehensive system diagnostic to ensure deployment readiness.
+
+**Checks:**
+- ✅ Configuration validity
+- ✅ Git status (clean working directory)
+- ✅ AWS credentials (valid access)
+- ✅ AWS profile (auto-detected for SST projects)
+- ✅ SST configuration (sst.config.ts exists)
+- ✅ Node.js & npm versions
+- ✅ Test suite availability
+
+**Usage:** `npx @duersjefen/deploy-kit doctor`
+
+**Output:** Color-coded diagnostic report with pass/warn/fail status for each check.
+
+---
+
+#### `cloudfront` - CloudFront Management (SST Projects)
+Audit and clean up CloudFront distributions.
+
+**Subcommands:**
+- `audit` - List all CloudFront distributions with status
+- `cleanup --dry-run` - Preview orphaned distributions that would be deleted
+- `cleanup` - Delete orphaned distributions (safe, validates against Route53 DNS)
+
+**Safety Features:**
+- ✅ Cross-references with Route53 DNS records
+- ✅ Validates against deployment configuration
+- ✅ Only deletes truly orphaned distributions
+- ✅ Never touches active deployments
+
+**Usage:**
+```bash
+# Audit all distributions
+npx @duersjefen/deploy-kit cloudfront audit
+
+# Preview cleanup (safe)
+npx @duersjefen/deploy-kit cloudfront cleanup --dry-run
+
+# Execute cleanup
+npx @duersjefen/deploy-kit cloudfront cleanup
+```
+
+**Configuration:** Add Route53 hosted zones to `.deploy-config.json`:
+```json
+{
+  "hostedZones": [
+    {
+      "domain": "example.com",
+      "zoneId": "Z05724053AS52UG7NV3YZ"
+    }
+  ]
+}
 ```
 
 ## Deployment Process
