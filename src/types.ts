@@ -124,6 +124,7 @@ export interface ProjectConfig {
 export interface DeploymentResult {
   success: boolean;
   stage: DeploymentStage;
+  isDryRun?: boolean;
   startTime: Date;
   endTime: Date;
   durationSeconds: number;

@@ -129,7 +129,9 @@ async function cli() {
                     console.error(chalk.gray('   Valid stages: staging, production'));
                     process.exit(1);
                 }
-                const result = await kit.deploy(stage);
+                // Parse --dry-run flag
+                const isDryRun = args.includes('--dry-run');
+                const result = await kit.deploy(stage, { isDryRun });
                 // Deployment result is now printed by the deployer itself
                 // Exit with appropriate code
                 process.exit(result.success ? 0 : 1);
@@ -260,10 +262,14 @@ function printHelpMessage() {
     console.log(chalk.gray('      deploy-kit dev'));
     console.log(chalk.gray('      deploy-kit dev --verbose'));
     console.log(chalk.gray('      deploy-kit dev --port=4000\n'));
-    console.log(chalk.green('  deploy <stage>'));
+    console.log(chalk.green('  deploy <stage> [flags]'));
     console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
     console.log(chalk.gray('    Stages: staging, production'));
-    console.log(chalk.gray('    Example: deploy-kit deploy staging\n'));
+    console.log(chalk.gray('    Flags:'));
+    console.log(chalk.gray('      --dry-run           Preview deployment without executing'));
+    console.log(chalk.gray('    Examples:'));
+    console.log(chalk.gray('      deploy-kit deploy staging'));
+    console.log(chalk.gray('      deploy-kit deploy staging --dry-run'));
     console.log(chalk.green('  status [stage]'));
     console.log(chalk.gray('    Check deployment status for all stages or specific stage'));
     console.log(chalk.gray('    Detects: active locks, Pulumi state, previous failures'));

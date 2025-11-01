@@ -65,8 +65,8 @@ export class DeploymentOrchestrator {
      * @returns CloudFront distribution ID if found, null otherwise
      * @throws {Error} If deployment fails
      */
-    async executeDeploy(stage) {
-        return executeDeploy(stage, this.projectRoot, this.config);
+    async executeDeploy(stage, options) {
+        return executeDeploy(stage, this.projectRoot, this.config, options);
     }
     /**
      * Extract CloudFront distribution ID from deployment output

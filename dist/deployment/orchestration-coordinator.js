@@ -91,8 +91,10 @@ export async function runBuild(projectRoot, config) {
  * }
  * ```
  */
-export async function executeDeploy(stage, projectRoot, config) {
-    const spinner = ora(`Deploying to ${stage}...`).start();
+export async function executeDeploy(stage, projectRoot, config, options) {
+    const isDryRun = options?.isDryRun || false;
+    const spinnerText = isDryRun ? `Previewing deployment to ${stage}...` : `Deploying to ${stage}...`;
+    const spinner = ora(spinnerText).start();
     try {
         const stageConfig = config.stageConfig[stage];
         const sstStage = (stageConfig && 'sstStageName' in stageConfig && stageConfig.sstStageName) || stage;
@@ -107,8 +109,9 @@ export async function executeDeploy(stage, projectRoot, config) {
         }
         else {
             // Default: SST deploy with streaming output
-            deployOutput = await runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner);
-            spinner.succeed(`✅ Deployed to ${stage}`);
+            deployOutput = await runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner, isDryRun);
+            const successMsg = isDryRun ? `✅ Dry-run preview for ${stage} completed` : `✅ Deployed to ${stage}`;
+            spinner.succeed(successMsg);
         }
         // Extract CloudFront distribution ID from deployment output
         const distId = extractCloudFrontDistributionId(deployOutput);
@@ -142,7 +145,7 @@ export async function executeDeploy(stage, projectRoot, config) {
  *
  * @internal
  */
-async function runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner) {
+async function runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner, isDryRun) {
     return new Promise((resolve, reject) => {
         const env = {
             ...process.env,
@@ -150,7 +153,12 @@ async function runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, s
                 AWS_PROFILE: config.awsProfile,
             }),
         };
-        const child = spawn('npx', ['sst', 'deploy', '--stage', sstStage], {
+        // Build SST args with optional --dry-run flag
+        const args = ['sst', 'deploy', '--stage', sstStage];
+        if (isDryRun) {
+            args.push('--dry-run');
+        }
+        const child = spawn('npx', args, {
             cwd: projectRoot,
             env,
             stdio: ['ignore', 'pipe', 'pipe'],

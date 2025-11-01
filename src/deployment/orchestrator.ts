@@ -82,8 +82,8 @@ export class DeploymentOrchestrator {
    * @returns CloudFront distribution ID if found, null otherwise
    * @throws {Error} If deployment fails
    */
-  async executeDeploy(stage: DeploymentStage): Promise<string | null> {
-    return executeDeploy(stage, this.projectRoot, this.config);
+  async executeDeploy(stage: DeploymentStage, options?: { isDryRun?: boolean }): Promise<string | null> {
+    return executeDeploy(stage, this.projectRoot, this.config, options);
   }
 
   /**

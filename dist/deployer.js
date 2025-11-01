@@ -82,13 +82,15 @@ export class DeploymentKit {
      * console.log(result.durationSeconds); // 127
      * ```
      */
-    async deploy(stage) {
+    async deploy(stage, options) {
+        const isDryRun = options?.isDryRun || false;
         const startTime = new Date();
         const stageTimings = [];
         let cloudFrontDistId = null;
         const result = {
             success: false,
             stage,
+            isDryRun,
             startTime,
             endTime: new Date(),
             durationSeconds: 0,
@@ -104,7 +106,8 @@ export class DeploymentKit {
         try {
             // Print deployment header
             console.log(chalk.bold.cyan('\n' + '═'.repeat(60)));
-            console.log(chalk.bold.cyan(`🚀 DEPLOYMENT PIPELINE: ${stage.toUpperCase()}`));
+            const headerMode = isDryRun ? '🔍 DRY-RUN PREVIEW' : '🚀 DEPLOYMENT PIPELINE';
+            console.log(chalk.bold.cyan(`${headerMode}: ${stage.toUpperCase()}`));
             console.log(chalk.bold.cyan('═'.repeat(60)) + '\n');
             // Stage 1: Pre-deployment safety checks (BEFORE lock acquisition)
             // This way, if pre-checks fail, lock is never acquired
@@ -115,9 +118,15 @@ export class DeploymentKit {
             result.details.gitStatusOk = true;
             result.details.testsOk = true;
             stageTimings.push({ name: 'Pre-Deployment Checks', duration: Date.now() - stage1Start });
-            // Only acquire lock AFTER pre-checks pass
-            await this.lockManager.checkAndCleanPulumiLock(stage);
-            const newLock = await this.lockManager.acquireLock(stage);
+            // Only acquire lock AFTER pre-checks pass (skip in dry-run mode)
+            let newLock;
+            if (!isDryRun) {
+                await this.lockManager.checkAndCleanPulumiLock(stage);
+                newLock = await this.lockManager.acquireLock(stage);
+            }
+            else {
+                console.log(chalk.yellow('ℹ️  Dry-run mode: skipping lock acquisition\n'));
+            }
             // Stage 2: Build & Deploy (delegated to orchestrator)
             let stage2Start = Date.now();
             console.log(chalk.bold.white('\n▸ Stage 2: Build & Deploy'));
@@ -130,19 +139,21 @@ export class DeploymentKit {
             else {
                 result.details.buildsOk = true;
             }
-            cloudFrontDistId = await this.orchestrator.executeDeploy(stage);
+            cloudFrontDistId = await this.orchestrator.executeDeploy(stage, { isDryRun });
             result.details.deploymentOk = true;
             stageTimings.push({ name: 'Build & Deploy', duration: Date.now() - stage2Start });
             // Stage 3: Post-deployment validation
             let stage3Start = Date.now();
             console.log(chalk.bold.white('\n▸ Stage 3: Post-Deployment Validation'));
             console.log(chalk.gray('  Testing health checks and CloudFront configuration\n'));
-            await this.postChecks.run(stage);
+            if (!isDryRun) {
+                await this.postChecks.run(stage);
+            }
             result.details.healthChecksOk = true;
             stageTimings.push({ name: 'Health Checks', duration: Date.now() - stage3Start });
-            // Stage 4: Cache invalidation (background, delegated to CloudFront operations)
+            // Stage 4: Cache invalidation (background, delegated to CloudFront operations, skip in dry-run)
             let stage4Start = Date.now();
-            if (!this.config.stageConfig[stage].skipCacheInvalidation) {
+            if (!isDryRun && !this.config.stageConfig[stage].skipCacheInvalidation) {
                 console.log(chalk.bold.white('\n▸ Stage 4: Cache Invalidation'));
                 console.log(chalk.gray('  Clearing CloudFront cache (runs in background)\n'));
                 await this.cloudFrontOps.invalidateCache(stage, cloudFrontDistId);
@@ -150,13 +161,18 @@ export class DeploymentKit {
             }
             stageTimings.push({ name: 'Cache Invalidation', duration: Date.now() - stage4Start });
             result.success = true;
-            result.message = `✅ Deployment to ${stage} successful!`;
-            // Release lock
-            await this.lockManager.releaseLock(newLock);
+            const successMsg = isDryRun ? `✅ Dry-run validation for ${stage} successful!` : `✅ Deployment to ${stage} successful!`;
+            result.message = successMsg;
+            // Release lock (if not dry-run)
+            if (!isDryRun && newLock) {
+                await this.lockManager.releaseLock(newLock);
+            }
             // Print deployment summary (delegated to orchestrator)
             this.orchestrator.printDeploymentSummary(result, stageTimings);
-            // Post-deployment: Audit CloudFront and offer cleanup (delegated to CloudFront operations)
-            await this.cloudFrontOps.auditAndCleanup(stage);
+            // Post-deployment: Audit CloudFront and offer cleanup (delegated to CloudFront operations, skip in dry-run)
+            if (!isDryRun) {
+                await this.cloudFrontOps.auditAndCleanup(stage);
+            }
         }
         catch (error) {
             result.success = false;

@@ -103,9 +103,12 @@ export async function runBuild(projectRoot: string, config: ProjectConfig): Prom
 export async function executeDeploy(
   stage: DeploymentStage,
   projectRoot: string,
-  config: ProjectConfig
+  config: ProjectConfig,
+  options?: { isDryRun?: boolean }
 ): Promise<string | null> {
-  const spinner = ora(`Deploying to ${stage}...`).start();
+  const isDryRun = options?.isDryRun || false;
+  const spinnerText = isDryRun ? `Previewing deployment to ${stage}...` : `Deploying to ${stage}...`;
+  const spinner = ora(spinnerText).start();
 
   try {
     const stageConfig = config.stageConfig[stage];
@@ -122,8 +125,9 @@ export async function executeDeploy(
       spinner.succeed(`✅ Deployed to ${stage}`);
     } else {
       // Default: SST deploy with streaming output
-      deployOutput = await runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner);
-      spinner.succeed(`✅ Deployed to ${stage}`);
+      deployOutput = await runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner, isDryRun);
+      const successMsg = isDryRun ? `✅ Dry-run preview for ${stage} completed` : `✅ Deployed to ${stage}`;
+      spinner.succeed(successMsg);
     }
 
     // Extract CloudFront distribution ID from deployment output
@@ -165,7 +169,8 @@ async function runSSTDeployWithStreaming(
   sstStage: string,
   projectRoot: string,
   config: ProjectConfig,
-  spinner: ReturnType<typeof ora>
+  spinner: ReturnType<typeof ora>,
+  isDryRun?: boolean
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const env = {
@@ -175,7 +180,13 @@ async function runSSTDeployWithStreaming(
       }),
     };
 
-    const child = spawn('npx', ['sst', 'deploy', '--stage', sstStage], {
+    // Build SST args with optional --dry-run flag
+    const args = ['sst', 'deploy', '--stage', sstStage];
+    if (isDryRun) {
+      args.push('--dry-run');
+    }
+
+    const child = spawn('npx', args, {
       cwd: projectRoot,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],

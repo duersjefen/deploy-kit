@@ -59,7 +59,9 @@ export declare class DeploymentOrchestrator {
      * @returns CloudFront distribution ID if found, null otherwise
      * @throws {Error} If deployment fails
      */
-    executeDeploy(stage: DeploymentStage): Promise<string | null>;
+    executeDeploy(stage: DeploymentStage, options?: {
+        isDryRun?: boolean;
+    }): Promise<string | null>;
     /**
      * Extract CloudFront distribution ID from deployment output
      *

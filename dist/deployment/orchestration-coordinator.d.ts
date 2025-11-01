@@ -60,5 +60,7 @@ export declare function runBuild(projectRoot: string, config: ProjectConfig): Pr
  * }
  * ```
  */
-export declare function executeDeploy(stage: DeploymentStage, projectRoot: string, config: ProjectConfig): Promise<string | null>;
+export declare function executeDeploy(stage: DeploymentStage, projectRoot: string, config: ProjectConfig, options?: {
+    isDryRun?: boolean;
+}): Promise<string | null>;
 //# sourceMappingURL=orchestration-coordinator.d.ts.map

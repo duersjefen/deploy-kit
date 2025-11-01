@@ -74,7 +74,9 @@ export declare class DeploymentKit {
      * console.log(result.durationSeconds); // 127
      * ```
      */
-    deploy(stage: DeploymentStage): Promise<DeploymentResult>;
+    deploy(stage: DeploymentStage, options?: {
+        isDryRun?: boolean;
+    }): Promise<DeploymentResult>;
     /**
      * Get deployment status without deploying
      *
