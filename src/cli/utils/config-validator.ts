@@ -11,8 +11,20 @@ import type { HealthCheck } from '../../types.js';
  * Configuration before validation (from external sources like JSON files)
  * Uses Record<string, any> to indicate unvalidated structure while allowing property access
  */
+/**
+ * Configuration before validation (from external sources like JSON files, YAML, etc.)
+ *
+ * Uses Record<string, any> to indicate unvalidated structure while allowing flexible property access.
+ * Must be validated with validateConfig() before use.
+ */
 export type UnvalidatedConfig = Record<string, any>;
 
+/**
+ * Validated deployment configuration structure
+ *
+ * Represents the complete configuration for a deploy-kit project after validation.
+ * All required fields must be present and valid. See validateConfig() for validation rules.
+ */
 export interface DeployConfig {
   projectName: string;
   displayName?: string;
@@ -29,6 +41,12 @@ export interface DeployConfig {
   [key: string]: any;
 }
 
+/**
+ * Result of validating a configuration object
+ *
+ * Contains validation outcome, errors that prevent deployment, and warnings
+ * that should be reviewed but don't block deployment.
+ */
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
@@ -36,7 +54,25 @@ export interface ValidationResult {
 }
 
 /**
- * Validate configuration structure
+ * Validate configuration structure and return validation results
+ *
+ * Checks required fields (projectName, infrastructure, stages, stageConfig),
+ * domain formats, AWS profile availability, and health check definitions.
+ *
+ * @param config - Unvalidated configuration object from external source (JSON, YAML, etc.)
+ * @returns ValidationResult with valid flag, errors array, and warnings array
+ *
+ * @example
+ * ```typescript
+ * const config = JSON.parse(configContent);
+ * const result = validateConfig(config);
+ *
+ * if (!result.valid) {
+ *   console.error('Config errors:', result.errors);
+ * } else if (result.warnings.length > 0) {
+ *   console.warn('Config warnings:', result.warnings);
+ * }
+ * ```
  */
 export function validateConfig(config: UnvalidatedConfig): ValidationResult {
   const errors: string[] = [];
@@ -133,14 +169,44 @@ export function validateConfig(config: UnvalidatedConfig): ValidationResult {
 }
 
 /**
- * Check if a domain is valid format
+ * Check if a domain string is valid DNS format
+ *
+ * Validates domain against RFC 1123-compliant pattern. Accepts subdomains.
+ *
+ * @param domain - Domain string to validate (e.g., 'example.com' or 'api.staging.example.com')
+ * @returns true if domain is valid format, false otherwise
+ *
+ * @example
+ * ```typescript
+ * isValidDomain('example.com')           // => true
+ * isValidDomain('api.example.com')       // => true
+ * isValidDomain('example')               // => false (no TLD)
+ * isValidDomain('example.c')             // => false (TLD too short)
+ * isValidDomain('-invalid.com')          // => false (starts with hyphen)
+ * ```
  */
 function isValidDomain(domain: string): boolean {
   return /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(domain);
 }
 
 /**
- * Merge two configs, keeping user customizations from existing config
+ * Merge two configuration objects, preserving user customizations from existing config
+ *
+ * Strategy: Keep all settings from existing config, add new fields from template config
+ * that don't exist. For stageConfig and healthChecks, merges entries (deduplicates health checks by URL).
+ *
+ * @param existingConfig - Current configuration (user's existing setup)
+ * @param templateConfig - Template configuration (new defaults/fields to add)
+ * @returns Merged configuration with existing settings preserved and new fields added
+ *
+ * @example
+ * ```typescript
+ * const existing = { projectName: 'my-app', infrastructure: 'sst-serverless', ... };
+ * const template = { projectName: 'template', healthChecks: [...], ... };
+ *
+ * const merged = mergeConfigs(existing, template);
+ * // Result: existing values preserved, template healthChecks added (if not duplicated by URL)
+ * ```
  */
 export function mergeConfigs(existingConfig: DeployConfig, templateConfig: DeployConfig): DeployConfig {
   // Keep all existing settings
@@ -178,7 +244,28 @@ export function mergeConfigs(existingConfig: DeployConfig, templateConfig: Deplo
 }
 
 /**
- * Print validation result
+ * Print validation result with colored output to console
+ *
+ * Displays errors in red, warnings in yellow, and success in green. Shows detailed
+ * validation messages for debugging configuration issues.
+ *
+ * @param result - ValidationResult from validateConfig()
+ * @param verbose - Whether to output in verbose mode (default: false)
+ *
+ * @example
+ * ```typescript
+ * const config = JSON.parse(configContent);
+ * const result = validateConfig(config);
+ *
+ * printValidationResult(result);
+ * // Output: ✅ Configuration is valid
+ *
+ * const result2 = validateConfig(badConfig);
+ * printValidationResult(result2);
+ * // Output: ❌ Configuration errors:
+ * //         • Missing required field: projectName
+ * //         • Invalid mainDomain: not-a-domain
+ * ```
  */
 export function printValidationResult(result: ValidationResult, verbose: boolean = false): void {
   if (result.errors.length > 0) {
