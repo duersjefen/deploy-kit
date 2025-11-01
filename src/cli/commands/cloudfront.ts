@@ -1,6 +1,11 @@
 /**
  * CloudFront CLI Commands
  * Audit, analyze, and manage CloudFront distributions
+ * 
+ * Provides CLI interface for managing CloudFront distributions:
+ * - Audit: Analyze distributions and detect orphans/misconfigurations
+ * - Report: Generate health summary of infrastructure
+ * - Cleanup: Safely delete orphaned distributions with confirmation
  */
 
 import chalk from 'chalk';
@@ -8,6 +13,24 @@ import { CloudFrontAPIClient } from '../../lib/cloudfront/client.js';
 import { CloudFrontAnalyzer, type DistributionAnalysis, type InfrastructureAuditReport } from '../../lib/cloudfront/analyzer.js';
 import type { ProjectConfig, DNSRecord } from '../../types.js';
 
+/**
+ * Main CloudFront command entry point
+ * 
+ * Routes to appropriate subcommand handler:
+ * - audit: Analyze all distributions and detect issues
+ * - report: Generate infrastructure health report
+ * - cleanup: Delete orphaned distributions (with --dry-run or --force)
+ * 
+ * @param subcommand - One of: audit, report, cleanup
+ * @param args - Command line arguments (may include --dry-run, --force)
+ * @param config - Project configuration
+ * @param projectRoot - Project root directory
+ * 
+ * @example
+ * ```typescript
+ * await handleCloudFrontCommand('audit', [], config, '/project');
+ * ```
+ */
 export async function handleCloudFrontCommand(
   subcommand: string,
   args: string[],
@@ -41,6 +64,17 @@ export async function handleCloudFrontCommand(
   }
 }
 
+/**
+ * Audit CloudFront distributions for issues
+ * 
+ * Analyzes all distributions and generates a comprehensive audit report
+ * identifying orphaned, misconfigured, and healthy distributions.
+ * 
+ * @param client - CloudFront API client
+ * @param config - Project configuration
+ * @returns Promise that resolves after audit report is printed
+ * @throws {Error} If AWS API calls fail
+ */
 async function auditCloudFront(
   client: CloudFrontAPIClient,
   config: ProjectConfig
@@ -87,6 +121,21 @@ async function auditCloudFront(
   }
 }
 
+/**
+ * Clean up orphaned CloudFront distributions
+ * 
+ * Finds orphaned distributions and either:
+ * - With --dry-run: Shows what would be deleted
+ * - With --force: Actually deletes the orphaned distributions
+ * 
+ * Requires explicit confirmation via flags for safety.
+ * 
+ * @param client - CloudFront API client
+ * @param config - Project configuration
+ * @param dryRun - If true, show plan without making changes
+ * @param force - If true, actually delete distributions (requires dryRun=false)
+ * @returns Promise that resolves after cleanup completes
+ */
 async function cleanupOrphans(
   client: CloudFrontAPIClient,
   config: ProjectConfig,
@@ -153,6 +202,19 @@ async function cleanupOrphans(
   }
 }
 
+/**
+ * Generate CloudFront health report
+ * 
+ * Creates a summary report showing:
+ * - Total configured/healthy distributions
+ * - Count of misconfigured distributions
+ * - Count of orphaned distributions
+ * - Overall infrastructure health status
+ * 
+ * @param client - CloudFront API client
+ * @param config - Project configuration
+ * @returns Promise that resolves after report is printed
+ */
 async function reportCloudFront(
   client: CloudFrontAPIClient,
   config: ProjectConfig
@@ -286,6 +348,20 @@ function printCleanupPlan(orphans: DistributionAnalysis[]) {
   console.log(chalk.yellow('Estimated time: 45-75 minutes (includes CloudFront propagation)\n'));
 }
 
+/**
+ * Execute cleanup of orphaned distributions
+ * 
+ * For each orphaned distribution:
+ * 1. Disable it
+ * 2. Wait for CloudFront propagation
+ * 3. Delete it
+ * 
+ * This is an irreversible operation.
+ * 
+ * @param client - CloudFront API client
+ * @param orphans - List of orphaned distributions to delete
+ * @returns Promise that resolves when all deletions complete
+ */
 async function executeCleanup(client: CloudFrontAPIClient, orphans: DistributionAnalysis[]) {
   console.log(`Deleting ${orphans.length} distributions...\n`);
 
