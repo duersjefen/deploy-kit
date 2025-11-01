@@ -24,100 +24,111 @@ const args = process.argv.slice(2);
 const command = args[0];
 const stage = args[1] as DeploymentStage;
 
-// Handle commands that don't require config file
-if (command === 'init') {
-  // Parse init flags
-  const flags: InitFlags = {
-    configOnly: args.includes('--config-only'),
-    scriptsOnly: args.includes('--scripts-only'),
-    makefileOnly: args.includes('--makefile-only'),
-    nonInteractive: args.includes('--non-interactive'),
-    withQualityTools: args.includes('--with-quality-tools'),
-    projectName: args.find(a => a.startsWith('--project-name='))?.split('=')[1],
-    domain: args.find(a => a.startsWith('--domain='))?.split('=')[1],
-    awsProfile: args.find(a => a.startsWith('--aws-profile='))?.split('=')[1],
-    awsRegion: args.find(a => a.startsWith('--aws-region='))?.split('=')[1],
-  };
-  
-  runInit(process.cwd(), flags).catch(error => {
-    console.error(chalk.red('\n❌ Init error:'));
-    console.error(chalk.red(error.message));
+// Main async function to handle all commands
+async function cli() {
+  // Handle early commands that don't require config file
+  if (command === 'init') {
+    // Parse init flags
+    const flags: InitFlags = {
+      configOnly: args.includes('--config-only'),
+      scriptsOnly: args.includes('--scripts-only'),
+      makefileOnly: args.includes('--makefile-only'),
+      nonInteractive: args.includes('--non-interactive'),
+      withQualityTools: args.includes('--with-quality-tools'),
+      projectName: args.find(a => a.startsWith('--project-name='))?.split('=')[1],
+      domain: args.find(a => a.startsWith('--domain='))?.split('=')[1],
+      awsProfile: args.find(a => a.startsWith('--aws-profile='))?.split('=')[1],
+      awsRegion: args.find(a => a.startsWith('--aws-region='))?.split('=')[1],
+    };
+
+    try {
+      await runInit(process.cwd(), flags);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Init error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'validate') {
+    try {
+      await handleValidateCommand(process.cwd());
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Validation error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'doctor') {
+    try {
+      await handleDoctorCommand(process.cwd());
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Doctor error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'dev') {
+    // Parse dev flags
+    const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
+    const options: DevOptions = {
+      skipChecks: args.includes('--skip-checks'),
+      port: portArg ? parseInt(portArg, 10) : undefined,
+      verbose: args.includes('--verbose'),
+    };
+
+    try {
+      await handleDevCommand(process.cwd(), options);
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Dev error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === '--help' || command === '-h' || command === 'help') {
+    printHelpMessage();
+    process.exit(0);
+  }
+
+  if (command === '--version' || command === '-v') {
+    // Version is managed in package.json and updated during builds
+    const version = '1.4.0';
+    console.log(`deploy-kit ${version}`);
+    process.exit(0);
+  }
+
+  // Load config from current directory for config-dependent commands
+  let config: UnvalidatedConfig;
+  let projectRoot: string;
+  try {
+    const configPath = resolve(process.cwd(), '.deploy-config.json');
+    projectRoot = dirname(configPath);
+    const configContent = readFileSync(configPath, 'utf-8');
+    config = JSON.parse(configContent);
+  } catch (error) {
+    console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
     process.exit(1);
-  });
-  // Process will exit naturally after async completion
-}
+  }
 
-if (command === 'validate') {
-  handleValidateCommand(process.cwd()).catch(error => {
-    console.error(chalk.red('\n❌ Validation error:'));
-    console.error(chalk.red(error.message));
-    process.exit(1);
-  });
-  // Process will exit naturally after async completion
-}
+  // Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
+  const resolvedProfile = resolveAwsProfile(config as any, projectRoot);
+  if (resolvedProfile && !config.awsProfile) {
+    config.awsProfile = resolvedProfile;
+  }
 
-if (command === 'doctor') {
-  handleDoctorCommand(process.cwd()).catch(error => {
-    console.error(chalk.red('\n❌ Doctor error:'));
-    console.error(chalk.red(error.message));
-    process.exit(1);
-  });
-  // Process will exit naturally after async completion
-}
+  // Initialize kit with the project root where the config file is located
+  const kit = new DeploymentKit(config as any, projectRoot);
 
-if (command === 'dev') {
-  // Parse dev flags
-  const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
-  const options: DevOptions = {
-    skipChecks: args.includes('--skip-checks'),
-    port: portArg ? parseInt(portArg, 10) : undefined,
-    verbose: args.includes('--verbose'),
-  };
-
-  handleDevCommand(process.cwd(), options).catch(error => {
-    console.error(chalk.red('\n❌ Dev error:'));
-    console.error(chalk.red(error.message));
-    process.exit(1);
-  });
-  // Process will exit naturally after async completion
-}
-
-if (command === '--help' || command === '-h' || command === 'help') {
-  printHelpMessage();
-  process.exit(0);
-}
-
-if (command === '--version' || command === '-v') {
-  // Version is managed in package.json and updated during builds
-  const version = '1.4.0';
-  console.log(`deploy-kit ${version}`);
-  process.exit(0);
-}
-
-// Load config from current directory
-let config: UnvalidatedConfig;
-let projectRoot: string;
-try {
-  const configPath = resolve(process.cwd(), '.deploy-config.json');
-  projectRoot = dirname(configPath);
-  const configContent = readFileSync(configPath, 'utf-8');
-  config = JSON.parse(configContent);
-} catch (error) {
-  console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
-  process.exit(1);
-}
-
-// Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
-const resolvedProfile = resolveAwsProfile(config as any, projectRoot);
-if (resolvedProfile && !config.awsProfile) {
-  config.awsProfile = resolvedProfile;
-}
-
-// Initialize kit with the project root where the config file is located
-const kit = new DeploymentKit(config as any, projectRoot);
-
-async function main() {
-  switch (command) {
+  // Handle config-dependent commands
+  async function main() {
+    switch (command) {
     case 'deploy':
       if (!stage) {
         console.error(chalk.red('\n❌ Usage: deploy-kit deploy <stage>'));
@@ -208,7 +219,24 @@ async function main() {
       console.error(chalk.gray('Run: deploy-kit --help\n'));
       process.exit(1);
   }
+  }
+
+  // Call main() for config-dependent commands
+  try {
+    await main();
+  } catch (error) {
+    console.error(chalk.red('\n❌ Command error:'));
+    console.error(chalk.red((error as Error).message));
+    process.exit(1);
+  }
 }
+
+// Start the CLI
+cli().catch(error => {
+  console.error(chalk.red('\n❌ Fatal error:'));
+  console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+  process.exit(1);
+});
 
 function printHelpMessage(): void {
   console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
@@ -329,9 +357,3 @@ function printHelpMessage(): void {
   console.log(chalk.gray('  GitHub: https://github.com/duersjefen/deploy-kit'));
   console.log(chalk.gray('  Issues: https://github.com/duersjefen/deploy-kit/issues\n'));
 }
-
-main().catch(error => {
-  console.error(chalk.red('\n❌ Deployment error:'));
-  console.error(chalk.red(error.message));
-  process.exit(1);
-});

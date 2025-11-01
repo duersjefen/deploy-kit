@@ -19,172 +19,203 @@ import { resolve, dirname } from 'path';
 const args = process.argv.slice(2);
 const command = args[0];
 const stage = args[1];
-// Handle commands that don't require config file
-if (command === 'init') {
-    // Parse init flags
-    const flags = {
-        configOnly: args.includes('--config-only'),
-        scriptsOnly: args.includes('--scripts-only'),
-        makefileOnly: args.includes('--makefile-only'),
-        nonInteractive: args.includes('--non-interactive'),
-        withQualityTools: args.includes('--with-quality-tools'),
-        projectName: args.find(a => a.startsWith('--project-name='))?.split('=')[1],
-        domain: args.find(a => a.startsWith('--domain='))?.split('=')[1],
-        awsProfile: args.find(a => a.startsWith('--aws-profile='))?.split('=')[1],
-        awsRegion: args.find(a => a.startsWith('--aws-region='))?.split('=')[1],
-    };
-    runInit(process.cwd(), flags).catch(error => {
-        console.error(chalk.red('\n❌ Init error:'));
-        console.error(chalk.red(error.message));
-        process.exit(1);
-    });
-    // Process will exit naturally after async completion
-}
-if (command === 'validate') {
-    handleValidateCommand(process.cwd()).catch(error => {
-        console.error(chalk.red('\n❌ Validation error:'));
-        console.error(chalk.red(error.message));
-        process.exit(1);
-    });
-    // Process will exit naturally after async completion
-}
-if (command === 'doctor') {
-    handleDoctorCommand(process.cwd()).catch(error => {
-        console.error(chalk.red('\n❌ Doctor error:'));
-        console.error(chalk.red(error.message));
-        process.exit(1);
-    });
-    // Process will exit naturally after async completion
-}
-if (command === 'dev') {
-    // Parse dev flags
-    const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
-    const options = {
-        skipChecks: args.includes('--skip-checks'),
-        port: portArg ? parseInt(portArg, 10) : undefined,
-        verbose: args.includes('--verbose'),
-    };
-    handleDevCommand(process.cwd(), options).catch(error => {
-        console.error(chalk.red('\n❌ Dev error:'));
-        console.error(chalk.red(error.message));
-        process.exit(1);
-    });
-    // Process will exit naturally after async completion
-}
-if (command === '--help' || command === '-h' || command === 'help') {
-    printHelpMessage();
-    process.exit(0);
-}
-if (command === '--version' || command === '-v') {
-    // Version is managed in package.json and updated during builds
-    const version = '1.4.0';
-    console.log(`deploy-kit ${version}`);
-    process.exit(0);
-}
-// Load config from current directory
-let config;
-let projectRoot;
-try {
-    const configPath = resolve(process.cwd(), '.deploy-config.json');
-    projectRoot = dirname(configPath);
-    const configContent = readFileSync(configPath, 'utf-8');
-    config = JSON.parse(configContent);
-}
-catch (error) {
-    console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
-    process.exit(1);
-}
-// Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
-const resolvedProfile = resolveAwsProfile(config, projectRoot);
-if (resolvedProfile && !config.awsProfile) {
-    config.awsProfile = resolvedProfile;
-}
-// Initialize kit with the project root where the config file is located
-const kit = new DeploymentKit(config, projectRoot);
-async function main() {
-    switch (command) {
-        case 'deploy':
-            if (!stage) {
-                console.error(chalk.red('\n❌ Usage: deploy-kit deploy <stage>'));
-                console.error(chalk.gray('   Example: deploy-kit deploy staging'));
-                process.exit(1);
-            }
-            if (stage !== 'staging' && stage !== 'production') {
-                console.error(chalk.red(`\n❌ Invalid stage: ${stage}`));
-                console.error(chalk.gray('   Valid stages: staging, production'));
-                process.exit(1);
-            }
-            const result = await kit.deploy(stage);
-            // Deployment result is now printed by the deployer itself
-            // Exit with appropriate code
-            process.exit(result.success ? 0 : 1);
-            break;
-        case 'status':
-            if (!stage) {
-                console.log(chalk.bold.cyan('\n📊 Checking all deployment statuses...'));
-                console.log(chalk.gray('Analyzing deployment state across all stages\n'));
-                const statusChecker = getStatusChecker(config, process.cwd());
-                await statusChecker.checkAllStages();
-            }
-            else {
-                console.log(chalk.bold.cyan(`\n📊 Checking ${stage} deployment status...`));
-                console.log(chalk.gray('Analyzing current deployment state\n'));
-                const statusChecker = getStatusChecker(config, process.cwd());
-                await statusChecker.checkStage(stage);
-            }
-            break;
-        case 'recover':
-            if (!stage) {
-                console.error(chalk.red('\n❌ Usage: deploy-kit recover <stage>'));
-                console.error(chalk.gray('   Example: deploy-kit recover staging'));
-                process.exit(1);
-            }
-            if (stage !== 'staging' && stage !== 'production') {
-                console.error(chalk.red(`\n❌ Invalid stage: ${stage}`));
-                console.error(chalk.gray('   Valid stages: staging, production'));
-                process.exit(1);
-            }
-            console.log(chalk.bold.yellow(`\n🔧 Recovering ${stage} deployment...`));
-            console.log(chalk.gray('Clearing locks and preparing for retry\n'));
-            const recovery = getRecoveryManager(config, projectRoot);
-            await recovery.performFullRecovery(stage);
-            console.log(chalk.green('\n✅ Recovery complete - ready to redeploy\n'));
-            break;
-        case 'health':
-            if (!stage) {
-                console.error(chalk.red('\n❌ Usage: deploy-kit health <stage>'));
-                console.error(chalk.gray('   Example: deploy-kit health staging'));
-                process.exit(1);
-            }
-            console.log(chalk.bold.cyan(`\n🏥 Running health checks for ${stage}...`));
-            console.log(chalk.gray('Testing deployed application health\n'));
-            const healthy = await kit.validateHealth(stage);
-            if (healthy) {
-                console.log(chalk.green('\n✅ All health checks passed\n'));
-                process.exit(0);
-            }
-            else {
-                console.log(chalk.red('\n❌ Some health checks failed\n'));
-                process.exit(1);
-            }
-            break;
-        case 'cloudfront':
-            const cfSubcommand = stage; // For cloudfront, second arg is subcommand
-            const cfArgs = args.slice(2);
-            await handleCloudFrontCommand(cfSubcommand, cfArgs, config, projectRoot);
+// Main async function to handle all commands
+async function cli() {
+    // Handle early commands that don't require config file
+    if (command === 'init') {
+        // Parse init flags
+        const flags = {
+            configOnly: args.includes('--config-only'),
+            scriptsOnly: args.includes('--scripts-only'),
+            makefileOnly: args.includes('--makefile-only'),
+            nonInteractive: args.includes('--non-interactive'),
+            withQualityTools: args.includes('--with-quality-tools'),
+            projectName: args.find(a => a.startsWith('--project-name='))?.split('=')[1],
+            domain: args.find(a => a.startsWith('--domain='))?.split('=')[1],
+            awsProfile: args.find(a => a.startsWith('--aws-profile='))?.split('=')[1],
+            awsRegion: args.find(a => a.startsWith('--aws-region='))?.split('=')[1],
+        };
+        try {
+            await runInit(process.cwd(), flags);
             process.exit(0);
-            break;
-        default:
-            if (command) {
-                console.error(chalk.red(`\n❌ Unknown command: ${command}`));
-            }
-            else {
-                console.error(chalk.red('\n❌ No command specified'));
-            }
-            console.error(chalk.gray('Run: deploy-kit --help\n'));
+        }
+        catch (error) {
+            console.error(chalk.red('\n❌ Init error:'));
+            console.error(chalk.red(error.message));
             process.exit(1);
+        }
+    }
+    if (command === 'validate') {
+        try {
+            await handleValidateCommand(process.cwd());
+            process.exit(0);
+        }
+        catch (error) {
+            console.error(chalk.red('\n❌ Validation error:'));
+            console.error(chalk.red(error.message));
+            process.exit(1);
+        }
+    }
+    if (command === 'doctor') {
+        try {
+            await handleDoctorCommand(process.cwd());
+            process.exit(0);
+        }
+        catch (error) {
+            console.error(chalk.red('\n❌ Doctor error:'));
+            console.error(chalk.red(error.message));
+            process.exit(1);
+        }
+    }
+    if (command === 'dev') {
+        // Parse dev flags
+        const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
+        const options = {
+            skipChecks: args.includes('--skip-checks'),
+            port: portArg ? parseInt(portArg, 10) : undefined,
+            verbose: args.includes('--verbose'),
+        };
+        try {
+            await handleDevCommand(process.cwd(), options);
+            process.exit(0);
+        }
+        catch (error) {
+            console.error(chalk.red('\n❌ Dev error:'));
+            console.error(chalk.red(error.message));
+            process.exit(1);
+        }
+    }
+    if (command === '--help' || command === '-h' || command === 'help') {
+        printHelpMessage();
+        process.exit(0);
+    }
+    if (command === '--version' || command === '-v') {
+        // Version is managed in package.json and updated during builds
+        const version = '1.4.0';
+        console.log(`deploy-kit ${version}`);
+        process.exit(0);
+    }
+    // Load config from current directory for config-dependent commands
+    let config;
+    let projectRoot;
+    try {
+        const configPath = resolve(process.cwd(), '.deploy-config.json');
+        projectRoot = dirname(configPath);
+        const configContent = readFileSync(configPath, 'utf-8');
+        config = JSON.parse(configContent);
+    }
+    catch (error) {
+        console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
+        process.exit(1);
+    }
+    // Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
+    const resolvedProfile = resolveAwsProfile(config, projectRoot);
+    if (resolvedProfile && !config.awsProfile) {
+        config.awsProfile = resolvedProfile;
+    }
+    // Initialize kit with the project root where the config file is located
+    const kit = new DeploymentKit(config, projectRoot);
+    // Handle config-dependent commands
+    async function main() {
+        switch (command) {
+            case 'deploy':
+                if (!stage) {
+                    console.error(chalk.red('\n❌ Usage: deploy-kit deploy <stage>'));
+                    console.error(chalk.gray('   Example: deploy-kit deploy staging'));
+                    process.exit(1);
+                }
+                if (stage !== 'staging' && stage !== 'production') {
+                    console.error(chalk.red(`\n❌ Invalid stage: ${stage}`));
+                    console.error(chalk.gray('   Valid stages: staging, production'));
+                    process.exit(1);
+                }
+                const result = await kit.deploy(stage);
+                // Deployment result is now printed by the deployer itself
+                // Exit with appropriate code
+                process.exit(result.success ? 0 : 1);
+                break;
+            case 'status':
+                if (!stage) {
+                    console.log(chalk.bold.cyan('\n📊 Checking all deployment statuses...'));
+                    console.log(chalk.gray('Analyzing deployment state across all stages\n'));
+                    const statusChecker = getStatusChecker(config, process.cwd());
+                    await statusChecker.checkAllStages();
+                }
+                else {
+                    console.log(chalk.bold.cyan(`\n📊 Checking ${stage} deployment status...`));
+                    console.log(chalk.gray('Analyzing current deployment state\n'));
+                    const statusChecker = getStatusChecker(config, process.cwd());
+                    await statusChecker.checkStage(stage);
+                }
+                break;
+            case 'recover':
+                if (!stage) {
+                    console.error(chalk.red('\n❌ Usage: deploy-kit recover <stage>'));
+                    console.error(chalk.gray('   Example: deploy-kit recover staging'));
+                    process.exit(1);
+                }
+                if (stage !== 'staging' && stage !== 'production') {
+                    console.error(chalk.red(`\n❌ Invalid stage: ${stage}`));
+                    console.error(chalk.gray('   Valid stages: staging, production'));
+                    process.exit(1);
+                }
+                console.log(chalk.bold.yellow(`\n🔧 Recovering ${stage} deployment...`));
+                console.log(chalk.gray('Clearing locks and preparing for retry\n'));
+                const recovery = getRecoveryManager(config, projectRoot);
+                await recovery.performFullRecovery(stage);
+                console.log(chalk.green('\n✅ Recovery complete - ready to redeploy\n'));
+                break;
+            case 'health':
+                if (!stage) {
+                    console.error(chalk.red('\n❌ Usage: deploy-kit health <stage>'));
+                    console.error(chalk.gray('   Example: deploy-kit health staging'));
+                    process.exit(1);
+                }
+                console.log(chalk.bold.cyan(`\n🏥 Running health checks for ${stage}...`));
+                console.log(chalk.gray('Testing deployed application health\n'));
+                const healthy = await kit.validateHealth(stage);
+                if (healthy) {
+                    console.log(chalk.green('\n✅ All health checks passed\n'));
+                    process.exit(0);
+                }
+                else {
+                    console.log(chalk.red('\n❌ Some health checks failed\n'));
+                    process.exit(1);
+                }
+                break;
+            case 'cloudfront':
+                const cfSubcommand = stage; // For cloudfront, second arg is subcommand
+                const cfArgs = args.slice(2);
+                await handleCloudFrontCommand(cfSubcommand, cfArgs, config, projectRoot);
+                process.exit(0);
+                break;
+            default:
+                if (command) {
+                    console.error(chalk.red(`\n❌ Unknown command: ${command}`));
+                }
+                else {
+                    console.error(chalk.red('\n❌ No command specified'));
+                }
+                console.error(chalk.gray('Run: deploy-kit --help\n'));
+                process.exit(1);
+        }
+    }
+    // Call main() for config-dependent commands
+    try {
+        await main();
+    }
+    catch (error) {
+        console.error(chalk.red('\n❌ Command error:'));
+        console.error(chalk.red(error.message));
+        process.exit(1);
     }
 }
+// Start the CLI
+cli().catch(error => {
+    console.error(chalk.red('\n❌ Fatal error:'));
+    console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+    process.exit(1);
+});
 function printHelpMessage() {
     console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
     console.log(chalk.bold.cyan('║       🚀 Deploy-Kit: Sophisticated Deployment Toolkit     ║'));
@@ -282,8 +313,3 @@ function printHelpMessage() {
     console.log(chalk.gray('  GitHub: https://github.com/duersjefen/deploy-kit'));
     console.log(chalk.gray('  Issues: https://github.com/duersjefen/deploy-kit/issues\n'));
 }
-main().catch(error => {
-    console.error(chalk.red('\n❌ Deployment error:'));
-    console.error(chalk.red(error.message));
-    process.exit(1);
-});
