@@ -7,16 +7,50 @@ import { ProjectConfig, DeploymentStage, HealthCheck } from '../types.js';
 const execAsync = promisify(exec);
 
 /**
- * Comprehensive health checking system
- * - HTTP endpoint validation
- * - Database connectivity testing
- * - Response time validation
- * - CloudFront origin validation
- * - Search text validation
+ * Create a comprehensive health checking system for deployed applications
+ * 
+ * Provides methods to validate:
+ * - HTTP endpoint responses and status codes
+ * - Database (DynamoDB) connectivity
+ * - CloudFront distribution origin configuration
+ * - Origin Access Control (OAC) security settings
+ * - Response content and response times
+ * 
+ * @param config - Project configuration with stage and health check settings
+ * @returns Health checker object with check methods
+ * 
+ * @example
+ * ```typescript
+ * const checker = getHealthChecker(config);
+ * const stagingHealthy = await checker.runAll('staging');
+ * if (stagingHealthy) {
+ *   console.log('Deployment successful!');
+ * }
+ * ```
  */
 export function getHealthChecker(config: ProjectConfig) {
   /**
-   * Check a single health check endpoint
+   * Execute a single health check endpoint validation
+   * 
+   * Validates HTTP endpoint accessibility, response status codes, response content,
+   * and response times. Supports custom timeouts and text search validation.
+   * 
+   * @param check - Health check configuration with url, timeout, expectedStatus, etc.
+   * @param stage - Deployment stage name (staging, production)
+   * @returns Promise resolving to true if check passes, false otherwise
+   * 
+   * @throws Will not throw; instead returns false on failure
+   * 
+   * @example
+   * ```typescript
+   * const checker = getHealthChecker(config);
+   * const passed = await checker.check({
+   *   url: '/api/health',
+   *   expectedStatus: 200,
+   *   timeout: 5000,
+   *   name: 'API Health'
+   * }, 'staging');
+   * ```
    */
   async function check(check: HealthCheck, stage: DeploymentStage): Promise<boolean> {
     const checkName = check.name || check.url;
@@ -91,7 +125,23 @@ export function getHealthChecker(config: ProjectConfig) {
   }
 
   /**
-   * Check database connectivity (DynamoDB)
+   * Validate DynamoDB database connectivity and health
+   * 
+   * Checks if the configured DynamoDB table is accessible and in ACTIVE state.
+   * Uses AWS CLI to query table status. Skips check if database is not configured.
+   * 
+   * @param stage - Deployment stage name
+   * @returns Promise resolving to true if database is accessible/healthy or not applicable
+   * 
+   * @throws Will not throw; returns false on failed access or missing table
+   * 
+   * @example
+   * ```typescript
+   * const healthy = await checker.checkDatabase('staging');
+   * if (!healthy) {
+   *   console.log('Database is unreachable or unhealthy');
+   * }
+   * ```
    */
   async function checkDatabase(stage: DeploymentStage): Promise<boolean> {
     if (config.database !== 'dynamodb') {
@@ -145,7 +195,24 @@ export function getHealthChecker(config: ProjectConfig) {
   }
 
   /**
-   * Check CloudFront origin configuration
+   * Validate CloudFront distribution origin configuration
+   * 
+   * Finds the CloudFront distribution for the stage domain and verifies the origin
+   * is properly configured (not a placeholder or sst.dev). Returns true if distribution
+   * doesn't exist yet (normal after new deployment).
+   * 
+   * @param stage - Deployment stage name
+   * @returns Promise resolving to true if origin is valid or distribution not yet created
+   * 
+   * @throws Will not throw; returns false if origin is misconfigured
+   * 
+   * @example
+   * ```typescript
+   * const valid = await checker.checkCloudFrontOrigin('production');
+   * if (!valid) {
+   *   console.log('CloudFront origin needs to be fixed');
+   * }
+   * ```
    */
   async function checkCloudFrontOrigin(stage: DeploymentStage): Promise<boolean> {
     const domain = config.stageConfig[stage].domain ||
@@ -208,7 +275,22 @@ export function getHealthChecker(config: ProjectConfig) {
   }
 
   /**
-   * Check Origin Access Control security
+   * Validate Origin Access Control (OAC) security settings
+   * 
+   * Verifies that CloudFront distribution has Origin Access Control configured
+   * to restrict S3 bucket access. OAC ensures only CloudFront can access the origin,
+   * preventing direct public access. Skips check if OAC not configured (warns user).
+   * 
+   * @param stage - Deployment stage name
+   * @returns Promise resolving to true if OAC is configured or not applicable
+   * 
+   * @example
+   * ```typescript
+   * const secure = await checker.checkOriginAccessControl('production');
+   * if (!secure) {
+   *   console.log('S3 bucket may be publicly accessible');
+   * }
+   * ```
    */
   async function checkOriginAccessControl(stage: DeploymentStage): Promise<boolean> {
     const domain = config.stageConfig[stage].domain ||
@@ -264,7 +346,26 @@ export function getHealthChecker(config: ProjectConfig) {
   }
 
   /**
-   * Run all health checks for a stage
+   * Execute all configured health checks for a deployment stage
+   * 
+   * Runs the complete health check suite:
+   * 1. Database connectivity check
+   * 2. CloudFront origin validation
+   * 3. Origin Access Control (OAC) security
+   * 4. All user-configured HTTP endpoint checks
+   * 
+   * Logs detailed results for each check and returns overall pass/fail status.
+   * All checks must pass for function to return true.
+   * 
+   * @param stage - Deployment stage name (staging, production)
+   * @returns Promise resolving to true if all checks pass, false if any fail
+   * 
+   * @example
+   * ```typescript
+   * const checker = getHealthChecker(config);
+   * const allHealthy = await checker.runAll('staging');
+   * console.log(allHealthy ? '✅ Healthy' : '❌ Issues found');
+   * ```
    */
   async function runAll(stage: DeploymentStage): Promise<boolean> {
     console.log(chalk.bold.cyan(`\n🏥 Running comprehensive health checks for ${stage}...\n`));
