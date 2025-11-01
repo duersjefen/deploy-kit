@@ -36,7 +36,7 @@ export async function handleDoctorCommand(projectRoot = process.cwd()) {
                 checks.push({
                     name: 'Configuration File',
                     status: 'pass',
-                    message: `Valid (` + config.stages.length + ` stages)`,
+                    message: `Valid (` + config.stages?.length + ` stages)`,
                 });
             }
             else {

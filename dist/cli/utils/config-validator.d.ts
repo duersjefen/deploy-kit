@@ -1,6 +1,12 @@
 /**
  * Configuration validation and merging utilities
  */
+import type { HealthCheck } from '../../types.js';
+/**
+ * Configuration before validation (from external sources like JSON files)
+ * Uses Record<string, any> to indicate unvalidated structure while allowing property access
+ */
+export type UnvalidatedConfig = Record<string, any>;
 export interface DeployConfig {
     projectName: string;
     displayName?: string;
@@ -12,7 +18,7 @@ export interface DeployConfig {
     requireCleanGit?: boolean;
     runTestsBeforeDeploy?: boolean;
     stageConfig: Record<string, any>;
-    healthChecks?: any[];
+    healthChecks?: HealthCheck[];
     hooks?: Record<string, string>;
     [key: string]: any;
 }
@@ -24,7 +30,7 @@ export interface ValidationResult {
 /**
  * Validate configuration structure
  */
-export declare function validateConfig(config: any): ValidationResult;
+export declare function validateConfig(config: UnvalidatedConfig): ValidationResult;
 /**
  * Merge two configs, keeping user customizations from existing config
  */

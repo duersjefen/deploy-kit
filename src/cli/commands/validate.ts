@@ -6,8 +6,7 @@
 import chalk from 'chalk';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { validateConfig, printValidationResult } from '../utils/config-validator.js';
-import type { UnvalidatedConfig } from '../../types.js';
+import { validateConfig, printValidationResult, type UnvalidatedConfig } from '../utils/config-validator.js';
 
 export async function handleValidateCommand(projectRoot: string = process.cwd()): Promise<void> {
   const configPath = join(projectRoot, '.deploy-config.json');
@@ -20,7 +19,7 @@ export async function handleValidateCommand(projectRoot: string = process.cwd())
   }
 
   // Parse config
-  let config: any;
+  let config: UnvalidatedConfig;
   try {
     const content = readFileSync(configPath, 'utf-8');
     config = JSON.parse(content);

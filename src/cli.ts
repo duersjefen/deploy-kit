@@ -13,7 +13,8 @@ import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
 import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
-import type { DeploymentStage, UnvalidatedConfig } from './types.js';
+import type { DeploymentStage } from './types.js';
+import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -94,7 +95,7 @@ if (command === '--version' || command === '-v') {
 }
 
 // Load config from current directory
-let config: any;
+let config: UnvalidatedConfig;
 let projectRoot: string;
 try {
   const configPath = resolve(process.cwd(), '.deploy-config.json');
@@ -107,13 +108,13 @@ try {
 }
 
 // Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
-const resolvedProfile = resolveAwsProfile(config, projectRoot);
+const resolvedProfile = resolveAwsProfile(config as any, projectRoot);
 if (resolvedProfile && !config.awsProfile) {
   config.awsProfile = resolvedProfile;
 }
 
 // Initialize kit with the project root where the config file is located
-const kit = new DeploymentKit(config, projectRoot);
+const kit = new DeploymentKit(config as any, projectRoot);
 
 async function main() {
   switch (command) {
@@ -141,12 +142,12 @@ async function main() {
       if (!stage) {
         console.log(chalk.bold.cyan('\n📊 Checking all deployment statuses...'));
         console.log(chalk.gray('Analyzing deployment state across all stages\n'));
-        const statusChecker = getStatusChecker(config, process.cwd());
+        const statusChecker = getStatusChecker(config as any, process.cwd());
         await statusChecker.checkAllStages();
       } else {
         console.log(chalk.bold.cyan(`\n📊 Checking ${stage} deployment status...`));
         console.log(chalk.gray('Analyzing current deployment state\n'));
-        const statusChecker = getStatusChecker(config, process.cwd());
+        const statusChecker = getStatusChecker(config as any, process.cwd());
         await statusChecker.checkStage(stage);
       }
       break;
@@ -166,7 +167,7 @@ async function main() {
 
       console.log(chalk.bold.yellow(`\n🔧 Recovering ${stage} deployment...`));
       console.log(chalk.gray('Clearing locks and preparing for retry\n'));
-      const recovery = getRecoveryManager(config, projectRoot);
+      const recovery = getRecoveryManager(config as any, projectRoot);
       await recovery.performFullRecovery(stage);
       console.log(chalk.green('\n✅ Recovery complete - ready to redeploy\n'));
       break;
@@ -194,7 +195,7 @@ async function main() {
     case 'cloudfront':
       const cfSubcommand = stage; // For cloudfront, second arg is subcommand
       const cfArgs = args.slice(2);
-      await handleCloudFrontCommand(cfSubcommand, cfArgs, config, projectRoot);
+      await handleCloudFrontCommand(cfSubcommand, cfArgs, config as any, projectRoot);
       process.exit(0);
       break;
 

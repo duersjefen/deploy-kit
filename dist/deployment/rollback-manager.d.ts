@@ -1,4 +1,4 @@
-import { DeploymentStage } from '../types.js';
+import type { DeploymentStage, ExtendedLockManager } from '../types.js';
 /**
  * Rollback manager - handles recovery from failed deployments
  *
@@ -20,7 +20,7 @@ export declare class RollbackManager {
      *
      * @param lockManager - Lock manager instance for clearing locks
      */
-    constructor(lockManager: any);
+    constructor(lockManager: ExtendedLockManager);
     /**
      * Recover from failed deployment
      *
