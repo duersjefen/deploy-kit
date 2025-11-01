@@ -14,6 +14,7 @@ import { createSstConfigCheck } from './sst-config.js';
 import { createSstStateHealthCheck } from './sst-state.js';
 import { createRecursiveSstDevCheck } from './recursive-sst-dev.js';
 import { createNextJsCanaryFeaturesCheck } from './nextjs-canary.js';
+import { createTurbopackMigrationCheck } from './turbopack-migration.js';
 import { createPulumiOutputUsageCheck } from './pulumi-output.js';
 import { createLambdaReservedVarsCheck } from './lambda-reserved-vars.js';
 
@@ -41,6 +42,7 @@ export function getDevChecks(
     { name: 'Lambda Reserved Environment Variables', check: createLambdaReservedVarsCheck(projectRoot, verbose) },
     { name: 'Recursive SST Dev Script', check: createRecursiveSstDevCheck(projectRoot) },
     { name: 'Next.js Canary Features', check: createNextJsCanaryFeaturesCheck(projectRoot) },
+    { name: 'Turbopack Migration', check: createTurbopackMigrationCheck(projectRoot) },
     { name: 'Pulumi Output Usage', check: createPulumiOutputUsageCheck(projectRoot) },
   ];
 }
