@@ -2,6 +2,7 @@
  * CloudFront API Client
  * Wrapper around AWS CloudFront SDK for common operations
  */
+import type { DNSRecord } from '../../types.js';
 export interface CloudFrontDistribution {
     Id: string;
     DomainName: string;
@@ -12,15 +13,6 @@ export interface CloudFrontDistribution {
     LastModifiedTime?: Date;
     Enabled: boolean;
     AliasedDomains: string[];
-}
-export interface DNSRecord {
-    Name: string;
-    Type: string;
-    AliasTarget?: {
-        HostedZoneId: string;
-        DNSName: string;
-        EvaluateTargetHealth: boolean;
-    };
 }
 export declare class CloudFrontAPIClient {
     private cfClient;
