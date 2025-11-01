@@ -158,10 +158,12 @@ export class CloudFrontAPIClient {
             if (!response.ResourceRecordSets) {
                 return [];
             }
+            // Map Route53 records to standardized DNSRecord format
             return response.ResourceRecordSets.map((record) => ({
-                Name: record.Name,
-                Type: record.Type,
-                AliasTarget: record.AliasTarget,
+                name: (record.Name || '').replace(/\.$/, ''), // Remove trailing dot
+                type: record.Type || '',
+                value: record.AliasTarget?.DNSName || record.ResourceRecords?.[0]?.Value || '',
+                ttl: record.TTL,
             }));
         }
         catch (error) {

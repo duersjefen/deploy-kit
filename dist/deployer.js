@@ -1,45 +1,86 @@
-import { promisify } from 'util';
-import { exec, spawn } from 'child_process';
 import chalk from 'chalk';
-import ora from 'ora';
-import { existsSync } from 'fs';
-import { join } from 'path';
-import prompt from 'prompts';
 import { getHealthChecker } from './health/checker.js';
 import { getLockManager } from './locks/manager.js';
 import { getPreDeploymentChecks } from './safety/pre-deploy.js';
 import { getPostDeploymentChecks } from './safety/post-deploy.js';
-import { CloudFrontAPIClient } from './lib/cloudfront/client.js';
-import { CloudFrontAnalyzer } from './lib/cloudfront/analyzer.js';
-const execAsync = promisify(exec);
+import { DeploymentOrchestrator } from './deployment/orchestrator.js';
+import { RollbackManager } from './deployment/rollback-manager.js';
+import { CloudFrontOperations } from './lib/cloudfront/operations.js';
 /**
- * Main deployment orchestrator
+ * DeploymentKit - Main facade for deployment operations
  *
- * Handles the complete deployment workflow:
- * 1. Pre-deployment safety checks (git, tests, credentials)
- * 2. Building application
- * 3. Deploying via SST or custom script
- * 4. Post-deployment verification (health checks, CloudFront validation)
- * 5. Cache invalidation
+ * This is the primary interface for deploy-kit. It delegates to specialized components:
+ * - DeploymentOrchestrator: Manages deployment flow, building, and SST execution
+ * - RollbackManager: Handles recovery from failed deployments
+ * - CloudFrontOperations: Manages CloudFront cache invalidation and audits
+ * - Lock Manager: Prevents concurrent deployments
+ * - Health Checker: Validates post-deployment health
+ * - Safety Checks: Pre/post deployment validation
+ *
+ * This facade maintains backward compatibility while enabling better separation of concerns.
+ *
+ * @example
+ * ```typescript
+ * import { DeploymentKit } from '@duersjefen/deploy-kit';
+ *
+ * const config = JSON.parse(fs.readFileSync('.deploy-config.json', 'utf-8'));
+ * const kit = new DeploymentKit(config, process.cwd());
+ *
+ * // Deploy to staging
+ * await kit.deploy('staging');
+ *
+ * // Check status
+ * await kit.getStatus('staging');
+ *
+ * // Recover from failure
+ * await kit.recover('staging');
+ * ```
  */
 export class DeploymentKit {
+    /**
+     * Create a new DeploymentKit instance
+     *
+     * @param config - Project configuration from .deploy-config.json
+     * @param projectRoot - Absolute path to project root (defaults to process.cwd())
+     *
+     * @example
+     * ```typescript
+     * const config = JSON.parse(fs.readFileSync('.deploy-config.json', 'utf-8'));
+     * const kit = new DeploymentKit(config, '/path/to/project');
+     * ```
+     */
     constructor(config, projectRoot = process.cwd()) {
         this.config = config;
         this.projectRoot = projectRoot;
         this.lockManager = getLockManager(projectRoot);
         this.healthChecker = getHealthChecker(config);
-        this.preChecks = getPreDeploymentChecks(config);
+        this.preChecks = getPreDeploymentChecks(config, projectRoot);
         this.postChecks = getPostDeploymentChecks(config);
+        this.orchestrator = new DeploymentOrchestrator(config, projectRoot);
+        this.rollbackManager = new RollbackManager(this.lockManager);
+        this.cloudFrontOps = new CloudFrontOperations(config, config.awsProfile);
     }
     /**
-     * Detect if this is an SST project
-     */
-    isSSTProject() {
-        return existsSync(join(this.projectRoot, 'sst.config.ts')) ||
-            existsSync(join(this.projectRoot, 'sst.config.js'));
-    }
-    /**
-     * Full deployment workflow
+     * Execute full deployment workflow
+     *
+     * Orchestrates the complete deployment process:
+     * 1. Pre-deployment safety checks (git, tests, AWS credentials, SSL)
+     * 2. Acquire deployment lock
+     * 3. Build and deploy application
+     * 4. Post-deployment validation (health checks)
+     * 5. Cache invalidation (if CloudFront)
+     * 6. CloudFront audit and cleanup
+     *
+     * @param stage - Deployment stage (development, staging, production)
+     * @returns Deployment result with success status and timing information
+     * @throws {Error} If deployment fails at any stage
+     *
+     * @example
+     * ```typescript
+     * const result = await kit.deploy('staging');
+     * console.log(result.success); // true
+     * console.log(result.durationSeconds); // 127
+     * ```
      */
     async deploy(stage) {
         const startTime = new Date();
@@ -77,34 +118,34 @@ export class DeploymentKit {
             // Only acquire lock AFTER pre-checks pass
             await this.lockManager.checkAndCleanPulumiLock(stage);
             const newLock = await this.lockManager.acquireLock(stage);
-            // Stage 3: Build & Deploy
+            // Stage 2: Build & Deploy (delegated to orchestrator)
             let stage2Start = Date.now();
             console.log(chalk.bold.white('\n▸ Stage 2: Build & Deploy'));
             console.log(chalk.gray('  Building application and deploying to AWS\n'));
             // For SST projects, build is handled by sst deploy, skip separate build
-            if (!this.isSSTProject()) {
-                await this.runBuild();
+            if (!this.orchestrator.isSSTProject()) {
+                await this.orchestrator.runBuild();
                 result.details.buildsOk = true;
             }
             else {
                 result.details.buildsOk = true;
             }
-            cloudFrontDistId = await this.runDeploy(stage);
+            cloudFrontDistId = await this.orchestrator.executeDeploy(stage);
             result.details.deploymentOk = true;
             stageTimings.push({ name: 'Build & Deploy', duration: Date.now() - stage2Start });
-            // Stage 4: Post-deployment validation
+            // Stage 3: Post-deployment validation
             let stage3Start = Date.now();
             console.log(chalk.bold.white('\n▸ Stage 3: Post-Deployment Validation'));
             console.log(chalk.gray('  Testing health checks and CloudFront configuration\n'));
             await this.postChecks.run(stage);
             result.details.healthChecksOk = true;
             stageTimings.push({ name: 'Health Checks', duration: Date.now() - stage3Start });
-            // Stage 5: Cache invalidation (background)
+            // Stage 4: Cache invalidation (background, delegated to CloudFront operations)
             let stage4Start = Date.now();
             if (!this.config.stageConfig[stage].skipCacheInvalidation) {
                 console.log(chalk.bold.white('\n▸ Stage 4: Cache Invalidation'));
                 console.log(chalk.gray('  Clearing CloudFront cache (runs in background)\n'));
-                await this.invalidateCache(stage, cloudFrontDistId);
+                await this.cloudFrontOps.invalidateCache(stage, cloudFrontDistId);
                 result.details.cacheInvalidatedOk = true;
             }
             stageTimings.push({ name: 'Cache Invalidation', duration: Date.now() - stage4Start });
@@ -112,17 +153,17 @@ export class DeploymentKit {
             result.message = `✅ Deployment to ${stage} successful!`;
             // Release lock
             await this.lockManager.releaseLock(newLock);
-            // Print deployment summary
-            this.printDeploymentSummary(result, stageTimings);
-            // Post-deployment: Audit CloudFront and offer cleanup
-            await this.postDeploymentCloudFrontAudit(stage);
+            // Print deployment summary (delegated to orchestrator)
+            this.orchestrator.printDeploymentSummary(result, stageTimings);
+            // Post-deployment: Audit CloudFront and offer cleanup (delegated to CloudFront operations)
+            await this.cloudFrontOps.auditAndCleanup(stage);
         }
         catch (error) {
             result.success = false;
             result.message = `❌ Deployment to ${stage} failed`;
             result.error = error instanceof Error ? error.message : String(error);
-            // Print failure summary
-            this.printDeploymentFailureSummary(result, stageTimings);
+            // Print failure summary (delegated to orchestrator)
+            this.orchestrator.printDeploymentFailureSummary(result, stageTimings);
             // Release lock if it was acquired
             // Pre-check failures won't have lock, but deployment failures will
             // Either way, release it so user doesn't have to manually recover
@@ -142,94 +183,59 @@ export class DeploymentKit {
         return result;
     }
     /**
-     * Print deployment summary on success
-     */
-    printDeploymentSummary(result, stageTimings) {
-        console.log('\n' + chalk.bold.green('═'.repeat(60)));
-        console.log(chalk.bold.green('✨ DEPLOYMENT SUCCESSFUL'));
-        console.log(chalk.bold.green('═'.repeat(60)));
-        console.log('\n📊 Deployment Summary:');
-        console.log(chalk.green(`  Stage: ${result.stage}`));
-        console.log(chalk.green(`  Total Duration: ${result.durationSeconds}s`));
-        console.log(chalk.green(`  Status: ✅ All checks passed\n`));
-        if (stageTimings.length > 0) {
-            console.log('⏱️  Stage Timing Breakdown:');
-            for (const timing of stageTimings) {
-                const durationMs = timing.duration;
-                const durationSecs = (durationMs / 1000).toFixed(1);
-                const barLength = Math.round((durationMs / 5000)); // Scale: 5s = full bar
-                const bar = '█'.repeat(Math.min(barLength, 20));
-                console.log(`  ${timing.name.padEnd(25)} ${bar.padEnd(20)} ${durationSecs}s`);
-            }
-            console.log('');
-        }
-        console.log(chalk.green(`✅ Application is now live on ${result.stage}`));
-        console.log(chalk.gray(`   Deployment completed at ${result.endTime.toLocaleTimeString()}\n`));
-    }
-    /**
-     * Print deployment summary on failure
-     */
-    printDeploymentFailureSummary(result, stageTimings) {
-        console.log('\n' + chalk.bold.red('═'.repeat(60)));
-        console.log(chalk.bold.red('❌ DEPLOYMENT FAILED'));
-        console.log(chalk.bold.red('═'.repeat(60)));
-        console.log('\n❌ Deployment Summary:');
-        console.log(chalk.red(`  Stage: ${result.stage}`));
-        console.log(chalk.red(`  Duration: ${(result.endTime.getTime() - result.startTime.getTime()) / 1000}s`));
-        console.log(chalk.red(`  Error: ${result.error}\n`));
-        console.log(chalk.yellow('🔧 Recovery Options:'));
-        console.log(chalk.yellow(`  1. Review error message above`));
-        console.log(chalk.yellow(`  2. Fix the issue locally`));
-        console.log(chalk.yellow(`  3. Retry deployment: npx deploy-kit deploy ${result.stage}`));
-        console.log(chalk.yellow(`  4. Or force recovery: npx deploy-kit recover ${result.stage}\n`));
-    }
-    /**
      * Get deployment status without deploying
+     *
+     * Checks for active or stale deployment locks and Pulumi state locks.
+     * Useful for diagnosing deployment issues.
+     *
+     * @param stage - Deployment stage to check
+     *
+     * @example
+     * ```typescript
+     * await kit.getStatus('staging');
+     * // Prints: "✅ Ready to deploy to staging"
+     * // or: "❌ Active deployment lock for staging (45 min remaining)"
+     * ```
      */
     async getStatus(stage) {
-        console.log(chalk.bold.cyan(`\n📊 Checking deployment status for ${stage}...\n`));
-        const isPulumiLocked = await this.lockManager.isPulumiLocked(stage);
-        const fileLock = await this.lockManager.getFileLock(stage);
-        if (isPulumiLocked) {
-            console.log(chalk.yellow(`⚠️  Pulumi lock detected for ${stage} (will auto-clear on next deploy)`));
-        }
-        if (fileLock) {
-            const isExpired = new Date() > fileLock.expiresAt;
-            if (isExpired) {
-                console.log(chalk.yellow(`⚠️  Stale deployment lock for ${stage} (expired, will be cleared)`));
-            }
-            else {
-                const minutesLeft = Math.round((fileLock.expiresAt.getTime() - new Date().getTime()) / 60000);
-                console.log(chalk.red(`❌ Active deployment lock for ${stage} (${minutesLeft} min remaining)`));
-            }
-        }
-        else {
-            console.log(chalk.green(`✅ Ready to deploy to ${stage}`));
-        }
+        return this.rollbackManager.getStatus(stage);
     }
     /**
      * Recover from failed deployment
+     *
+     * Clears all deployment locks (file-based and Pulumi) to allow redeployment.
+     * This is safe to run and will not affect running deployments or infrastructure state.
+     *
+     * @param stage - Deployment stage to recover
+     * @throws {Error} If recovery fails
+     *
+     * @example
+     * ```typescript
+     * await kit.recover('staging');
+     * // Clears locks, ready to redeploy
+     * ```
      */
     async recover(stage) {
-        console.log(chalk.bold.yellow(`\n🔄 Recovering from failed ${stage} deployment...\n`));
-        const spinner = ora('Clearing locks...').start();
-        try {
-            // Clear file lock
-            const lock = await this.lockManager.getFileLock(stage);
-            if (lock) {
-                await this.lockManager.releaseLock(lock);
-            }
-            // Clear Pulumi lock
-            await this.lockManager.clearPulumiLock(stage);
-            spinner.succeed('✅ Recovery complete - ready to redeploy');
-        }
-        catch (error) {
-            spinner.fail(`❌ Recovery failed: ${error}`);
-            throw error;
-        }
+        return this.rollbackManager.recover(stage);
     }
     /**
      * Validate health after deployment
+     *
+     * Runs all configured health checks for the stage. Health checks can include:
+     * - HTTP endpoint validation
+     * - Database connectivity
+     * - CloudFront origin configuration
+     *
+     * @param stage - Deployment stage to validate
+     * @returns True if all health checks pass, false otherwise
+     *
+     * @example
+     * ```typescript
+     * const healthy = await kit.validateHealth('staging');
+     * if (!healthy) {
+     *   console.log('Some health checks failed');
+     * }
+     * ```
      */
     async validateHealth(stage) {
         console.log(chalk.bold.cyan(`\nValidating health checks for ${stage}...\n`));
@@ -247,401 +253,5 @@ export class DeploymentKit {
                 allPass = false;
         }
         return allPass;
-    }
-    /**
-     * Run build command
-     */
-    async runBuild() {
-        const spinner = ora('Building application...').start();
-        try {
-            if (this.config.hooks?.postBuild) {
-                const { stdout } = await execAsync(this.config.hooks.postBuild, {
-                    cwd: this.projectRoot,
-                });
-                spinner.info(`Build output: ${stdout}`);
-            }
-            else {
-                // Default: npm run build
-                const { stdout } = await execAsync('npm run build', {
-                    cwd: this.projectRoot,
-                });
-            }
-            spinner.succeed('✅ Build successful');
-        }
-        catch (error) {
-            spinner.fail('❌ Build failed');
-            throw error;
-        }
-    }
-    /**
-     * Run deployment command
-     */
-    /**
-     * Run deployment command and extract CloudFront distribution ID
-     */
-    /**
-     * Run deployment command with real-time streaming output
-     */
-    async runDeploy(stage) {
-        const spinner = ora(`Deploying to ${stage}...`).start();
-        try {
-            const stageConfig = this.config.stageConfig[stage];
-            const sstStage = stageConfig.sstStageName || stage;
-            let deployOutput = '';
-            if (this.config.customDeployScript) {
-                // Use custom deployment script
-                const { stdout } = await execAsync(`bash ${this.config.customDeployScript} ${stage}`, {
-                    cwd: this.projectRoot,
-                });
-                deployOutput = stdout;
-                spinner.succeed(`✅ Deployed to ${stage}`);
-            }
-            else {
-                // Default: SST deploy with streaming output
-                deployOutput = await this.runSSTDeployWithStreaming(stage, sstStage, spinner);
-                spinner.succeed(`✅ Deployed to ${stage}`);
-            }
-            // Extract CloudFront distribution ID from deployment output
-            const distId = this.extractCloudFrontDistributionId(deployOutput);
-            if (distId) {
-                spinner.info(`CloudFront distribution ID: ${distId}`);
-            }
-            return distId;
-        }
-        catch (error) {
-            spinner.fail(`❌ Deployment to ${stage} failed`);
-            throw error;
-        }
-    }
-    /**
-     * Run SST deploy with real-time streaming output (last 5 lines with improved UI)
-     */
-    async runSSTDeployWithStreaming(stage, sstStage, spinner) {
-        return new Promise((resolve, reject) => {
-            const env = {
-                ...process.env,
-                ...(this.config.awsProfile && {
-                    AWS_PROFILE: this.config.awsProfile,
-                }),
-            };
-            const child = spawn('npx', ['sst', 'deploy', '--stage', sstStage], {
-                cwd: this.projectRoot,
-                env,
-                stdio: ['ignore', 'pipe', 'pipe'],
-            });
-            let stdout = '';
-            let stderr = '';
-            const outputLines = [];
-            const maxLines = 4; // Reduced for narrow terminals
-            let lastUpdateTime = Date.now();
-            // Detect terminal width (default to 80 if not available)
-            const terminalWidth = process.stdout.columns || 80;
-            // Reserve space for indicator (2 chars) and padding
-            const maxLineLength = Math.max(40, terminalWidth - 8);
-            // Helper to clean ANSI codes and truncate smartly
-            const formatLine = (line) => {
-                const clean = line.replace(/\x1B\[[0-9;]*m/g, '').trim();
-                // Extract the operation type for coloring
-                if (clean.includes('Building') || clean.includes('Bundling')) {
-                    return chalk.blue(truncate(clean, maxLineLength));
-                }
-                else if (clean.includes('Created')) {
-                    return chalk.green(truncate(clean, maxLineLength));
-                }
-                else if (clean.includes('Error') || clean.includes('Failed')) {
-                    return chalk.red(truncate(clean, maxLineLength));
-                }
-                else if (clean.includes('Applying') || clean.includes('Installing')) {
-                    return chalk.yellow(truncate(clean, maxLineLength));
-                }
-                else if (clean.includes('Waiting')) {
-                    return chalk.cyan(truncate(clean, maxLineLength));
-                }
-                return truncate(clean, maxLineLength);
-            };
-            const truncate = (str, len) => {
-                if (str.length <= len)
-                    return str;
-                return str.substring(0, len - 1) + '…';
-            };
-            // Handle stdout
-            child.stdout.on('data', (data) => {
-                const chunk = data.toString();
-                stdout += chunk;
-                const lines = chunk.split('\n');
-                for (const line of lines) {
-                    const formatted = formatLine(line);
-                    if (formatted && formatted.length > 0) {
-                        outputLines.push(formatted);
-                        if (outputLines.length > maxLines) {
-                            outputLines.shift();
-                        }
-                    }
-                }
-                // Update spinner with smart formatting
-                const now = Date.now();
-                if (now - lastUpdateTime > 250 && outputLines.length > 0) {
-                    lastUpdateTime = now;
-                    const displayText = outputLines
-                        .map((l, i) => {
-                        const indicator = i === outputLines.length - 1 ? '▸' : '·';
-                        return `  ${chalk.dim(indicator)} ${l}`;
-                    })
-                        .join('\n');
-                    spinner.text = `Deploying to ${stage}...\n\n${displayText}\n`;
-                }
-            });
-            // Handle stderr
-            child.stderr.on('data', (data) => {
-                const chunk = data.toString();
-                stderr += chunk;
-                const lines = chunk.split('\n');
-                for (const line of lines) {
-                    const formatted = chalk.red(truncate(line.replace(/\x1B\[[0-9;]*m/g, '').trim(), maxLineLength));
-                    if (formatted && formatted.length > 0) {
-                        outputLines.push(formatted);
-                        if (outputLines.length > maxLines) {
-                            outputLines.shift();
-                        }
-                    }
-                }
-                const now = Date.now();
-                if (now - lastUpdateTime > 250 && outputLines.length > 0) {
-                    lastUpdateTime = now;
-                    const displayText = outputLines
-                        .map((l, i) => {
-                        const indicator = i === outputLines.length - 1 ? '▸' : '·';
-                        return `  ${chalk.dim(indicator)} ${l}`;
-                    })
-                        .join('\n');
-                    spinner.text = `Deploying to ${stage}...\n\n${displayText}\n`;
-                }
-            });
-            // Handle process exit
-            child.on('close', (code) => {
-                if (code === 0) {
-                    resolve(stdout);
-                }
-                else {
-                    reject(new Error(`SST deploy failed with exit code ${code}\n${stderr}`));
-                }
-            });
-            child.on('error', (error) => {
-                reject(error);
-            });
-        });
-    }
-    /**
-   * Extract CloudFront distribution ID from SST deployment output
-   * Looks for patterns like:
-   *   - Outputs section with domain names
-   *   - CloudFront distribution references
-   */
-    extractCloudFrontDistributionId(output) {
-        // SST outputs CloudFront URLs in format: https://d1234abcd.cloudfront.net
-        // Extract the distribution ID (the 'dXXXXabcd' part)
-        const cloudFrontMatch = output.match(/https:\/\/([a-z0-9]+)\.cloudfront\.net/i);
-        if (cloudFrontMatch && cloudFrontMatch[1]) {
-            // The distribution ID starts with 'd' (or 'D') 
-            // For example: d1234abcd from d1234abcd.cloudfront.net
-            return cloudFrontMatch[1];
-        }
-        // Fallback: Look for distribution ID in JSON output (some SST versions output JSON)
-        try {
-            // Try to find JSON output that contains distribution info
-            const jsonMatch = output.match(/\{[\s\S]*?"distributionId"[\s\S]*?\}/);
-            if (jsonMatch) {
-                const json = JSON.parse(jsonMatch[0]);
-                if (json.distributionId) {
-                    return json.distributionId;
-                }
-            }
-        }
-        catch {
-            // JSON parsing failed, continue to next method
-        }
-        // Fallback: Query CloudFront for recent distributions
-        // This is slower but more reliable if output parsing fails
-        // We'll implement this if the above methods don't work
-        return null;
-    }
-    /**
-     * Invalidate CloudFront cache
-     */
-    /**
-     * Invalidate CloudFront cache
-     */
-    async invalidateCache(stage, distributionId) {
-        const spinner = ora('Invalidating CloudFront cache...').start();
-        try {
-            // Try to get distribution ID from parameter, then fall back to environment variable
-            let distId = distributionId || process.env[`CLOUDFRONT_DIST_ID_${stage.toUpperCase()}`] || null;
-            if (!distId) {
-                // If still not found, try to fetch it from CloudFront API by querying for recent distributions
-                distId = await this.findCloudFrontDistributionId(stage);
-            }
-            if (!distId) {
-                spinner.warn('CloudFront distribution ID not found - skipping cache invalidation');
-                return;
-            }
-            const { stdout } = await execAsync(`aws cloudfront create-invalidation --distribution-id ${distId} --paths "/*"`, {
-                env: {
-                    ...process.env,
-                    ...(this.config.awsProfile && {
-                        AWS_PROFILE: this.config.awsProfile,
-                    }),
-                },
-            });
-            // Extract invalidation ID from response
-            const invMatch = stdout.match(/"Id"[\s:]*"([^"]+)"/);
-            if (invMatch && invMatch[1]) {
-                spinner.succeed(`✅ Cache invalidation started (ID: ${invMatch[1]})`);
-            }
-            else {
-                spinner.succeed('✅ Cache invalidation started');
-            }
-        }
-        catch (error) {
-            spinner.warn('⚠️  CloudFront cache invalidation failed (not critical)');
-        }
-    }
-    /**
-     * Find CloudFront distribution ID by querying API
-     * Used as fallback if distribution ID is not extracted from deployment output
-     */
-    async findCloudFrontDistributionId(stage) {
-        try {
-            const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
-            const distributions = await client.listDistributions();
-            // Get the domain we expect for this stage
-            const domain = this.config.stageConfig[stage].domain;
-            if (!domain) {
-                return null;
-            }
-            // Find the distribution that matches our domain
-            for (const dist of distributions) {
-                if (dist.DomainName === domain || dist.DomainName.includes(domain)) {
-                    return dist.Id;
-                }
-                // Also check alternate domain names (CNAMEs)
-                if (dist.AliasedDomains && dist.AliasedDomains.length > 0) {
-                    for (const alias of dist.AliasedDomains) {
-                        if (alias === domain) {
-                            return dist.Id;
-                        }
-                    }
-                }
-            }
-            // If exact match not found, return most recently modified distribution
-            // (assuming it's the one we just deployed)
-            if (distributions.length > 0) {
-                // Sort by LastModifiedTime (most recent first)
-                distributions.sort((a, b) => {
-                    const timeA = a.LastModifiedTime?.getTime() || 0;
-                    const timeB = b.LastModifiedTime?.getTime() || 0;
-                    return timeB - timeA;
-                });
-                return distributions[0].Id;
-            }
-            return null;
-        }
-        catch (error) {
-            // If API lookup fails, return null and skip cache invalidation
-            return null;
-        }
-    }
-    /**
-     * Get AWS region for the deployment stage
-     * Falls back to us-east-1 if not configured
-     */
-    getAwsRegion(stage) {
-        return this.config.stageConfig[stage].awsRegion || 'us-east-1';
-    }
-    /**
-     * Audit CloudFront after deployment and offer to cleanup orphans
-     */
-    async postDeploymentCloudFrontAudit(stage) {
-        try {
-            const spinner = ora('🔍 Auditing CloudFront infrastructure...').start();
-            // Note: CloudFront is a global service with API endpoint always in us-east-1
-            // even though the deployment may be in a different region
-            const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
-            const distributions = await client.listDistributions();
-            const dnsRecords = []; // TODO: Fetch from Route53
-            const report = CloudFrontAnalyzer.generateAuditReport(distributions, this.config, dnsRecords);
-            if (report.orphanedDistributions.length === 0) {
-                spinner.succeed('✅ CloudFront infrastructure is clean');
-                return;
-            }
-            spinner.stop();
-            // Show orphaned distributions
-            console.log('\n' + chalk.bold.yellow('⚠️  Orphaned CloudFront Distributions Detected\n'));
-            const orphanCount = report.orphanedDistributions.length;
-            const estimatedMonthlyCost = orphanCount * 2.5; // ~$2.50 per distribution/month
-            console.log(chalk.yellow(`Found ${orphanCount} orphaned distribution(s):`));
-            for (const analysis of report.orphanedDistributions) {
-                const createdDate = analysis.createdTime ? new Date(analysis.createdTime).toLocaleDateString() : 'unknown';
-                console.log(chalk.gray(`  • ${analysis.id} (created ${createdDate})`));
-            }
-            console.log(chalk.yellow(`\n💾 Estimated cost: ~$${estimatedMonthlyCost.toFixed(2)}/month\n`));
-            // Ask user if they want to cleanup
-            const response = await prompt({
-                type: 'confirm',
-                name: 'cleanup',
-                message: 'Would you like to cleanup these orphaned distributions?',
-                initial: false,
-            });
-            if (response.cleanup) {
-                console.log('');
-                console.log(chalk.bold.cyan('🧹 Starting CloudFront cleanup in background...'));
-                console.log(chalk.gray('   Cleanup will continue even if you close this terminal'));
-                console.log(chalk.gray('   Check progress anytime with: make cloudfront-report\n'));
-                // Start cleanup in background (don't wait)
-                this.startBackgroundCloudFrontCleanup(stage).catch(err => {
-                    console.error(chalk.red('⚠️  Background cleanup failed:'), err.message);
-                });
-            }
-            else {
-                console.log(chalk.gray('\nℹ️  You can cleanup anytime by running: make cloudfront-cleanup\n'));
-            }
-        }
-        catch (error) {
-            // Don't break deployment on audit errors, but log for debugging
-            // Audit is informational only - not critical to deployment success
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.log(chalk.gray(`⚠️  CloudFront audit skipped: ${errorMsg}`));
-        }
-    }
-    /**
-     * Start CloudFront cleanup in background (non-blocking)
-     */
-    async startBackgroundCloudFrontCleanup(stage) {
-        try {
-            const client = new CloudFrontAPIClient('us-east-1', this.config.awsProfile);
-            const distributions = await client.listDistributions();
-            const dnsRecords = []; // TODO: Fetch from Route53
-            const report = CloudFrontAnalyzer.generateAuditReport(distributions, this.config, dnsRecords);
-            // Delete each orphaned distribution
-            for (const analysis of report.orphanedDistributions) {
-                // Only delete if it's safe (orphaned + placeholder origin)
-                if (CloudFrontAnalyzer.canDelete(analysis)) {
-                    try {
-                        // Disable first
-                        await client.disableDistribution(analysis.id);
-                        // Wait for CloudFront to process
-                        await client.waitForDistributionDeployed(analysis.id, 60000); // 1 min timeout
-                        // Then delete
-                        await client.deleteDistribution(analysis.id);
-                    }
-                    catch (err) {
-                        // Log but continue with next distribution
-                        console.error(chalk.gray(`⚠️  Failed to delete ${analysis.id}: ${err.message}`));
-                    }
-                }
-            }
-        }
-        catch (error) {
-            console.error(chalk.gray(`⚠️  Background cleanup error: ${error.message}`));
-        }
     }
 }

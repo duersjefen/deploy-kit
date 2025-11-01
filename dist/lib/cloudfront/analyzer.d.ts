@@ -2,8 +2,8 @@
  * CloudFront Infrastructure Analyzer
  * Detects orphaned, misconfigured, and problematic distributions
  */
-import type { CloudFrontDistribution, DNSRecord } from './client.js';
-import type { ProjectConfig } from '../../types.js';
+import type { CloudFrontDistribution } from './client.js';
+import type { ProjectConfig, DNSRecord } from '../../types.js';
 export interface DistributionAnalysis {
     id: string;
     domain: string;

@@ -106,4 +106,28 @@ export interface DeploymentLock {
     expiresAt: Date;
     reason?: string;
 }
+/**
+ * DNS Record representation
+ */
+export interface DNSRecord {
+    /** Record name (e.g., "staging.example.com") */
+    name: string;
+    /** Record type (e.g., "A", "CNAME", "MX") */
+    type: string;
+    /** Record value (e.g., IP address or domain name) */
+    value: string;
+    /** Time to live in seconds */
+    ttl?: number;
+}
+/**
+ * CloudFront command options
+ */
+export interface CloudFrontListOptions {
+    profile?: string;
+}
+export interface CloudFrontInvalidateOptions {
+    distributionId: string;
+    paths: string[];
+    profile?: string;
+}
 //# sourceMappingURL=types.d.ts.map

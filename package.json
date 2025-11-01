@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "test": "node --test dist/*.test.js"
+    "test": "node --test 'dist/**/*.test.js'"
   },
   "keywords": [
     "deployment",

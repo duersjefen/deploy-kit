@@ -8,10 +8,11 @@
  * - Automatic diagnostics on hang
  * - Detailed logging for debugging
  */
-import type { DeploymentStage } from '../types.js';
+import type { DeploymentStage, ProjectConfig } from '../types.js';
 interface SSTDeploymentOptions {
     stage: DeploymentStage;
     projectRoot: string;
+    config: ProjectConfig;
     awsProfile?: string;
     timeoutMinutes?: number;
     logFile?: string;

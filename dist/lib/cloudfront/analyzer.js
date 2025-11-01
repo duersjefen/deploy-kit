@@ -25,10 +25,10 @@ export class CloudFrontAnalyzer {
                 (config.mainDomain && alias === `staging.${config.mainDomain}`));
         // Check if distribution is in DNS
         const inDns = dnsRecords.some((record) => {
-            if (!record.AliasTarget)
-                return false;
-            return (record.AliasTarget.DNSName === `${distribution.DomainName}.` ||
-                record.AliasTarget.DNSName === distribution.DomainName);
+            // Check if DNS record value matches the CloudFront distribution domain
+            const normalizedValue = record.value.replace(/\.$/, '');
+            const normalizedDistDomain = distribution.DomainName.replace(/\.$/, '');
+            return normalizedValue === normalizedDistDomain;
         });
         // Check for placeholder origin (incomplete configuration)
         const hasPlaceholderOrigin = distribution.OriginDomain.includes('placeholder.sst.dev');
