@@ -7,7 +7,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { getLockManager } from './manager.js';
@@ -87,8 +87,7 @@ describe('Lock Manager', () => {
 
     it('handles corrupted lock files gracefully', async () => {
       const lockPath = join(testDir, '.deployment-lock-staging');
-      const fs = require('fs');
-      fs.writeFileSync(lockPath, 'invalid json');
+      writeFileSync(lockPath, 'invalid json');
 
       const lock = await lockManager.getFileLock('staging');
       assert.strictEqual(lock, null);
@@ -180,8 +179,7 @@ describe('Lock Manager', () => {
         expiresAt: new Date(Date.now() - 80 * 60 * 1000), // 80 min ago (expired)
         reason: 'Old deployment',
       };
-      const fs = require('fs');
-      fs.writeFileSync(lockPath, JSON.stringify(expiredLock, null, 2));
+      writeFileSync(lockPath, JSON.stringify(expiredLock, null, 2));
 
       // Should be able to acquire despite old lock
       const newLock = await lockManager.acquireLock('staging');
@@ -360,8 +358,8 @@ describe('Lock Manager', () => {
       const lock1 = await lockManager.acquireLock('staging');
 
       try {
-        assert.throws(
-          () => lockManager.acquireLock('staging'),
+        await assert.rejects(
+          async () => await lockManager.acquireLock('staging'),
           /already in progress/
         );
       } finally {
