@@ -1,102 +1,85 @@
-import { ProjectConfig, DeploymentStage, DeploymentResult } from '../types.js';
 /**
- * Deployment orchestrator - manages the high-level deployment workflow
+ * Deployment Orchestrator - Main Entry Point
  *
- * Responsible for:
- * - Coordinating deployment stages
- * - Running build commands
- * - Executing SST deployments with real-time output
- * - Extracting deployment artifacts (CloudFront IDs, etc.)
+ * Thin wrapper that coordinates the deployment workflow using specialized modules.
+ *
+ * Architecture:
+ * - orchestration-coordinator: High-level workflow (build, deploy, extract)
+ * - aws-state-manager: AWS resource state tracking and extraction
+ * - deployment-printer: Result formatting and output
+ *
+ * This class provides the public API while delegating to focused modules.
+ */
+import type { ProjectConfig, DeploymentStage, DeploymentResult } from '../types.js';
+import { type StageTiming } from './deployment-printer.js';
+/**
+ * Main deployment orchestrator class
+ *
+ * Coordinates the complete deployment workflow:
+ * 1. Build the application
+ * 2. Deploy to stage (SST or custom script)
+ * 3. Extract deployment artifacts (CloudFront ID, etc.)
+ * 4. Print results
  *
  * @example
  * ```typescript
  * const orchestrator = new DeploymentOrchestrator(config, '/path/to/project');
- * const result = await orchestrator.executeDeploy(stage, {
- *   onStart: () => console.log('Starting...'),
- *   onComplete: (distId) => console.log('Done!', distId),
- * });
+ * if (orchestrator.isSSTProject()) {
+ *   const distId = await orchestrator.executeDeploy('staging');
+ *   orchestrator.printDeploymentSummary(result, timings);
+ * }
  * ```
  */
 export declare class DeploymentOrchestrator {
     private config;
     private projectRoot;
+    /**
+     * Create a new deployment orchestrator
+     *
+     * @param config - Project configuration
+     * @param projectRoot - Root directory of the project (defaults to cwd)
+     */
     constructor(config: ProjectConfig, projectRoot?: string);
     /**
-     * Detect if this is an SST project by checking for sst.config file
+     * Detect if this is an SST project
      *
      * @returns True if sst.config.ts or sst.config.js exists
      */
     isSSTProject(): boolean;
     /**
      * Run build command (for non-SST projects)
-     * SST projects handle building internally during deployment
      *
      * @throws {Error} If build command fails
      */
     runBuild(): Promise<void>;
     /**
-     * Execute deployment command and extract CloudFront distribution ID
+     * Execute deployment and extract CloudFront distribution ID
      *
-     * @param stage - Deployment stage (development, staging, production)
+     * @param stage - Deployment stage
      * @returns CloudFront distribution ID if found, null otherwise
      * @throws {Error} If deployment fails
      */
     executeDeploy(stage: DeploymentStage): Promise<string | null>;
     /**
-     * Run SST deploy with real-time streaming output
+     * Extract CloudFront distribution ID from deployment output
      *
-     * Shows the last 4 lines of deployment output with smart formatting:
-     * - Blue for building/bundling operations
-     * - Green for resource creation
-     * - Red for errors
-     * - Yellow for applying/installing
-     * - Cyan for waiting states
-     *
-     * @param stage - Deployment stage name
-     * @param sstStage - SST-specific stage name
-     * @param spinner - Ora spinner instance for status updates
-     * @returns Complete stdout from SST deployment
-     * @throws {Error} If SST deploy exits with non-zero code
-     *
-     * @private
-     */
-    private runSSTDeployWithStreaming;
-    /**
-     * Extract CloudFront distribution ID from SST deployment output
-     *
-     * Looks for patterns like:
-     * - CloudFront URLs: https://d1234abcd.cloudfront.net
-     * - JSON output with distributionId field
-     *
-     * @param output - Complete stdout from SST deployment
-     * @returns Distribution ID (e.g., "d1234abcd") or null if not found
-     *
-     * @example
-     * ```typescript
-     * const distId = extractCloudFrontDistributionId(sstOutput);
-     * // Returns: "d1muqpyoeowt1o"
-     * ```
+     * @param output - Deployment output text
+     * @returns Distribution ID or null
      */
     extractCloudFrontDistributionId(output: string): string | null;
     /**
-     * Print deployment summary on success
+     * Print deployment success summary
      *
-     * @param result - Deployment result object
-     * @param stageTimings - Array of stage timing information
+     * @param result - Deployment result
+     * @param stageTimings - Timing information for each stage
      */
-    printDeploymentSummary(result: DeploymentResult, stageTimings: {
-        name: string;
-        duration: number;
-    }[]): void;
+    printDeploymentSummary(result: DeploymentResult, stageTimings: StageTiming[]): void;
     /**
-     * Print deployment summary on failure
+     * Print deployment failure summary with recovery suggestions
      *
-     * @param result - Deployment result object
-     * @param stageTimings - Array of stage timing information
+     * @param result - Deployment result
+     * @param stageTimings - Timing information for each stage
      */
-    printDeploymentFailureSummary(result: DeploymentResult, stageTimings: {
-        name: string;
-        duration: number;
-    }[]): void;
+    printDeploymentFailureSummary(result: DeploymentResult, stageTimings: StageTiming[]): void;
 }
 //# sourceMappingURL=orchestrator.d.ts.map

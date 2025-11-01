@@ -15,7 +15,7 @@
  */
 import { CloudFrontClient, ListDistributionsCommand, GetDistributionCommand, UpdateDistributionCommand, DeleteDistributionCommand, GetDistributionConfigCommand, } from '@aws-sdk/client-cloudfront';
 import { Route53Client, ListResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
-import chalk from 'chalk';
+import { ExternalServiceError, ERROR_CODES } from '../errors.js';
 /**
  * CloudFront API Client for managing distributions and DNS records
  */
@@ -73,8 +73,7 @@ export class CloudFrontAPIClient {
             }));
         }
         catch (error) {
-            console.error(chalk.red('❌ Error listing CloudFront distributions:'), error);
-            throw error;
+            throw new ExternalServiceError('Failed to list CloudFront distributions', ERROR_CODES.CLOUDFRONT_OPERATION_FAILED, error);
         }
     }
     /**
@@ -118,8 +117,7 @@ export class CloudFrontAPIClient {
             };
         }
         catch (error) {
-            console.error(chalk.red(`❌ Error getting distribution ${distributionId}:`), error);
-            throw error;
+            throw new ExternalServiceError(`Failed to get CloudFront distribution ${distributionId}`, ERROR_CODES.CLOUDFRONT_NOT_FOUND, error);
         }
     }
     /**
@@ -157,8 +155,7 @@ export class CloudFrontAPIClient {
             await this.cfClient.send(updateCommand);
         }
         catch (error) {
-            console.error(chalk.red(`❌ Error disabling distribution ${distributionId}:`), error);
-            throw error;
+            throw new ExternalServiceError(`Failed to disable CloudFront distribution ${distributionId}`, ERROR_CODES.CLOUDFRONT_OPERATION_FAILED, error);
         }
     }
     /**
@@ -227,8 +224,7 @@ export class CloudFrontAPIClient {
             await this.cfClient.send(deleteCommand);
         }
         catch (error) {
-            console.error(chalk.red(`❌ Error deleting distribution ${distributionId}:`), error);
-            throw error;
+            throw new ExternalServiceError(`Failed to delete CloudFront distribution ${distributionId}`, ERROR_CODES.CLOUDFRONT_OPERATION_FAILED, error);
         }
     }
     /**
@@ -267,8 +263,7 @@ export class CloudFrontAPIClient {
             }));
         }
         catch (error) {
-            console.error(chalk.red(`❌ Error getting DNS records for zone ${hostedZoneId}:`), error);
-            throw error;
+            throw new ExternalServiceError(`Failed to get DNS records for hosted zone ${hostedZoneId}`, ERROR_CODES.DNS_OPERATION_FAILED, error);
         }
     }
 }

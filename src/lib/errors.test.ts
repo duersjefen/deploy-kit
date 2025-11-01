@@ -30,6 +30,7 @@ describe('Error Utilities', () => {
     it('creates ConfigurationError with configPath and validationErrors', () => {
       const error = new ConfigurationError(
         'Invalid config',
+        'CONFIG_INVALID',
         '/path/to/config.json',
         ['Missing projectName', 'Invalid AWS region']
       );
