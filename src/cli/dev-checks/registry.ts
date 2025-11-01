@@ -15,6 +15,7 @@ import { createSstStateHealthCheck } from './sst-state.js';
 import { createRecursiveSstDevCheck } from './recursive-sst-dev.js';
 import { createNextJsCanaryFeaturesCheck } from './nextjs-canary.js';
 import { createPulumiOutputUsageCheck } from './pulumi-output.js';
+import { createLambdaReservedVarsCheck } from './lambda-reserved-vars.js';
 
 /**
  * Safe fixes that can be auto-applied without user confirmation
@@ -37,6 +38,7 @@ export function getDevChecks(
     { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
     { name: 'SST Config', check: createSstConfigCheck(projectRoot) },
     { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot) },
+    { name: 'Lambda Reserved Environment Variables', check: createLambdaReservedVarsCheck(projectRoot, verbose) },
     { name: 'Recursive SST Dev Script', check: createRecursiveSstDevCheck(projectRoot) },
     { name: 'Next.js Canary Features', check: createNextJsCanaryFeaturesCheck(projectRoot) },
     { name: 'Pulumi Output Usage', check: createPulumiOutputUsageCheck(projectRoot) },

@@ -7,6 +7,7 @@ export declare function getPreDeploymentChecks(config: ProjectConfig, projectRoo
     checkGitStatus: () => Promise<void>;
     checkAwsCredentials: () => Promise<void>;
     runTests: () => Promise<void>;
+    checkLambdaReservedVars: () => Promise<void>;
     checkSslCertificate: (stage: DeploymentStage) => Promise<void>;
     run: (stage: DeploymentStage) => Promise<void>;
 };

@@ -1,0 +1,1 @@
+{"version":3,"file":"lambda-reserved-vars.d.ts","sourceRoot":"","sources":["../../../src/cli/dev-checks/lambda-reserved-vars.ts"],"names":[],"mappings":"AAAA;;;GAGG;AAKH,OAAO,KAAK,EAAE,WAAW,EAAE,MAAM,YAAY,CAAC;AAO9C,wBAAgB,6BAA6B,CAC3C,WAAW,EAAE,MAAM,EACnB,OAAO,GAAE,OAAe,GACvB,MAAM,OAAO,CAAC,WAAW,CAAC,CAiE5B"}

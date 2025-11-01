@@ -2,7 +2,10 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import chalk from 'chalk';
 import ora from 'ora';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { ensureCertificateExists } from '../certificates/manager.js';
+import { findReservedVarsInSstConfig, formatReservedVarError, } from '../lib/lambda-reserved-vars.js';
 const execAsync = promisify(exec);
 /**
  * Pre-deployment safety checks
@@ -99,6 +102,64 @@ export function getPreDeploymentChecks(config, projectRoot = process.cwd()) {
         }
     }
     /**
+     * Check for reserved Lambda environment variables in SST config
+     */
+    async function checkLambdaReservedVars() {
+        const spinner = ora('Checking for reserved Lambda environment variables...').start();
+        const startTime = Date.now();
+        try {
+            // Look for sst.config.ts or sst.config.js
+            const configPaths = [
+                join(projectRoot, 'sst.config.ts'),
+                join(projectRoot, 'sst.config.js'),
+            ];
+            let configPath = null;
+            let configContent = null;
+            for (const path of configPaths) {
+                if (existsSync(path)) {
+                    configPath = path;
+                    try {
+                        configContent = readFileSync(path, 'utf-8');
+                        break;
+                    }
+                    catch (error) {
+                        // Skip if cannot read
+                    }
+                }
+            }
+            if (!configPath || !configContent) {
+                spinner.succeed('✅ Reserved vars check skipped (no SST config found)');
+                checks.push({ name: 'Lambda Reserved Vars', status: 'warning', message: 'No SST config found' });
+                return;
+            }
+            // Find reserved variables in the config
+            const violations = findReservedVarsInSstConfig(configContent);
+            if (violations.length === 0) {
+                checkCount++;
+                spinner.succeed(`✅ No reserved Lambda variables detected (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+                checks.push({ name: 'Lambda Reserved Vars', status: 'success', message: 'No violations' });
+                return;
+            }
+            // Found reserved variables - fail check
+            spinner.fail('❌ Reserved Lambda environment variables detected');
+            console.log('\n' + chalk.red(formatReservedVarError(violations)) + '\n');
+            checks.push({
+                name: 'Lambda Reserved Vars',
+                status: 'failed',
+                message: `${violations.length} reserved variable(s) detected`
+            });
+            throw new Error('Reserved Lambda environment variables detected in SST config');
+        }
+        catch (error) {
+            if (error.message.includes('Reserved Lambda')) {
+                throw error; // Re-throw our error
+            }
+            // Other errors - warn but don't block
+            spinner.warn('⚠️  Could not check for reserved Lambda variables');
+            checks.push({ name: 'Lambda Reserved Vars', status: 'warning', message: 'Check failed' });
+        }
+    }
+    /**
      * Ensure SSL certificate exists and is configured
      */
     async function checkSslCertificate(stage) {
@@ -168,6 +229,7 @@ export function getPreDeploymentChecks(config, projectRoot = process.cwd()) {
         try {
             await checkGitStatus();
             await checkAwsCredentials();
+            await checkLambdaReservedVars();
             if (config.runTestsBeforeDeploy !== false) {
                 await runTests();
             }
@@ -181,5 +243,5 @@ export function getPreDeploymentChecks(config, projectRoot = process.cwd()) {
             throw error;
         }
     }
-    return { checkGitStatus, checkAwsCredentials, runTests, checkSslCertificate, run };
+    return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, run };
 }
