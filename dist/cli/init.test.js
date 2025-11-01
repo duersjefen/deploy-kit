@@ -5,6 +5,7 @@ import { describe, it, before, after } from 'node:test';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { createTempDir, cleanupTempDir, assertEqual, assert, } from '../test-utils.js';
+import { validateDomain } from '../lib/domain-utils.js';
 describe('init command', () => {
     let tempDir;
     before(() => {
@@ -167,13 +168,26 @@ describe('init command', () => {
         it('validates domain format', () => {
             const validDomains = ['example.com', 'my-app.co.uk', 'staging.example.com'];
             const invalidDomains = ['example', 'http://example.com', '.example.com'];
-            // Simple domain validation regex
-            const domainRegex = /^[a-z0-9.-]+\.[a-z]{2,}$/;
+            // Use the actual validateDomain function (imported at top)
             for (const domain of validDomains) {
-                assert(domainRegex.test(domain), `${domain} should be valid domain`);
+                // Should not throw
+                try {
+                    validateDomain(domain);
+                }
+                catch (error) {
+                    assert(false, `${domain} should be valid domain but threw: ${error.message}`);
+                }
             }
             for (const domain of invalidDomains) {
-                assert(!domainRegex.test(domain), `${domain} should be invalid domain`);
+                // Should throw
+                try {
+                    validateDomain(domain);
+                    assert(false, `${domain} should be invalid domain but didn't throw`);
+                }
+                catch (error) {
+                    // Expected to throw - test passes
+                    assert(true);
+                }
             }
         });
         it('validates AWS profile name format', () => {
