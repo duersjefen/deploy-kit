@@ -94,4 +94,75 @@ export declare function startLocalstack(services?: string[]): Promise<Localstack
  * @returns Promise that resolves when cleanup is complete
  */
 export declare function stopLocalstack(): Promise<void>;
+/**
+ * Performance benchmarking utilities
+ */
+/**
+ * Result of a performance benchmark
+ */
+export interface BenchmarkResult {
+    name: string;
+    duration: number;
+    memoryUsed?: number;
+    operations: number;
+    opsPerSecond: number;
+}
+/**
+ * Options for running a benchmark
+ */
+export interface BenchmarkOptions {
+    iterations?: number;
+    warmup?: number;
+    trackMemory?: boolean;
+    verbose?: boolean;
+}
+/**
+ * Run a performance benchmark on an async function
+ *
+ * Measures execution time and operations per second.
+ * Optionally tracks memory usage and runs warmup iterations.
+ *
+ * @param name - Benchmark name for reporting
+ * @param fn - Async function to benchmark
+ * @param options - Benchmark configuration
+ * @returns BenchmarkResult with timing and performance metrics
+ *
+ * @example
+ * ```typescript
+ * const result = await benchmark('config validation', async () => {
+ *   await validateConfig(largeConfig);
+ * }, { iterations: 1000, trackMemory: true });
+ *
+ * console.log(`${result.name}: ${result.opsPerSecond} ops/sec`);
+ * ```
+ */
+export declare function benchmark(name: string, fn: () => Promise<void>, options?: BenchmarkOptions): Promise<BenchmarkResult>;
+/**
+ * Run a performance benchmark on a synchronous function
+ *
+ * @param name - Benchmark name for reporting
+ * @param fn - Synchronous function to benchmark
+ * @param options - Benchmark configuration
+ * @returns BenchmarkResult with timing metrics
+ */
+export declare function benchmarkSync(name: string, fn: () => void, options?: BenchmarkOptions): BenchmarkResult;
+/**
+ * Compare multiple benchmarks and report results
+ *
+ * @param results - Array of benchmark results
+ * @param threshold - Warn if slowest is >threshold slower than fastest (default: 1.5x)
+ * @returns Formatted comparison report
+ *
+ * @example
+ * ```typescript
+ * const results = [
+ *   await benchmark('method-a', methodA),
+ *   await benchmark('method-b', methodB),
+ * ];
+ *
+ * const report = compareBenchmarks(results);
+ * console.log(report);
+ * ```
+ */
+export declare function compareBenchmarks(results: BenchmarkResult[], threshold?: number): string;
 //# sourceMappingURL=test-utils.d.ts.map
