@@ -39,6 +39,8 @@ export declare class DeploymentKit {
     private orchestrator;
     private rollbackManager;
     private cloudFrontOps;
+    private logger;
+    private metrics;
     /**
      * Create a new DeploymentKit instance
      *
@@ -51,7 +53,11 @@ export declare class DeploymentKit {
      * const kit = new DeploymentKit(config, '/path/to/project');
      * ```
      */
-    constructor(config: ProjectConfig, projectRoot?: string);
+    constructor(config: ProjectConfig, projectRoot?: string, options?: {
+        logLevel?: 'debug' | 'info' | 'warn' | 'error';
+        metricsBackend?: 'memory' | 'datadog' | 'cloudwatch' | 'prometheus';
+        verbose?: boolean;
+    });
     /**
      * Execute full deployment workflow
      *
@@ -76,6 +82,13 @@ export declare class DeploymentKit {
      */
     deploy(stage: DeploymentStage, options?: {
         isDryRun?: boolean;
+        showDiff?: boolean;
+        benchmark?: boolean;
+        canary?: {
+            initial: number;
+            increment: number;
+            interval: number;
+        };
     }): Promise<DeploymentResult>;
     /**
      * Get deployment status without deploying
