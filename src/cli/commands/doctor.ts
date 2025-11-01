@@ -8,9 +8,8 @@ import ora from 'ora';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
-import { validateConfig } from '../utils/config-validator.js';
+import { validateConfig, type UnvalidatedConfig } from '../utils/config-validator.js';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
-import type { UnvalidatedConfig } from '../../types.js';
 
 interface DoctorCheck {
   name: string;
@@ -27,7 +26,7 @@ export async function handleDoctorCommand(projectRoot: string = process.cwd()): 
 
   // Check 1: Config
   let configPath = join(projectRoot, '.deploy-config.json');
-  let config: any = null;
+  let config: UnvalidatedConfig | null = null;
 
   const configSpinner = ora('Checking configuration...').start();
   try {
@@ -40,7 +39,7 @@ export async function handleDoctorCommand(projectRoot: string = process.cwd()): 
       });
     } else {
       const content = readFileSync(configPath, 'utf-8');
-      config = JSON.parse(content);
+      config = JSON.parse(content) as UnvalidatedConfig;
 
       const validation = validateConfig(config);
       if (validation.valid) {
@@ -48,7 +47,7 @@ export async function handleDoctorCommand(projectRoot: string = process.cwd()): 
         checks.push({
           name: 'Configuration File',
           status: 'pass',
-          message: `Valid (` + config.stages.length + ` stages)`,
+          message: `Valid (` + (config as UnvalidatedConfig).stages?.length + ` stages)`,
         });
       } else {
         configSpinner.warn('Configuration has errors');
@@ -123,7 +122,7 @@ export async function handleDoctorCommand(projectRoot: string = process.cwd()): 
     const identity = JSON.parse(result);
     
     // Check if profile is auto-detected for SST projects
-    const resolvedProfile = resolveAwsProfile(config, projectRoot);
+    const resolvedProfile = resolveAwsProfile(config as any, projectRoot);
     const profileInfo = resolvedProfile 
       ? `(auto-detected from sst.config.ts) - Account: ${identity.Account}`
       : `Account: ${identity.Account}`;

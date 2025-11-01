@@ -5,7 +5,7 @@
 import chalk from 'chalk';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import prompt from 'prompts';
+import prompt, { type PromptObject } from 'prompts';
 import { detectProfileFromSstConfig } from '../utils/aws-profile-detector.js';
 
 export interface InitAnswers {
@@ -16,6 +16,11 @@ export interface InitAnswers {
   productionDomain: string;
   awsRegion: string;
   runTests: boolean;
+}
+
+export interface OptionalFiles {
+  createScripts?: boolean;
+  createMakefile?: boolean;
 }
 
 /**
@@ -36,7 +41,7 @@ export async function askQuestions(projectRoot: string = process.cwd()): Promise
     }
   }
 
-  const questions: any[] = [
+  const questions: PromptObject[] = [
     {
       type: 'text',
       name: 'projectName',
@@ -125,7 +130,7 @@ export function printBanner(): void {
 /**
  * Print setup summary
  */
-export function printSummary(answers: InitAnswers, optionalFiles?: any): void {
+export function printSummary(answers: InitAnswers, optionalFiles?: OptionalFiles): void {
   console.log('\n' + chalk.bold.green('═'.repeat(60)));
   console.log(chalk.bold.green('✨ Setup Complete!'));
   console.log(chalk.bold.green('═'.repeat(60)));

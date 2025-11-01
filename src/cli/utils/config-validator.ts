@@ -5,6 +5,13 @@
 import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
+import type { HealthCheck } from '../../types.js';
+
+/**
+ * Configuration before validation (from external sources like JSON files)
+ * Uses Record<string, any> to indicate unvalidated structure while allowing property access
+ */
+export type UnvalidatedConfig = Record<string, any>;
 
 export interface DeployConfig {
   projectName: string;
@@ -17,7 +24,7 @@ export interface DeployConfig {
   requireCleanGit?: boolean;
   runTestsBeforeDeploy?: boolean;
   stageConfig: Record<string, any>;
-  healthChecks?: any[];
+  healthChecks?: HealthCheck[];
   hooks?: Record<string, string>;
   [key: string]: any;
 }
@@ -31,7 +38,7 @@ export interface ValidationResult {
 /**
  * Validate configuration structure
  */
-export function validateConfig(config: any): ValidationResult {
+export function validateConfig(config: UnvalidatedConfig): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -158,9 +165,9 @@ export function mergeConfigs(existingConfig: DeployConfig, templateConfig: Deplo
   // Merge health checks: keep existing, add new ones from template
   if (templateConfig.healthChecks && existingConfig.healthChecks) {
     // Deduplicate by URL
-    const existingUrls = new Set(existingConfig.healthChecks.map((h: any) => h.url));
+    const existingUrls = new Set(existingConfig.healthChecks.map((h: HealthCheck) => h.url));
     const newChecks = templateConfig.healthChecks.filter(
-      (h: any) => !existingUrls.has(h.url)
+      (h: HealthCheck) => !existingUrls.has(h.url)
     );
     merged.healthChecks = [...existingConfig.healthChecks, ...newChecks];
   } else if (templateConfig.healthChecks && !existingConfig.healthChecks) {

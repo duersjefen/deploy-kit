@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import ora from 'ora';
-import { DeploymentStage } from '../types.js';
+import type { DeploymentStage, ExtendedLockManager } from '../types.js';
 
 /**
  * Rollback manager - handles recovery from failed deployments
@@ -17,14 +17,14 @@ import { DeploymentStage } from '../types.js';
  * ```
  */
 export class RollbackManager {
-  private lockManager: any;
+  private lockManager: ExtendedLockManager;
 
   /**
    * Create a new rollback manager
    *
    * @param lockManager - Lock manager instance for clearing locks
    */
-  constructor(lockManager: any) {
+  constructor(lockManager: ExtendedLockManager) {
     this.lockManager = lockManager;
   }
 

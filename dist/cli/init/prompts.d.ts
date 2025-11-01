@@ -10,6 +10,10 @@ export interface InitAnswers {
     awsRegion: string;
     runTests: boolean;
 }
+export interface OptionalFiles {
+    createScripts?: boolean;
+    createMakefile?: boolean;
+}
 /**
  * Ask user for project configuration
  */
@@ -21,5 +25,5 @@ export declare function printBanner(): void;
 /**
  * Print setup summary
  */
-export declare function printSummary(answers: InitAnswers, optionalFiles?: any): void;
+export declare function printSummary(answers: InitAnswers, optionalFiles?: OptionalFiles): void;
 //# sourceMappingURL=prompts.d.ts.map

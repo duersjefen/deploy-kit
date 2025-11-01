@@ -5,7 +5,7 @@
 
 import chalk from 'chalk';
 import { CloudFrontAPIClient } from '../../lib/cloudfront/client.js';
-import { CloudFrontAnalyzer } from '../../lib/cloudfront/analyzer.js';
+import { CloudFrontAnalyzer, type DistributionAnalysis, type InfrastructureAuditReport } from '../../lib/cloudfront/analyzer.js';
 import type { ProjectConfig, DNSRecord } from '../../types.js';
 
 export async function handleCloudFrontCommand(
@@ -104,7 +104,7 @@ async function cleanupOrphans(
   try {
     // Fetch DNS records from Route53 hosted zones
     console.log(chalk.gray('Checking DNS records...\n'));
-    const dnsRecords: any[] = [];
+    const dnsRecords: DNSRecord[] = [];
 
     if (config.hostedZones && config.hostedZones.length > 0) {
       for (const zone of config.hostedZones) {
@@ -162,7 +162,7 @@ async function reportCloudFront(
   try {
     // Fetch DNS records from Route53 hosted zones
     console.log(chalk.gray('Fetching data...\n'));
-    const dnsRecords: any[] = [];
+    const dnsRecords: DNSRecord[] = [];
 
     if (config.hostedZones && config.hostedZones.length > 0) {
       for (const zone of config.hostedZones) {
@@ -190,7 +190,7 @@ async function reportCloudFront(
   }
 }
 
-function printAuditReport(report: any) {
+function printAuditReport(report: InfrastructureAuditReport) {
   console.log(chalk.bold('Distribution Summary'));
   console.log(`  Expected:   ${report.configuredDistributions.length + 1} (stages + redirect)`);
   console.log(`  Actual:     ${report.totalDistributions}`);
@@ -204,7 +204,7 @@ function printAuditReport(report: any) {
 
   if (report.configuredDistributions.length > 0) {
     console.log(chalk.bold.green('✅ Configured Distributions'));
-    report.configuredDistributions.forEach((dist: any) => {
+    report.configuredDistributions.forEach((dist: DistributionAnalysis) => {
       console.log(
         `  ${dist.id}: ${dist.dnsAliases.join(', ') || dist.domain}`
       );
@@ -217,7 +217,7 @@ function printAuditReport(report: any) {
 
   if (report.misconfiguredDistributions.length > 0) {
     console.log(chalk.bold.yellow('⚠️  Misconfigured Distributions'));
-    report.misconfiguredDistributions.forEach((dist: any) => {
+    report.misconfiguredDistributions.forEach((dist: DistributionAnalysis) => {
       console.log(`  ${dist.id}`);
       dist.reasons.forEach((reason: string) => {
         console.log(chalk.yellow(`     • ${reason}`));
@@ -228,7 +228,7 @@ function printAuditReport(report: any) {
 
   if (report.orphanedDistributions.length > 0) {
     console.log(chalk.bold.red('🔴 Orphaned Distributions'));
-    report.orphanedDistributions.forEach((dist: any) => {
+    report.orphanedDistributions.forEach((dist: DistributionAnalysis) => {
       console.log(`  ${dist.id}`);
       dist.reasons.forEach((reason: string) => {
         console.log(chalk.red(`     • ${reason}`));
@@ -254,7 +254,7 @@ function printAuditReport(report: any) {
   }
 }
 
-function printHealthReport(report: any) {
+function printHealthReport(report: InfrastructureAuditReport) {
   console.log(chalk.bold('Status Summary'));
   console.log(`  Total distributions:  ${report.totalDistributions}`);
   console.log(`  Configured:          ${report.configuredDistributions.length}`);
@@ -269,7 +269,7 @@ function printHealthReport(report: any) {
   }
 }
 
-function printCleanupPlan(orphans: any[]) {
+function printCleanupPlan(orphans: DistributionAnalysis[]) {
   console.log(chalk.bold('DELETION PLAN\n'));
   orphans.forEach((orphan, idx) => {
     console.log(`${idx + 1}. ${orphan.id}`);
@@ -286,7 +286,7 @@ function printCleanupPlan(orphans: any[]) {
   console.log(chalk.yellow('Estimated time: 45-75 minutes (includes CloudFront propagation)\n'));
 }
 
-async function executeCleanup(client: CloudFrontAPIClient, orphans: any[]) {
+async function executeCleanup(client: CloudFrontAPIClient, orphans: DistributionAnalysis[]) {
   console.log(`Deleting ${orphans.length} distributions...\n`);
 
   for (const orphan of orphans) {

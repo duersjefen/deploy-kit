@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import type { ProjectConfig } from '../../types.js';
 
 export interface InitAnswers {
   projectName: string;
@@ -74,7 +75,7 @@ export function generateDeployConfig(answers: InitAnswers): string {
 /**
  * Create .deploy-config.json
  */
-export function createDeployConfig(answers: InitAnswers, projectRoot: string, mergedConfig?: any): void {
+export function createDeployConfig(answers: InitAnswers, projectRoot: string, mergedConfig?: ProjectConfig | null): void {
   const spinner = ora('Creating .deploy-config.json...').start();
 
   try {
@@ -98,7 +99,7 @@ export function createDeployConfig(answers: InitAnswers, projectRoot: string, me
 /**
  * Update package.json with deploy scripts
  */
-export function updatePackageJson(answers: InitAnswers, projectRoot: string): void {
+export function updatePackageJson(answers: InitAnswers | any, projectRoot: string): void {
   const spinner = ora('Updating package.json...').start();
 
   try {
@@ -128,7 +129,7 @@ export function updatePackageJson(answers: InitAnswers, projectRoot: string): vo
 /**
  * Create Makefile with deploy targets
  */
-export function createMakefile(answers: InitAnswers, projectRoot: string): void {
+export function createMakefile(answers: InitAnswers | any, projectRoot: string): void {
   const spinner = ora('Creating Makefile...').start();
 
   try {

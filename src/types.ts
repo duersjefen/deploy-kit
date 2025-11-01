@@ -178,18 +178,11 @@ export interface CloudFrontInvalidateOptions {
 }
 
 /**
- * Type for unvalidated configuration (before validation)
- * Used when loading config files before schema validation
- */
-export type UnvalidatedConfig = Record<string, unknown>;
-
-/**
  * Lock manager interface (for rollback manager dependency)
  */
 export interface LockManager {
   acquireLock(stage: DeploymentStage): Promise<DeploymentLock>;
   releaseLock(lock: DeploymentLock): Promise<void>;
-  checkLock(stage: DeploymentStage): Promise<DeploymentLock | null>;
 }
 
 /**

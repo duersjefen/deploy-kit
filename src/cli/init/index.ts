@@ -6,9 +6,11 @@ import chalk from 'chalk';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import prompt from 'prompts';
+import type { ProjectConfig } from '../../types.js';
+import type { UnvalidatedConfig, DeployConfig } from '../utils/config-validator.js';
 
 // Import sub-modules
-import { askQuestions, printBanner, printSummary } from './prompts.js';
+import { askQuestions, printBanner, printSummary, type InitAnswers } from './prompts.js';
 import { createDeployConfig, updatePackageJson, createMakefile, generateDeployConfig } from './templates.js';
 import {
   createLintStagedConfig,
@@ -33,7 +35,7 @@ export interface InitFlags {
 /**
  * Generate InitAnswers from non-interactive flags
  */
-function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): any {
+function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): InitAnswers {
   // Try to auto-detect project name from package.json or directory name
   let projectName = flags.projectName;
   if (!projectName) {
@@ -150,8 +152,8 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
     }
 
     const configPath = join(projectRoot, '.deploy-config.json');
-    let answers: any;
-    let existingConfig: any = null;
+    let answers: InitAnswers;
+    let existingConfig: UnvalidatedConfig | null = null;
 
     // Check if .deploy-config.json already exists
     if (existsSync(configPath)) {
@@ -161,7 +163,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
 
         // Import validation after file ops
         const { validateConfig, printValidationResult, mergeConfigs } = await import('../utils/config-validator.js');
-        const validation = validateConfig(existingConfig);
+        const validation = validateConfig(existingConfig as UnvalidatedConfig);
 
         if (!validation.valid) {
           console.log(chalk.yellow('⚠️  Configuration has errors:'));
@@ -235,7 +237,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           const newAnswers = await askQuestions(projectRoot);
           const newConfig = JSON.parse(generateDeployConfig(newAnswers));
           const { mergeConfigs } = await import('../utils/config-validator.js');
-          const merged = mergeConfigs(existingConfig, newConfig);
+          const merged = mergeConfigs(existingConfig as DeployConfig, newConfig as DeployConfig);
           answers = newAnswers;
           existingConfig = merged;
         } else {
@@ -256,7 +258,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
     console.log();
 
     // Generate files
-    createDeployConfig(answers, projectRoot, existingConfig);
+    createDeployConfig(answers, projectRoot, existingConfig as any);
 
     // If --config-only flag is set, skip scripts and Makefile
     if (flags.configOnly) {
