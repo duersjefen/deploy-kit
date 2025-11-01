@@ -8,10 +8,6 @@ import { existsSync } from 'fs';
 import type { HealthCheck } from '../../types.js';
 
 /**
- * Configuration before validation (from external sources like JSON files)
- * Uses Record<string, any> to indicate unvalidated structure while allowing property access
- */
-/**
  * Configuration before validation (from external sources like JSON files, YAML, etc.)
  *
  * Uses Record<string, any> to indicate unvalidated structure while allowing flexible property access.
@@ -54,10 +50,12 @@ export interface ValidationResult {
 }
 
 /**
- * Validate configuration structure and return validation results
+ * Validate configuration structure and return validation results (FAST synchronous version)
  *
  * Checks required fields (projectName, infrastructure, stages, stageConfig),
- * domain formats, AWS profile availability, and health check definitions.
+ * domain formats, and health check definitions. Skips expensive AWS CLI checks.
+ *
+ * For AWS profile validation, use validateConfigAsync() instead.
  *
  * @param config - Unvalidated configuration object from external source (JSON, YAML, etc.)
  * @returns ValidationResult with valid flag, errors array, and warnings array
@@ -140,19 +138,13 @@ export function validateConfig(config: UnvalidatedConfig): ValidationResult {
     }
   }
 
-  // Check AWS profile exists (if specified)
-  // For SST projects, awsProfile is optional (can be auto-detected from sst.config.ts)
-  // For non-SST projects, awsProfile is required
+  // NOTE: AWS profile validation moved to validateConfigAsync() for better performance.
+  // This synchronous version skips AWS CLI checks. Use validateConfigAsync() before
+  // deployment if you need to verify AWS profile availability.
   if (config.awsProfile) {
-    try {
-      const profilesStr = execSync('aws configure list-profiles', { encoding: 'utf-8' });
-      const profiles = profilesStr.trim().split('\n');
-      if (!profiles.includes(config.awsProfile)) {
-        warnings.push(`AWS profile "${config.awsProfile}" not found in local AWS config`);
-      }
-    } catch {
-      warnings.push('Could not verify AWS profiles (AWS CLI not available)');
-    }
+    warnings.push(
+      'awsProfile specified. Run deployment with `--validate-aws` to verify profile exists.'
+    );
   } else if (config.infrastructure !== 'sst-serverless') {
     // Non-SST projects should specify awsProfile explicitly
     warnings.push(
@@ -166,6 +158,46 @@ export function validateConfig(config: UnvalidatedConfig): ValidationResult {
     errors,
     warnings,
   };
+}
+
+/**
+ * Validate configuration AND verify AWS profile availability
+ *
+ * This is an async version that performs both structural validation and AWS profile checks.
+ * Use this before actual deployment. For fast validation (e.g., during config load),
+ * use validateConfig() instead.
+ *
+ * @param config - Unvalidated configuration object
+ * @returns ValidationResult with both structural and AWS profile checks
+ *
+ * @example
+ * ```typescript
+ * const config = JSON.parse(configContent);
+ * const result = await validateConfigAsync(config);
+ *
+ * if (!result.valid) {
+ *   console.error('Validation failed:', result.errors);
+ * }
+ * ```
+ */
+export async function validateConfigAsync(config: UnvalidatedConfig): Promise<ValidationResult> {
+  // First do fast synchronous validation
+  const result = validateConfig(config);
+
+  // Then check AWS profile if specified
+  if (config.awsProfile) {
+    try {
+      const profilesStr = execSync('aws configure list-profiles', { encoding: 'utf-8' });
+      const profiles = profilesStr.trim().split('\n').filter((p: string) => p.length > 0);
+      if (profiles.length > 0 && !profiles.includes(config.awsProfile)) {
+        result.warnings.push(`AWS profile "${config.awsProfile}" not found in local AWS config`);
+      }
+    } catch {
+      result.warnings.push('Could not verify AWS profiles (AWS CLI not available)');
+    }
+  }
+
+  return result;
 }
 
 /**
