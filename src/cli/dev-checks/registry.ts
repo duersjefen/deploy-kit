@@ -25,12 +25,13 @@ const SAFE_FIX_TYPES = ['recursive_sst_dev', 'nextjs_canary_features', 'sst_lock
  */
 export function getDevChecks(
   projectRoot: string,
-  config: ProjectConfig | null
+  config: ProjectConfig | null,
+  requestedPort: number = 3000
 ): DevCheck[] {
   return [
     { name: 'AWS Credentials', check: createAwsCredentialsCheck(projectRoot, config) },
     { name: 'SST Lock', check: createSstLockCheck(projectRoot) },
-    { name: 'Port Availability', check: createPortAvailabilityCheck(3000) },
+    { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
     { name: 'SST Config', check: createSstConfigCheck(projectRoot) },
     { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot) },
     { name: 'Recursive SST Dev Script', check: createRecursiveSstDevCheck(projectRoot) },
@@ -47,9 +48,10 @@ export function getDevChecks(
  */
 export async function runDevChecks(
   projectRoot: string,
-  config: ProjectConfig | null
+  config: ProjectConfig | null,
+  requestedPort: number = 3000
 ): Promise<{ allPassed: boolean; results: CheckResult[] }> {
-  const checks = getDevChecks(projectRoot, config);
+  const checks = getDevChecks(projectRoot, config, requestedPort);
   const results: CheckResult[] = [];
 
   for (const check of checks) {
