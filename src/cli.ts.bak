@@ -7,12 +7,10 @@
 import { DeploymentKit } from './deployer.js';
 import { getStatusChecker } from './status/checker.js';
 import { getRecoveryManager } from './recovery/manager.js';
-import { runInit, type InitFlags } from './cli/init.js';
+import { runInit } from './cli/init.js';
 import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
-import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
-import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import type { DeploymentStage } from './types.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -25,22 +23,9 @@ const stage = args[1] as DeploymentStage;
 
 // Handle commands that don't require config file
 if (command === 'init') {
-  // Parse init flags
-  const flags: InitFlags = {
-    configOnly: args.includes('--config-only'),
-    scriptsOnly: args.includes('--scripts-only'),
-    makefileOnly: args.includes('--makefile-only'),
-  };
-  
-  // Validate flag combinations
-  const flagCount = Object.values(flags).filter(Boolean).length;
-  if (flagCount > 1) {
-    console.error(chalk.red('❌ Error: Use only one flag at a time (--config-only, --scripts-only, or --makefile-only)'));
-    process.exit(1);
-  }
-  
-  runInit(process.cwd(), flags).catch(error => {
-    console.error(chalk.red('\n❌ Init error:'));
+  runInit(process.cwd()).catch(error => {
+    console.error(chalk.red('
+❌ Init error:'));
     console.error(chalk.red(error.message));
     process.exit(1);
   });
@@ -49,7 +34,8 @@ if (command === 'init') {
 
 if (command === 'validate') {
   handleValidateCommand(process.cwd()).catch(error => {
-    console.error(chalk.red('\n❌ Validation error:'));
+    console.error(chalk.red('
+❌ Validation error:'));
     console.error(chalk.red(error.message));
     process.exit(1);
   });
@@ -58,24 +44,8 @@ if (command === 'validate') {
 
 if (command === 'doctor') {
   handleDoctorCommand(process.cwd()).catch(error => {
-    console.error(chalk.red('\n❌ Doctor error:'));
-    console.error(chalk.red(error.message));
-    process.exit(1);
-  });
-  process.exit(0);
-}
-
-if (command === 'dev') {
-  // Parse dev flags
-  const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
-  const options: DevOptions = {
-    skipChecks: args.includes('--skip-checks'),
-    port: portArg ? parseInt(portArg, 10) : undefined,
-    verbose: args.includes('--verbose'),
-  };
-
-  handleDevCommand(process.cwd(), options).catch(error => {
-    console.error(chalk.red('\n❌ Dev error:'));
+    console.error(chalk.red('
+❌ Doctor error:'));
     console.error(chalk.red(error.message));
     process.exit(1);
   });
@@ -105,12 +75,6 @@ try {
 } catch (error) {
   console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
   process.exit(1);
-}
-
-// Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
-const resolvedProfile = resolveAwsProfile(config, projectRoot);
-if (resolvedProfile && !config.awsProfile) {
-  config.awsProfile = resolvedProfile;
 }
 
 // Initialize kit with the project root where the config file is located
@@ -219,39 +183,22 @@ function printHelpMessage(): void {
   console.log(chalk.gray('  deploy-kit <command> [stage]\n'));
 
   console.log(chalk.bold('COMMANDS'));
-  console.log(chalk.green('  init [flags]'));
+  console.log(chalk.green('  init'));
   console.log(chalk.gray('    Interactive setup wizard for new projects'));
   console.log(chalk.gray('    Creates .deploy-config.json, Makefile, and npm scripts'));
-  console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --config-only      Only create .deploy-config.json'));
-  console.log(chalk.gray('      --scripts-only     Only update npm scripts (requires existing config)'));
-  console.log(chalk.gray('      --makefile-only    Only create Makefile (requires existing config)'));
-  console.log(chalk.gray('    Examples:'));
-  console.log(chalk.gray('      deploy-kit init'));
-  console.log(chalk.gray('      deploy-kit init --config-only'));
-  console.log(chalk.gray('      deploy-kit init --scripts-only\n'));
+  console.log(chalk.gray('    Example: deploy-kit init\n'));
 
   console.log(chalk.green('  validate'));
   console.log(chalk.gray('    Validate .deploy-config.json configuration'));
   console.log(chalk.gray('    Checks: syntax, required fields, domains, health checks'));
-  console.log(chalk.gray('    Example: deploy-kit validate\n'));
+  console.log(chalk.gray('    Example: deploy-kit validate
+'));
 
   console.log(chalk.green('  doctor'));
-  console.log(chalk.gray('    Comprehensive pre-deployment health check'));
-  console.log(chalk.gray('    Checks: config, git, AWS, SST, Node.js, tests'));
-  console.log(chalk.gray('    Example: deploy-kit doctor\n'));
-
-  console.log(chalk.green('  dev [flags]'));
-  console.log(chalk.gray('    Start SST development server with pre-flight checks'));
-  console.log(chalk.gray('    Checks: AWS credentials, locks, ports, Pulumi Output misuse'));
-  console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --skip-checks      Skip all pre-flight checks'));
-  console.log(chalk.gray('      --port=<number>    Custom port (default: 3000)'));
-  console.log(chalk.gray('      --verbose          Show detailed SST output'));
-  console.log(chalk.gray('    Examples:'));
-  console.log(chalk.gray('      deploy-kit dev'));
-  console.log(chalk.gray('      deploy-kit dev --verbose'));
-  console.log(chalk.gray('      deploy-kit dev --port=4000\n'));
+  console.log(chalk.gray('    Comprehensive system health check before deployment'));
+  console.log(chalk.gray('    Checks: config, git, AWS, DNS, SSL, Node.js, tests'));
+  console.log(chalk.gray('    Example: deploy-kit doctor
+'));
 
   console.log(chalk.green('  deploy <stage>'));
   console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
@@ -296,15 +243,6 @@ function printHelpMessage(): void {
   console.log(chalk.bold('EXAMPLES'));
   console.log(chalk.cyan('  # Initialize a new project'));
   console.log(chalk.gray('  $ deploy-kit init\n'));
-
-  console.log(chalk.cyan('  # Validate configuration'));
-  console.log(chalk.gray('  $ deploy-kit validate\n'));
-
-  console.log(chalk.cyan('  # Run pre-deployment checks'));
-  console.log(chalk.gray('  $ deploy-kit doctor\n'));
-
-  console.log(chalk.cyan('  # Start SST development server'));
-  console.log(chalk.gray('  $ deploy-kit dev\n'));
 
   console.log(chalk.cyan('  # Deploy to staging with full checks'));
   console.log(chalk.gray('  $ deploy-kit deploy staging\n'));

@@ -142,6 +142,26 @@ make deploy-staging
 make deploy-production
 ```
 
+### Partial Initialization Flags
+
+If you already have a `.deploy-config.json` or want to set up components separately, use these flags:
+
+```bash
+# Only create configuration file (skip Makefile and npm scripts)
+npx @duersjefen/deploy-kit init --config-only
+
+# Only add npm scripts to package.json (requires existing config)
+npx @duersjefen/deploy-kit init --scripts-only
+
+# Only create Makefile (requires existing config)
+npx @duersjefen/deploy-kit init --makefile-only
+```
+
+**Use cases:**
+- **`--config-only`** - Create config first, then decide about scripts/Makefile later
+- **`--scripts-only`** - Add npm scripts to existing project without recreating config
+- **`--makefile-only`** - Create Makefile without touching configuration or scripts
+
 ## Configuration
 
 ### Minimal SST Project
@@ -267,6 +287,237 @@ npx @duersjefen/deploy-kit recover production
 
 # Validate health checks
 npx @duersjefen/deploy-kit health staging
+
+# Validate configuration
+npx @duersjefen/deploy-kit validate
+
+# Run pre-deployment health check
+npx @duersjefen/deploy-kit doctor
+
+# Start SST development server with pre-flight checks
+npx @duersjefen/deploy-kit dev
+npx @duersjefen/deploy-kit dev --verbose
+npx @duersjefen/deploy-kit dev --port=4000
+
+# Manage CloudFront distributions
+npx @duersjefen/deploy-kit cloudfront audit
+npx @duersjefen/deploy-kit cloudfront cleanup
+```
+
+## Command Reference
+
+### `init` - Project Setup
+
+Interactive setup wizard for new projects. Creates `.deploy-config.json`, `Makefile`, and updates npm scripts.
+
+```bash
+# Full setup (interactive)
+npx @duersjefen/deploy-kit init
+
+# Only create config file
+npx @duersjefen/deploy-kit init --config-only
+
+# Only update npm scripts (requires existing config)
+npx @duersjefen/deploy-kit init --scripts-only
+
+# Only create Makefile (requires existing config)
+npx @duersjefen/deploy-kit init --makefile-only
+```
+
+**Features:**
+- Auto-detects AWS profile from `sst.config.ts` for SST projects
+- Validates project names, domains, and AWS profiles
+- Smart defaults for common configurations
+
+### `validate` - Configuration Validation
+
+Validates `.deploy-config.json` for syntax errors, required fields, and configuration issues.
+
+```bash
+npx @duersjefen/deploy-kit validate
+```
+
+**Checks:**
+- Required fields (projectName, infrastructure, stages, stageConfig)
+- Domain format validation
+- Health check configuration
+- AWS profile existence
+- Stage configuration completeness
+
+### `doctor` - Pre-Deployment Health Check
+
+Comprehensive diagnostic check before deployment. Verifies all systems are ready.
+
+```bash
+npx @duersjefen/deploy-kit doctor
+```
+
+**Checks:**
+- Configuration validity
+- Git repository status and remote
+- AWS credentials and profile
+- SST installation (for SST projects)
+- Node.js version compatibility
+- Test suite (if configured)
+
+### `dev` - SST Development Server
+
+Wraps `sst dev` with automatic pre-flight checks and error recovery.
+
+```bash
+# Start with all pre-flight checks
+npx @duersjefen/deploy-kit dev
+
+# Skip pre-flight checks
+npx @duersjefen/deploy-kit dev --skip-checks
+
+# Use custom port
+npx @duersjefen/deploy-kit dev --port=4000
+
+# Show detailed SST output
+npx @duersjefen/deploy-kit dev --verbose
+```
+
+**Pre-Flight Checks:**
+1. **AWS Credentials** - Validates AWS credentials are configured
+2. **SST Lock Detection** - Checks for Pulumi state locks and auto-unlocks if needed
+3. **Port Availability** - Verifies development port is available
+4. **Config Validity** - Validates `sst.config.ts` syntax
+5. **.sst Directory** - Checks `.sst` directory health
+6. **Recursive SST Dev Script** - Detects infinite recursion in package.json dev script
+7. **Next.js Canary Features** - Detects canary-only features in stable Next.js
+8. **Pulumi Output Misuse** - Detects common "Partition 1 is not valid" errors
+
+**Hybrid Auto-Fix Approach:**
+- **Safe Fixes (Auto-Apply):** Recursive scripts, canary features, SST locks
+- **Risky Fixes (Manual Only):** Pulumi Output transformations (requires verification)
+
+**Error Recovery:**
+- Automatically fixes recursive dev scripts (separates SST from framework)
+- Automatically removes unsupported Next.js canary features
+- Automatically unlocks SST if locked
+- Provides specific fixes for Pulumi Output errors (manual intervention required)
+- Translates common SST errors into actionable guidance
+
+**Example Error Detections:**
+
+```typescript
+// Pattern 1: Pulumi Output Misuse
+// ❌ Detected and warned (manual fix required)
+resources: [table.arn]  // Missing .apply()
+
+// ✅ Correct suggestion
+resources: [table.arn.apply(arn => arn)]
+```
+
+```json
+// Pattern 2: Recursive SST Dev Script
+// ❌ Detected and auto-fixed
+{
+  "scripts": {
+    "dev": "sst dev"  // Creates infinite recursion!
+  }
+}
+
+// ✅ Auto-fixed to
+{
+  "scripts": {
+    "dev": "next dev",       // What SST calls internally
+    "sst:dev": "sst dev"     // What you run
+  }
+}
+```
+
+```typescript
+// Pattern 3: Next.js Canary Features
+// ❌ Detected and auto-fixed
+const nextConfig = {
+  experimental: {
+    turbopackFileSystemCacheForBuild: true,  // Canary-only!
+  }
+};
+
+// ✅ Auto-fixed: Features removed for stable Next.js
+```
+
+### `deploy` - Production Deployment
+
+Deploy to staging or production with full safety checks.
+
+```bash
+npx @duersjefen/deploy-kit deploy staging
+npx @duersjefen/deploy-kit deploy production
+```
+
+**Safety Features:**
+- Dual-lock system prevents concurrent deployments
+- Pre-deployment validation (git, AWS, tests, SSL)
+- Build verification
+- Post-deployment health checks
+- CloudFront cache invalidation
+- Deployment timeline with timing breakdown
+
+### `status` - Deployment Status
+
+Check deployment status for all stages or a specific stage.
+
+```bash
+# Check all stages
+npx @duersjefen/deploy-kit status
+
+# Check specific stage
+npx @duersjefen/deploy-kit status staging
+```
+
+**Detects:**
+- Active deployment locks
+- Pulumi state information
+- Previous deployment failures
+- Lock expiration times
+
+### `recover` - Failure Recovery
+
+Recover from failed deployments by clearing locks and preparing for retry.
+
+```bash
+npx @duersjefen/deploy-kit recover staging
+npx @duersjefen/deploy-kit recover production
+```
+
+**Recovery Actions:**
+- Clears file-based deployment locks
+- Clears Pulumi state locks
+- Validates system is ready for retry
+
+### `health` - Health Check Validation
+
+Run health checks for a deployed application.
+
+```bash
+npx @duersjefen/deploy-kit health staging
+npx @duersjefen/deploy-kit health production
+```
+
+**Validates:**
+- HTTP endpoint connectivity
+- Expected status codes
+- Response content (if configured)
+- Database connectivity (if configured)
+- CloudFront OAC configuration
+
+### `cloudfront` - CloudFront Management
+
+Manage and audit CloudFront distributions.
+
+```bash
+# Audit all distributions
+npx @duersjefen/deploy-kit cloudfront audit
+
+# Clean up unused distributions
+npx @duersjefen/deploy-kit cloudfront cleanup
+
+# Generate distribution report
+npx @duersjefen/deploy-kit cloudfront report
 ```
 
 ## Deployment Process
@@ -493,6 +744,40 @@ If you see 403 errors:
 - **Rate limiting** for multi-project deployments
 
 ## Version History
+
+### 1.4.0 (2024-11-01)
+- ✨ **Dev Command with Pre-Flight Checks**
+  - Wraps `sst dev` with automatic validation
+  - 8 pre-flight checks: AWS, locks, ports, config, .sst, recursive scripts, canary features, Pulumi Outputs
+  - Detects "Partition 1 is not valid" error from incorrect Pulumi Output usage
+  - Detects recursive SST dev scripts (infinite recursion)
+  - Detects Next.js canary-only features in stable versions
+  - Hybrid auto-fix: Safe fixes auto-apply, risky fixes require manual intervention
+  - Auto-unlocks SST if locked
+  - Error translation layer for common SST errors
+  - Flags: `--skip-checks`, `--port=<number>`, `--verbose`
+- 🔧 **AWS Profile Auto-Detection**
+  - Auto-detects AWS profile from `sst.config.ts` for SST projects
+  - Eliminates duplication between SST config and deploy config
+  - Priority: explicit config > auto-detected > default
+  - Enhanced init wizard with profile detection
+- ✅ **Configuration Validation Command**
+  - `deploy-kit validate` checks config syntax and structure
+  - Validates required fields, domains, health checks
+  - AWS profile existence verification
+- 🏥 **Pre-Deployment Health Check Command**
+  - `deploy-kit doctor` runs comprehensive diagnostic checks
+  - Verifies git, AWS, SST, Node.js, tests
+  - Shows profile source (explicit vs auto-detected)
+- 🎯 **Partial Init Flags**
+  - `--config-only`: Only create config file
+  - `--scripts-only`: Only update npm scripts
+  - `--makefile-only`: Only create Makefile
+  - Flexible setup for existing projects
+- 📚 **Documentation Consolidation**
+  - Single comprehensive README for AI agent accessibility
+  - Removed outdated planning and development docs
+  - Complete command reference with examples
 
 ### 1.3.0 (2024-10-31)
 - ✨ **Interactive Init Wizard**
