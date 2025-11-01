@@ -17,6 +17,7 @@ import { MetricsCollector } from './monitoring/metrics-collector.js';
 import { createDiff } from './lib/diff-utils.js';
 import { formatDiffForTerminal } from './lib/diff-formatter.js';
 import { PerformanceAnalyzer } from './lib/performance-analyzer.js';
+import { DeploymentDiffCollector, formatDeploymentDiff } from './deployment/diff-collector.js';
 
 /**
  * DeploymentKit - Main facade for deployment operations
@@ -190,21 +191,36 @@ export class DeploymentKit {
 
       // Show configuration diff if requested
       if (options?.showDiff) {
-        console.log(chalk.bold.white('📋 Configuration Preview:'));
-        console.log(chalk.gray('Current deployment configuration for ' + stage + ':\n'));
-        
-        const stageConfigPreview = {
-          stage,
-          domain: this.config.stageConfig[stage].domain,
-          awsRegion: this.config.stageConfig[stage].awsRegion,
-          infrastructure: this.config.infrastructure,
-          database: this.config.database,
-          healthChecks: this.config.healthChecks?.length || 0,
-          skipCacheInvalidation: this.config.stageConfig[stage].skipCacheInvalidation || false,
-        };
-        
-        console.log(JSON.stringify(stageConfigPreview, null, 2));
-        console.log('');
+        console.log(chalk.gray('\nFetching current AWS state for comparison...\n'));
+
+        try {
+          const diffCollector = new DeploymentDiffCollector(this.config, stage);
+          const deploymentDiff = await diffCollector.collectDiff();
+          const formattedDiff = await formatDeploymentDiff(deploymentDiff);
+
+          console.log(formattedDiff);
+
+          if (!deploymentDiff.hasChanges) {
+            console.log(chalk.yellow('💡 Tip: No AWS resource changes detected, but code/dependencies may have changed.\n'));
+          }
+        } catch (error) {
+          console.warn(chalk.yellow('⚠️  Could not fetch complete AWS state for diff:'), error);
+          console.log(chalk.gray('Showing configuration preview instead:\n'));
+
+          // Fallback to simple preview
+          const stageConfigPreview = {
+            stage,
+            domain: this.config.stageConfig[stage].domain,
+            awsRegion: this.config.stageConfig[stage].awsRegion,
+            infrastructure: this.config.infrastructure,
+            database: this.config.database,
+            healthChecks: this.config.healthChecks?.length || 0,
+            skipCacheInvalidation: this.config.stageConfig[stage].skipCacheInvalidation || false,
+          };
+
+          console.log(JSON.stringify(stageConfigPreview, null, 2));
+          console.log('');
+        }
       }
 
       // Stage 1: Pre-deployment safety checks (BEFORE lock acquisition)
