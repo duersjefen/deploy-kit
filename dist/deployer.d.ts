@@ -82,6 +82,13 @@ export declare class DeploymentKit {
      */
     deploy(stage: DeploymentStage, options?: {
         isDryRun?: boolean;
+        showDiff?: boolean;
+        benchmark?: boolean;
+        canary?: {
+            initial: number;
+            increment: number;
+            interval: number;
+        };
     }): Promise<DeploymentResult>;
     /**
      * Get deployment status without deploying

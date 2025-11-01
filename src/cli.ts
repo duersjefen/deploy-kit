@@ -141,9 +141,23 @@ async function cli() {
 
       // Parse observability flags
       const isDryRun = args.includes('--dry-run');
+      const showDiff = args.includes('--show-diff');
+      const benchmark = args.includes('--benchmark');
       const verbose = args.includes('--verbose');
       const logLevelArg = args.find(a => a.startsWith('--log-level='))?.split('=')[1] as 'debug' | 'info' | 'warn' | 'error' | undefined;
       const metricsBackendArg = args.find(a => a.startsWith('--metrics-backend='))?.split('=')[1] as 'memory' | 'datadog' | 'cloudwatch' | 'prometheus' | undefined;
+
+      // Parse canary deployment flags
+      const enableCanary = args.includes('--canary');
+      const initialArg = args.find(a => a.startsWith('--initial='))?.split('=')[1];
+      const incrementArg = args.find(a => a.startsWith('--increment='))?.split('=')[1];
+      const intervalArg = args.find(a => a.startsWith('--interval='))?.split('=')[1];
+      
+      const canaryOptions = enableCanary ? {
+        initial: initialArg ? parseInt(initialArg) : 10,
+        increment: incrementArg ? parseInt(incrementArg) : 10,
+        interval: intervalArg ? parseInt(intervalArg) : 300,
+      } : undefined;
 
       // Initialize kit with observability options
       const kit = new DeploymentKit(config as any, projectRoot, {
@@ -152,7 +166,7 @@ async function cli() {
         verbose,
       });
 
-      const result = await kit.deploy(stage, { isDryRun });
+      const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, canary: canaryOptions });
 
       // Deployment result is now printed by the deployer itself
       // Exit with appropriate code
@@ -212,6 +226,55 @@ async function cli() {
         console.log(chalk.red('\n❌ Some health checks failed\n'));
         process.exit(1);
       }
+      break;
+
+    case 'canary':
+      const canarySubcommand = stage; // For canary, second arg is subcommand
+      const canaryDeploymentId = args[2];
+      
+      if (!canarySubcommand) {
+        console.error(chalk.red('\n❌ Usage: deploy-kit canary <status|rollback|complete> <deployment-id>'));
+        console.error(chalk.gray('   Example: deploy-kit canary status my-deployment-123'));
+        process.exit(1);
+      }
+
+      switch (canarySubcommand as string) {
+        case 'status':
+          if (!canaryDeploymentId) {
+            console.error(chalk.red('\n❌ Usage: deploy-kit canary status <deployment-id>'));
+            process.exit(1);
+          }
+          console.log(chalk.cyan(`\n📊 Canary Deployment Status: ${canaryDeploymentId}`));
+          console.log(chalk.yellow('\n⚠️  Canary status check not yet implemented'));
+          console.log(chalk.gray('This feature requires CloudFront weighted routing integration.\n'));
+          break;
+
+        case 'rollback':
+          if (!canaryDeploymentId) {
+            console.error(chalk.red('\n❌ Usage: deploy-kit canary rollback <deployment-id>'));
+            process.exit(1);
+          }
+          console.log(chalk.yellow(`\n🔄 Rolling back canary deployment: ${canaryDeploymentId}`));
+          console.log(chalk.yellow('\n⚠️  Canary rollback not yet implemented'));
+          console.log(chalk.gray('This feature requires CloudFront weighted routing integration.\n'));
+          break;
+
+        case 'complete':
+          if (!canaryDeploymentId) {
+            console.error(chalk.red('\n❌ Usage: deploy-kit canary complete <deployment-id>'));
+            process.exit(1);
+          }
+          console.log(chalk.green(`\n✅ Completing canary deployment: ${canaryDeploymentId}`));
+          console.log(chalk.yellow('\n⚠️  Canary complete not yet implemented'));
+          console.log(chalk.gray('This feature requires CloudFront weighted routing integration.\n'));
+          break;
+
+        default:
+          console.error(chalk.red(`\n❌ Unknown canary subcommand: ${canarySubcommand}`));
+          console.error(chalk.gray('Valid subcommands: status, rollback, complete\n'));
+          process.exit(1);
+      }
+      process.exit(0);
       break;
 
     case 'cloudfront':
@@ -304,14 +367,31 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Stages: staging, production'));
   console.log(chalk.gray('    Flags:'));
   console.log(chalk.gray('      --dry-run                Preview deployment without executing'));
+  console.log(chalk.gray('      --show-diff              Show configuration changes before deployment'));
+  console.log(chalk.gray('      --benchmark              Display detailed performance report after deployment'));
   console.log(chalk.gray('      --verbose                Enable detailed logging and debug output'));
   console.log(chalk.gray('      --log-level=<level>      Set log level: debug, info, warn, error (default: info)'));
   console.log(chalk.gray('      --metrics-backend=<type> Metrics backend: memory, datadog, cloudwatch, prometheus'));
+  console.log(chalk.gray('      --canary                 Enable canary deployment with gradual traffic shifting'));
+  console.log(chalk.gray('      --initial=<percentage>   Initial canary traffic percentage (default: 10)'));
+  console.log(chalk.gray('      --increment=<percentage> Traffic increment per interval (default: 10)'));
+  console.log(chalk.gray('      --interval=<seconds>     Seconds between traffic shifts (default: 300)'));
   console.log(chalk.gray('    Examples:'));
   console.log(chalk.gray('      deploy-kit deploy staging'));
   console.log(chalk.gray('      deploy-kit deploy staging --dry-run'));
+  console.log(chalk.gray('      deploy-kit deploy staging --dry-run --show-diff'));
   console.log(chalk.gray('      deploy-kit deploy staging --verbose'));
+  console.log(chalk.gray('      deploy-kit deploy staging --benchmark'));
   console.log(chalk.gray('      deploy-kit deploy staging --log-level=debug --metrics-backend=datadog\n'));
+  console.log(chalk.gray('      deploy-kit deploy staging --canary --initial=10 --increment=10 --interval=300\n'));
+
+  console.log(chalk.green('  canary <subcommand> <deployment-id>'));
+  console.log(chalk.gray('    Manage canary deployments with gradual traffic shifting'));
+  console.log(chalk.gray('    Subcommands:'));
+  console.log(chalk.gray('      status <id>     Check canary deployment status and traffic distribution'));
+  console.log(chalk.gray('      rollback <id>   Rollback canary and restore 100% traffic to old version'));
+  console.log(chalk.gray('      complete <id>   Complete canary and finalize 100% traffic to new version'));
+  console.log(chalk.gray('    Example: deploy-kit canary status my-deployment-123\n'));
 
   console.log(chalk.green('  status [stage]'));
   console.log(chalk.gray('    Check deployment status for all stages or specific stage'));
