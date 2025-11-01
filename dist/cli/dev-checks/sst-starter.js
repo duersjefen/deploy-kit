@@ -64,7 +64,7 @@ export async function startSstDev(projectRoot, config, options) {
     }
     catch (error) {
         console.error(chalk.red('\n❌ SST dev failed\n'));
-        await handleSstDevError(error);
+        await handleSstDevError(error, projectRoot);
         process.exit(1);
     }
 }

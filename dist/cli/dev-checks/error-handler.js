@@ -3,13 +3,19 @@
  * Translates cryptic SST errors into actionable guidance
  */
 import chalk from 'chalk';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 /**
  * Handle and provide guidance for common SST dev errors
  *
  * Converts technical error messages into user-friendly recovery steps
+ * Parses .sst/log/sst.log for detailed error information
  */
-export async function handleSstDevError(error) {
+export async function handleSstDevError(error, projectRoot) {
     const message = error.message.toLowerCase();
+    // Try to read SST log file for more context
+    const logContent = projectRoot ? readSstLogFile(projectRoot) : null;
+    const detailedError = logContent ? parseErrorFromLog(logContent) : null;
     console.log(chalk.bold.red('🔍 Error Analysis:\n'));
     // Pattern 1: Pulumi Output Misuse
     if (message.includes('partition') && message.includes('not valid')) {
@@ -72,8 +78,57 @@ export async function handleSstDevError(error) {
         console.log(chalk.gray('  2. Retry: npx deploy-kit dev\n'));
         return;
     }
+    // Show detailed error from log file if available
+    if (detailedError) {
+        console.log(chalk.red(`\n📋 Details from .sst/log/sst.log:`));
+        console.log(chalk.gray(`   ${detailedError}\n`));
+    }
     // Fallback: Clean SST State
     console.log(chalk.yellow('🔧 Try cleaning SST state:'));
     console.log(chalk.gray('  rm -rf .sst'));
     console.log(chalk.gray('  npx deploy-kit dev\n'));
+    if (projectRoot && existsSync(join(projectRoot, '.sst', 'log', 'sst.log'))) {
+        console.log(chalk.gray(`Full logs: ${join(projectRoot, '.sst', 'log', 'sst.log')}\n`));
+    }
+}
+/**
+ * Read SST log file if it exists
+ */
+function readSstLogFile(projectRoot) {
+    const logPath = join(projectRoot, '.sst', 'log', 'sst.log');
+    if (!existsSync(logPath)) {
+        return null;
+    }
+    try {
+        return readFileSync(logPath, 'utf-8');
+    }
+    catch (error) {
+        return null;
+    }
+}
+/**
+ * Parse error messages from SST log content
+ *
+ * Looks for common error patterns in the log
+ */
+function parseErrorFromLog(logContent) {
+    // Split into lines and get the last 50 lines (most recent)
+    const lines = logContent.split('\n').slice(-50);
+    // Look for error messages
+    const errorPatterns = [
+        /level=ERROR msg="([^"]+)"/,
+        /error: (.+)/i,
+        /Error: (.+)/,
+        /Failed: (.+)/,
+        /✖ (.+)/,
+    ];
+    for (const line of lines.reverse()) {
+        for (const pattern of errorPatterns) {
+            const match = line.match(pattern);
+            if (match) {
+                return match[1].trim();
+            }
+        }
+    }
+    return null;
 }

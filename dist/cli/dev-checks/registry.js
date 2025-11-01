@@ -5,6 +5,7 @@
 import chalk from 'chalk';
 import { createAwsCredentialsCheck } from './aws-credentials.js';
 import { createSstLockCheck } from './sst-lock.js';
+import { createRunningSstProcessCheck } from './running-sst-processes.js';
 import { createPortAvailabilityCheck } from './port-availability.js';
 import { createSstConfigCheck } from './sst-config.js';
 import { createSstStateHealthCheck } from './sst-state.js';
@@ -14,14 +15,15 @@ import { createPulumiOutputUsageCheck } from './pulumi-output.js';
 /**
  * Safe fixes that can be auto-applied without user confirmation
  */
-const SAFE_FIX_TYPES = ['recursive_sst_dev', 'nextjs_canary_features', 'sst_locks'];
+const SAFE_FIX_TYPES = ['recursive_sst_dev', 'nextjs_canary_features', 'sst_locks', 'running_sst_processes'];
 /**
  * Create all development pre-flight checks
  */
-export function getDevChecks(projectRoot, config, requestedPort = 3000) {
+export function getDevChecks(projectRoot, config, requestedPort = 3000, verbose = false) {
     return [
         { name: 'AWS Credentials', check: createAwsCredentialsCheck(projectRoot, config) },
         { name: 'SST Lock', check: createSstLockCheck(projectRoot) },
+        { name: 'Running SST Processes', check: createRunningSstProcessCheck(projectRoot, verbose) },
         { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
         { name: 'SST Config', check: createSstConfigCheck(projectRoot) },
         { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot) },
@@ -36,8 +38,11 @@ export function getDevChecks(projectRoot, config, requestedPort = 3000) {
  * - Safe fixes: Auto-apply without prompting
  * - Risky fixes: Show issue but require manual intervention
  */
-export async function runDevChecks(projectRoot, config, requestedPort = 3000) {
-    const checks = getDevChecks(projectRoot, config, requestedPort);
+export async function runDevChecks(projectRoot, config, requestedPort = 3000, verbose = false) {
+    if (verbose) {
+        console.log(chalk.gray('[DEBUG] Running in verbose mode\n'));
+    }
+    const checks = getDevChecks(projectRoot, config, requestedPort, verbose);
     const results = [];
     for (const check of checks) {
         try {

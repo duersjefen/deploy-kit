@@ -7,14 +7,14 @@ import type { CheckResult, DevCheck } from './types.js';
 /**
  * Create all development pre-flight checks
  */
-export declare function getDevChecks(projectRoot: string, config: ProjectConfig | null, requestedPort?: number): DevCheck[];
+export declare function getDevChecks(projectRoot: string, config: ProjectConfig | null, requestedPort?: number, verbose?: boolean): DevCheck[];
 /**
  * Run all pre-flight checks with hybrid auto-fix approach
  *
  * - Safe fixes: Auto-apply without prompting
  * - Risky fixes: Show issue but require manual intervention
  */
-export declare function runDevChecks(projectRoot: string, config: ProjectConfig | null, requestedPort?: number): Promise<{
+export declare function runDevChecks(projectRoot: string, config: ProjectConfig | null, requestedPort?: number, verbose?: boolean): Promise<{
     allPassed: boolean;
     results: CheckResult[];
 }>;
