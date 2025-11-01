@@ -20,8 +20,7 @@ export function getPostDeploymentChecks(config) {
                 spinner.warn('Domain not configured, skipping health check');
                 return;
             }
-            const protocol = stage === 'dev' ? 'http' : 'https';
-            const url = `${protocol}://${domain}/health`;
+            const url = `https://${domain}/health`;
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 5000);
             const response = await fetch(url, {

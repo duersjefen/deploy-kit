@@ -120,11 +120,6 @@ export function createMockProjectConfig(overrides?: Partial<ProjectConfig>): Pro
         skipHealthChecks: false,
         skipCacheInvalidation: false,
       },
-      dev: {
-        domain: 'dev.test.example.com',
-        skipHealthChecks: false,
-        skipCacheInvalidation: false,
-      },
     },
     healthChecks: [],
     hooks: {},

@@ -15,7 +15,7 @@ export function getStatusChecker(config, projectRoot) {
      */
     async function checkAllStages() {
         console.log(chalk.bold.cyan('\n📊 DEPLOYMENT STATUS REPORT\n'));
-        const stages = ['dev', 'staging', 'production'];
+        const stages = ['staging', 'production'];
         for (const stage of stages) {
             if (!config.stages.includes(stage))
                 continue;
@@ -128,8 +128,7 @@ export function getStatusChecker(config, projectRoot) {
             if (!domain) {
                 return chalk.gray('ℹ️  Not configured');
             }
-            const protocol = stage === 'dev' ? 'http' : 'https';
-            const url = `${protocol}://${domain}`;
+            const url = `https://${domain}`;
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3000);
             const response = await fetch(url, {

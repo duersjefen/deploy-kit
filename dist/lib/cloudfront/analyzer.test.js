@@ -11,9 +11,8 @@ const mockConfig = {
     awsProfile: 'test',
     infrastructure: 'sst-serverless',
     database: 'dynamodb',
-    stages: ['dev', 'staging', 'production'],
+    stages: ['staging', 'production'],
     stageConfig: {
-        dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
         staging: { domain: 'staging.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
         production: { domain: 'example.com', skipHealthChecks: false, skipCacheInvalidation: false },
     },

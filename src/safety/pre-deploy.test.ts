@@ -77,7 +77,6 @@ describe('pre-deployment checks', () => {
     it('supports per-stage health check toggle', () => {
       const config = createMockProjectConfig({
         stageConfig: {
-          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
             skipHealthChecks: true,
@@ -106,7 +105,6 @@ describe('pre-deployment checks', () => {
     it('supports per-stage cache invalidation toggle', () => {
       const config = createMockProjectConfig({
         stageConfig: {
-          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
             skipHealthChecks: false,
@@ -135,7 +133,6 @@ describe('pre-deployment checks', () => {
     it('supports deployment confirmation requirement', () => {
       const config = createMockProjectConfig({
         stageConfig: {
-          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
             skipHealthChecks: false,
@@ -249,7 +246,6 @@ describe('pre-deployment checks', () => {
     it('supports per-stage AWS region', () => {
       const config = createMockProjectConfig({
         stageConfig: {
-          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
             awsRegion: 'eu-north-1',

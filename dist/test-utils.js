@@ -112,11 +112,6 @@ export function createMockProjectConfig(overrides) {
                 skipHealthChecks: false,
                 skipCacheInvalidation: false,
             },
-            dev: {
-                domain: 'dev.test.example.com',
-                skipHealthChecks: false,
-                skipCacheInvalidation: false,
-            },
         },
         healthChecks: [],
         hooks: {},

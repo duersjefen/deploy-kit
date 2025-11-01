@@ -1,7 +1,7 @@
 /**
  * Configuration types for deployment kit
  */
-export type DeploymentStage = 'dev' | 'staging' | 'production';
+export type DeploymentStage = 'staging' | 'production';
 export type InfrastructureType = 'sst-serverless' | 'ec2-docker' | 'custom';
 export type DatabaseType = 'dynamodb' | 'postgresql' | 'mysql';
 export interface StageConfig {
@@ -59,8 +59,11 @@ export interface ProjectConfig {
     database?: DatabaseType;
     /** Available deployment stages */
     stages: DeploymentStage[];
-    /** Stage-specific configuration */
-    stageConfig: Record<DeploymentStage, StageConfig>;
+    /** Stage-specific configuration (staging and production only) */
+    stageConfig: {
+        staging: StageConfig;
+        production: StageConfig;
+    };
     /** Health check endpoints to validate after deployment */
     healthChecks?: HealthCheck[];
     /** Lifecycle hooks */

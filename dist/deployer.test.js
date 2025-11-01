@@ -44,7 +44,6 @@ describe('DeploymentKit', () => {
         it('returns configured region for stage', () => {
             const config = createMockProjectConfig({
                 stageConfig: {
-                    dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
                     staging: {
                         domain: 'staging.example.com',
                         awsRegion: 'eu-north-1',
@@ -66,7 +65,6 @@ describe('DeploymentKit', () => {
         it('falls back to us-east-1 if not configured', () => {
             const config = createMockProjectConfig({
                 stageConfig: {
-                    dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
                     staging: {
                         domain: 'staging.example.com',
                         skipHealthChecks: false,
@@ -122,7 +120,6 @@ describe('DeploymentKit', () => {
         it('respects skipHealthChecks flag', async () => {
             const config = createMockProjectConfig({
                 stageConfig: {
-                    dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
                     staging: {
                         domain: 'staging.example.com',
                         skipHealthChecks: true,
