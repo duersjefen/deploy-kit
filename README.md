@@ -15,9 +15,6 @@ Reusable deployment system for SST + Next.js + DynamoDB applications with compre
 - 📊 **Deployment Timeline:** Visual stage breakdown with timing analysis
 - 🔒 **SSL Certificate Management:** Automated ACM certificate creation and DNS validation
 - 🎯 **Pre-Deployment Checks:** Comprehensive git, AWS, test, and SSL validation
-- 🔐 **AWS Profile Auto-Detection:** For SST projects, automatically detect AWS profile from sst.config.ts
-- ✔️ **Config Validation:** Validate configuration before deployment with `validate` command
-- 🏥 **Health Diagnostics:** Pre-deployment health check with `doctor` command
 
 ## Sophisticated User Experience
 
@@ -145,6 +142,26 @@ make deploy-staging
 make deploy-production
 ```
 
+### Partial Initialization Flags
+
+If you already have a `.deploy-config.json` or want to set up components separately, use these flags:
+
+```bash
+# Only create configuration file (skip Makefile and npm scripts)
+npx @duersjefen/deploy-kit init --config-only
+
+# Only add npm scripts to package.json (requires existing config)
+npx @duersjefen/deploy-kit init --scripts-only
+
+# Only create Makefile (requires existing config)
+npx @duersjefen/deploy-kit init --makefile-only
+```
+
+**Use cases:**
+- **`--config-only`** - Create config first, then decide about scripts/Makefile later
+- **`--scripts-only`** - Add npm scripts to existing project without recreating config
+- **`--makefile-only`** - Create Makefile without touching configuration or scripts
+
 ## Configuration
 
 ### Minimal SST Project
@@ -221,7 +238,7 @@ make deploy-production
 | `infrastructure` | string | **required** | `sst-serverless`, `ec2-docker`, or `custom` |
 | `stages` | array | `["staging", "production"]` | Available deployment stages |
 | `mainDomain` | string | optional | Default domain (used in health checks) |
-| `awsProfile` | string | optional | AWS profile to use (auto-detected from sst.config.ts for SST projects) |
+| `awsProfile` | string | optional | AWS profile to use |
 | `requireCleanGit` | boolean | `true` | Require clean git status |
 | `runTestsBeforeDeploy` | boolean | `true` | Run `npm test` before deploy |
 | `customDeployScript` | string | optional | Path to custom deploy script |
@@ -237,76 +254,6 @@ make deploy-production
 | `sstStageName` | string | SST stage name (if different from stage name) |
 | `dynamoTableName` | string | DynamoDB table name |
 | `awsRegion` | string | AWS region for this stage |
-
-### AWS Profile Auto-Detection (SST Projects)
-
-For **SST projects**, the AWS profile can be automatically detected from your `sst.config.ts` file, eliminating the need to duplicate it in `.deploy-config.json`.
-
-**How it works:**
-
-1. **Auto-detection (default)** - Profile is read from `sst.config.ts`:
-   ```json
-   {
-     "projectName": "my-app",
-     "infrastructure": "sst-serverless"
-     // awsProfile is optional - will be auto-detected from sst.config.ts
-   }
-   ```
-
-2. **Explicit override** - Still works if you specify `awsProfile`:
-   ```json
-   {
-     "projectName": "my-app",
-     "infrastructure": "sst-serverless",
-     "awsProfile": "different-profile"  // Takes precedence over sst.config.ts
-   }
-   ```
-
-3. **Non-SST projects** - Use explicit `awsProfile`:
-   ```json
-   {
-     "projectName": "my-app",
-     "infrastructure": "ec2-docker",
-     "awsProfile": "my-profile"  // Required for non-SST projects
-   }
-   ```
-
-**Priority order:**
-1. Explicit `awsProfile` in `.deploy-config.json` (highest priority)
-2. Auto-detected from `sst.config.ts` (for SST projects only)
-3. Default AWS profile (`~/.aws/credentials`) (lowest priority)
-
-**Example `sst.config.ts`:**
-```typescript
-import { SSTConfig } from 'sst';
-
-export default {
-  config() {
-    return {
-      name: 'my-app',
-      region: 'us-east-1',
-    };
-  },
-  stacks(app) {
-    app.setDefaultFunctionProps({
-      runtime: 'nodejs18.x',
-    });
-    app.stack(function Stack({ stack }) {
-      const provider = new aws.Provider(stack, 'provider', {
-        region: 'us-east-1',
-        profile: 'my-profile', // Auto-detected by deploy-kit
-      });
-      // ... rest of configuration
-    });
-  },
-} satisfies SSTConfig;
-```
-
-**Benefits:**
-- ✅ **Single source of truth** - Profile only needs to be in `sst.config.ts`
-- ✅ **Less configuration** - One fewer field to maintain
-- ✅ **Backwards compatible** - Explicit `awsProfile` still takes precedence
-- ✅ **Zero setup for SST** - Just run `npx deploy-kit init`
 
 ### Health Checks
 
@@ -326,10 +273,6 @@ export default {
 # Initialize a new project (one-command setup)
 npx @duersjefen/deploy-kit init
 
-# Validate configuration
-npx @duersjefen/deploy-kit validate         # Validate .deploy-config.json
-npx @duersjefen/deploy-kit doctor          # Pre-deployment health check
-
 # Deploy to a stage
 npx @duersjefen/deploy-kit deploy staging
 npx @duersjefen/deploy-kit deploy production
@@ -345,68 +288,6 @@ npx @duersjefen/deploy-kit recover production
 # Validate health checks
 npx @duersjefen/deploy-kit health staging
 ```
-
-### Validate Command
-
-The `validate` command checks your `.deploy-config.json` configuration for errors and warnings:
-
-```bash
-npx @duersjefen/deploy-kit validate
-```
-
-**Checks:**
-- ✅ Valid JSON syntax
-- ✅ Required fields present (projectName, infrastructure, stages)
-- ✅ Valid domain formats
-- ✅ Valid stage names (no reserved names like 'dev' or 'local')
-- ✅ AWS profile exists (if specified)
-- ⚠️ Warnings for optional fields
-
-**Example output:**
-```
-✅ Configuration File     Valid (2 stages)
-✅ Project Name          my-app
-✅ Infrastructure Type   sst-serverless
-✅ Stages                staging, production
-✅ AWS Profile           my-profile (exists in AWS config)
-✅ Health Checks         2 endpoints configured
-```
-
-### Doctor Command
-
-The `doctor` command performs comprehensive pre-deployment diagnostics:
-
-```bash
-npx @duersjefen/deploy-kit doctor
-```
-
-**Checks:**
-- ✅ Configuration validity
-- ✅ Git status (clean working directory, required for safety)
-- ✅ AWS credentials (valid AWS account access)
-- ✅ AWS Profile detection (auto-detected from sst.config.ts for SST projects)
-- ✅ SST setup (sst.config.ts exists for SST projects)
-- ✅ Node.js/npm installed
-- ✅ Test configuration (npm test available)
-
-**Example output:**
-```
-🔧 Deploy-Kit Doctor: Pre-Deployment Diagnostic
-
-✅ Configuration File          Valid (2 stages)
-✅ Git Status                  Clean working directory
-✅ AWS Credentials             Account: 123456789
-✅ AWS Credentials & Profile   auto-detected from sst.config.ts - Account: 123456789
-✅ SST Configuration           sst.config.ts found
-✅ Node.js & npm              v18.16.0 & 9.5.0
-✅ Tests                       npm test available
-
-✅ Passed: 7 | ⚠️  Warnings: 0 | ❌ Failed: 0
-
-✨ System ready for deployment!
-```
-
-**Pro Tip:** Run `deploy-kit doctor` before your first deployment to ensure everything is configured correctly.
 
 ## Deployment Process
 
