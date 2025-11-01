@@ -20,6 +20,12 @@ interface InitAnswers {
   runTests: boolean;
 }
 
+export interface InitFlags {
+  configOnly?: boolean;
+  scriptsOnly?: boolean;
+  makefileOnly?: boolean;
+}
+
 /**
  * Display beautiful init banner
  */
@@ -346,9 +352,38 @@ function printSummary(answers: InitAnswers, optionalFiles?: any): void {
 /**
  * Main init command
  */
-export async function runInit(projectRoot: string = process.cwd()): Promise<void> {
+export async function runInit(projectRoot: string = process.cwd(), flags: InitFlags = {}): Promise<void> {
   try {
-    printBanner();
+    // If only updating scripts or Makefile, load existing config
+    if (flags.scriptsOnly || flags.makefileOnly) {
+      const configPath = join(projectRoot, '.deploy-config.json');
+      if (!existsSync(configPath)) {
+        console.error(chalk.red('❌ Error: .deploy-config.json not found'));
+        console.error(chalk.gray('   Run "npx deploy-kit init" without flags to create a new configuration'));
+        process.exit(1);
+      }
+      
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      
+      if (flags.scriptsOnly) {
+        console.log(chalk.cyan('\n📝 Updating npm scripts in package.json...\n'));
+        updatePackageJson(config, projectRoot);
+        console.log(chalk.green('✅ npm scripts updated\n'));
+        return;
+      }
+      
+      if (flags.makefileOnly) {
+        console.log(chalk.cyan('\n📝 Creating/updating Makefile...\n'));
+        createMakefile(config, projectRoot);
+        console.log(chalk.green('✅ Makefile created/updated\n'));
+        return;
+      }
+    }
+
+    // For config-only or full init, show banner
+    if (!flags.scriptsOnly && !flags.makefileOnly) {
+      printBanner();
+    }
 
     const configPath = join(projectRoot, '.deploy-config.json');
     let answers: InitAnswers;
@@ -457,6 +492,19 @@ export async function runInit(projectRoot: string = process.cwd()): Promise<void
 
     // Generate files
     createDeployConfig(answers, projectRoot, existingConfig);
+
+    // If --config-only flag is set, skip scripts and Makefile
+    if (flags.configOnly) {
+      console.log(chalk.bold.green('═'.repeat(60)));
+      console.log(chalk.bold.green('✅ Configuration Created!'));
+      console.log(chalk.bold.green('═'.repeat(60)));
+      console.log(chalk.green('\n✅ .deploy-config.json created successfully'));
+      console.log(chalk.gray('\n💡 To add npm scripts:'));
+      console.log(chalk.gray('   npx deploy-kit init --scripts-only'));
+      console.log(chalk.gray('\n💡 To create Makefile:'));
+      console.log(chalk.gray('   npx deploy-kit init --makefile-only\n'));
+      return;
+    }
 
     // Ask about optional files
     const optionalFiles = await prompt([

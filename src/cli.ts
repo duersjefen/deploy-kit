@@ -7,7 +7,7 @@
 import { DeploymentKit } from './deployer.js';
 import { getStatusChecker } from './status/checker.js';
 import { getRecoveryManager } from './recovery/manager.js';
-import { runInit } from './cli/init.js';
+import { runInit, type InitFlags } from './cli/init.js';
 import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
@@ -24,7 +24,21 @@ const stage = args[1] as DeploymentStage;
 
 // Handle commands that don't require config file
 if (command === 'init') {
-  runInit(process.cwd()).catch(error => {
+  // Parse init flags
+  const flags: InitFlags = {
+    configOnly: args.includes('--config-only'),
+    scriptsOnly: args.includes('--scripts-only'),
+    makefileOnly: args.includes('--makefile-only'),
+  };
+  
+  // Validate flag combinations
+  const flagCount = Object.values(flags).filter(Boolean).length;
+  if (flagCount > 1) {
+    console.error(chalk.red('❌ Error: Use only one flag at a time (--config-only, --scripts-only, or --makefile-only)'));
+    process.exit(1);
+  }
+  
+  runInit(process.cwd(), flags).catch(error => {
     console.error(chalk.red('\n❌ Init error:'));
     console.error(chalk.red(error.message));
     process.exit(1);
@@ -187,10 +201,17 @@ function printHelpMessage(): void {
   console.log(chalk.gray('  deploy-kit <command> [stage]\n'));
 
   console.log(chalk.bold('COMMANDS'));
-  console.log(chalk.green('  init'));
+  console.log(chalk.green('  init [flags]'));
   console.log(chalk.gray('    Interactive setup wizard for new projects'));
   console.log(chalk.gray('    Creates .deploy-config.json, Makefile, and npm scripts'));
-  console.log(chalk.gray('    Example: deploy-kit init\n'));
+  console.log(chalk.gray('    Flags:'));
+  console.log(chalk.gray('      --config-only      Only create .deploy-config.json'));
+  console.log(chalk.gray('      --scripts-only     Only update npm scripts (requires existing config)'));
+  console.log(chalk.gray('      --makefile-only    Only create Makefile (requires existing config)'));
+  console.log(chalk.gray('    Examples:'));
+  console.log(chalk.gray('      deploy-kit init'));
+  console.log(chalk.gray('      deploy-kit init --config-only'));
+  console.log(chalk.gray('      deploy-kit init --scripts-only\n'));
 
   console.log(chalk.green('  validate'));
   console.log(chalk.gray('    Validate .deploy-config.json configuration'));
