@@ -21,6 +21,7 @@ export interface InitAnswers {
 export interface OptionalFiles {
   createScripts?: boolean;
   createMakefile?: boolean;
+  createQualityTools?: boolean;
 }
 
 /**
@@ -151,6 +152,11 @@ export function printSummary(answers: InitAnswers, optionalFiles?: OptionalFiles
   }
   if (optionalFiles?.createMakefile) {
     console.log('  ✅ Makefile - User-friendly deployment targets');
+  }
+  if (optionalFiles?.createQualityTools) {
+    console.log('  ✅ Installed quality tools (Husky, lint-staged, tsc-files)');
+    console.log('  ✅ Configured pre-commit hooks');
+    console.log('  ✅ Updated .gitignore with SST entries');
   }
 
   console.log('\n🚀 Next Steps:\n');
