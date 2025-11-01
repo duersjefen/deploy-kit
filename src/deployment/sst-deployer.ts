@@ -23,6 +23,7 @@ const execAsync = promisify(exec);
 interface SSTDeploymentOptions {
   stage: DeploymentStage;
   projectRoot: string;
+  config: ProjectConfig;
   awsProfile?: string;
   timeoutMinutes?: number;
   logFile?: string;
@@ -37,6 +38,7 @@ export async function deploySSTWithMonitoring(
   const {
     stage,
     projectRoot,
+    config,
     awsProfile,
     timeoutMinutes = 15,
     logFile = join(projectRoot, `.sst-deploy-${stage}-${Date.now()}.log`),
@@ -62,13 +64,13 @@ export async function deploySSTWithMonitoring(
         console.log(chalk.cyan('🔍 Running diagnostics...\n'));
 
         // Get stack status
-        await getCloudFormationStatus(stage, projectRoot, awsProfile, logFile);
+        await getCloudFormationStatus(stage, projectRoot, config, awsProfile, logFile);
 
         // Get Pulumi lock status
         await getPulumiLockStatus(stage, projectRoot, logFile);
 
         // Suggest recovery
-        suggestRecovery(stage);
+        suggestRecovery(stage, config);
       } catch (diagError) {
         // Diagnostics failed, but we still want to timeout
       }
@@ -169,6 +171,7 @@ export async function deploySSTWithMonitoring(
 async function getCloudFormationStatus(
   stage: DeploymentStage,
   projectRoot: string,
+  config: ProjectConfig,
   awsProfile?: string,
   logFile?: string
 ): Promise<void> {
@@ -179,7 +182,7 @@ async function getCloudFormationStatus(
     };
 
     // Get stack name
-    const stackName = `gabs-massage-${stage}`;
+    const stackName = `${config.projectName}-${stage}`;
 
     // Query stack status and events
     const { stdout: statusOutput } = await execAsync(
@@ -240,12 +243,12 @@ async function getPulumiLockStatus(
 /**
  * Suggest recovery based on deployment failure
  */
-function suggestRecovery(stage: DeploymentStage): void {
+function suggestRecovery(stage: DeploymentStage, config: ProjectConfig): void {
   console.log(chalk.yellow('\n💡 Recovery Suggestions:\n'));
   console.log(chalk.gray('1. Run: make recover-' + stage));
   console.log(chalk.gray('   This will unlock Pulumi state and clear deployment locks\n'));
   console.log(chalk.gray('2. Check CloudFormation stack in AWS Console:'));
-  console.log(chalk.gray(`   Stack name: gabs-massage-${stage}\n`));
+  console.log(chalk.gray(`   Stack name: ${config.projectName}-${stage}\n`));
   console.log(chalk.gray('3. If Lambda provisioning seems stuck:'));
   console.log(chalk.gray('   Try: npx sst remove --stage ' + stage + ' && make deploy-' + stage + '\n'));
   console.log(chalk.gray('4. Check CloudFront distribution status:'));

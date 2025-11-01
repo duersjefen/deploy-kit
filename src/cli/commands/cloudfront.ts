@@ -6,7 +6,7 @@
 import chalk from 'chalk';
 import { CloudFrontAPIClient } from '../../lib/cloudfront/client.js';
 import { CloudFrontAnalyzer } from '../../lib/cloudfront/analyzer.js';
-import type { ProjectConfig } from '../../types.js';
+import type { ProjectConfig, DNSRecord } from '../../types.js';
 
 export async function handleCloudFrontCommand(
   subcommand: string,
@@ -50,7 +50,7 @@ async function auditCloudFront(
   try {
     // Fetch DNS records from Route53 hosted zones
     console.log(chalk.gray('Fetching CloudFront distributions and DNS records...\n'));
-    const dnsRecords: any[] = [];
+    const dnsRecords: DNSRecord[] = [];
 
     if (config.hostedZones && config.hostedZones.length > 0) {
       for (const zone of config.hostedZones) {

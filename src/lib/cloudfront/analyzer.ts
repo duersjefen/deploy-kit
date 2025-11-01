@@ -3,8 +3,8 @@
  * Detects orphaned, misconfigured, and problematic distributions
  */
 
-import type { CloudFrontDistribution, DNSRecord } from './client.js';
-import type { ProjectConfig } from '../../types.js';
+import type { CloudFrontDistribution } from './client.js';
+import type { ProjectConfig, DNSRecord } from '../../types.js';
 
 export interface DistributionAnalysis {
   id: string;
@@ -62,11 +62,10 @@ export class CloudFrontAnalyzer {
 
     // Check if distribution is in DNS
     const inDns = dnsRecords.some((record) => {
-      if (!record.AliasTarget) return false;
-      return (
-        record.AliasTarget.DNSName === `${distribution.DomainName}.` ||
-        record.AliasTarget.DNSName === distribution.DomainName
-      );
+      // Check if DNS record value matches the CloudFront distribution domain
+      const normalizedValue = record.value.replace(/\.$/, '');
+      const normalizedDistDomain = distribution.DomainName.replace(/\.$/, '');
+      return normalizedValue === normalizedDistDomain;
     });
 
     // Check for placeholder origin (incomplete configuration)

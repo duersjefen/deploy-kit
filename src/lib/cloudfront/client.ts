@@ -15,6 +15,7 @@ import {
 } from '@aws-sdk/client-cloudfront';
 import { Route53Client, ListResourceRecordSetsCommand } from '@aws-sdk/client-route-53';
 import chalk from 'chalk';
+import type { DNSRecord } from '../../types.js';
 
 export interface CloudFrontDistribution {
   Id: string;
@@ -28,9 +29,15 @@ export interface CloudFrontDistribution {
   AliasedDomains: string[];
 }
 
-export interface DNSRecord {
+/**
+ * Internal interface for Route53 DNS record responses from AWS SDK
+ * Maps to the standardized DNSRecord type from types.ts
+ */
+interface Route53DNSRecord {
   Name: string;
   Type: string;
+  ResourceRecords?: Array<{ Value: string }>;
+  TTL?: number;
   AliasTarget?: {
     HostedZoneId: string;
     DNSName: string;
@@ -221,10 +228,12 @@ export class CloudFrontAPIClient {
         return [];
       }
 
-      return response.ResourceRecordSets.map((record: any) => ({
-        Name: record.Name,
-        Type: record.Type,
-        AliasTarget: record.AliasTarget,
+      // Map Route53 records to standardized DNSRecord format
+      return response.ResourceRecordSets.map((record) => ({
+        name: (record.Name || '').replace(/\.$/, ''), // Remove trailing dot
+        type: record.Type || '',
+        value: record.AliasTarget?.DNSName || record.ResourceRecords?.[0]?.Value || '',
+        ttl: record.TTL,
       }));
     } catch (error) {
       console.error(chalk.red(`❌ Error getting DNS records for zone ${hostedZoneId}:`), error);
