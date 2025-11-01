@@ -24,6 +24,25 @@ export interface ValidationRecord {
 }
 
 /**
+ * Internal type for AWS CLI certificate details response
+ */
+interface ACMCertificateDetails {
+  CertificateArn: string;
+  DomainName: string;
+  Status: 'ISSUED' | 'PENDING_VALIDATION' | 'FAILED' | 'INACTIVE';
+  CreatedAt: string;
+  FailureReason?: string;
+  DomainValidationOptions?: Array<{
+    DomainName: string;
+    ResourceRecord?: {
+      Name: string;
+      Value: string;
+      Type: string;
+    };
+  }>;
+}
+
+/**
  * Find existing certificate by domain name
  */
 export async function findCertificateByDomain(
@@ -110,7 +129,7 @@ export async function createCertificate(
 export async function describeCertificate(
   arn: string,
   awsProfile?: string
-): Promise<any> {
+): Promise<ACMCertificateDetails> {
   try {
     const profileArg = awsProfile ? `--profile ${awsProfile}` : '';
     const command = `aws acm describe-certificate \
@@ -120,7 +139,7 @@ export async function describeCertificate(
       --output json`;
 
     const { stdout } = await execAsync(command);
-    return JSON.parse(stdout).Certificate;
+    return JSON.parse(stdout).Certificate as ACMCertificateDetails;
   } catch (error) {
     throw new Error(`Failed to describe certificate ${arn}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -165,7 +184,7 @@ export async function waitForCertificateIssuance(
 /**
  * Extract DNS validation records from certificate details
  */
-function extractValidationRecords(certDetails: any): ValidationRecord[] {
+function extractValidationRecords(certDetails: ACMCertificateDetails): ValidationRecord[] {
   const records: ValidationRecord[] = [];
 
   if (certDetails.DomainValidationOptions) {

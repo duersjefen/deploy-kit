@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { validateConfig, printValidationResult } from '../utils/config-validator.js';
+import type { UnvalidatedConfig } from '../../types.js';
 
 export async function handleValidateCommand(projectRoot: string = process.cwd()): Promise<void> {
   const configPath = join(projectRoot, '.deploy-config.json');

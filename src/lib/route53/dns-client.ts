@@ -20,6 +20,26 @@ export interface DNSRecord {
 }
 
 /**
+ * Internal type for AWS CLI JSON response (hosted zone)
+ */
+interface Route53HostedZoneResponse {
+  Id: string;
+  Name: string;
+  ResourceRecordSetCount?: number;
+}
+
+/**
+ * Internal type for AWS CLI JSON response (record set)
+ */
+interface Route53RecordSetResponse {
+  Name: string;
+  Type: string;
+  ResourceRecords?: Array<{ Value: string }>;
+  AliasTarget?: { DNSName: string };
+  TTL?: number;
+}
+
+/**
  * Route53 hosted zone
  */
 export interface HostedZone {
@@ -138,8 +158,8 @@ export class Route53DNSClient {
       { env }
     );
 
-    const response = JSON.parse(stdout);
-    return response.HostedZones.map((zone: any) => ({
+    const response = JSON.parse(stdout) as { HostedZones: Route53HostedZoneResponse[] };
+    return response.HostedZones.map((zone: Route53HostedZoneResponse) => ({
       id: zone.Id,
       name: zone.Name,
       recordCount: zone.ResourceRecordSetCount || 0,
@@ -173,8 +193,8 @@ export class Route53DNSClient {
       { env }
     );
 
-    const response = JSON.parse(stdout);
-    return response.ResourceRecordSets.map((record: any) => ({
+    const response = JSON.parse(stdout) as { ResourceRecordSets: Route53RecordSetResponse[] };
+    return response.ResourceRecordSets.map((record: Route53RecordSetResponse) => ({
       name: record.Name,
       type: record.Type,
       value: record.ResourceRecords?.[0]?.Value || record.AliasTarget?.DNSName || '',

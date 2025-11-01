@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import ora from 'ora';
 import prompt from 'prompts';
 
-import { ProjectConfig, DeploymentStage } from '../../types.js';
+import { ProjectConfig, DeploymentStage, DNSRecord } from '../../types.js';
 import { CloudFrontAPIClient } from './client.js';
 import { CloudFrontAnalyzer } from './analyzer.js';
 import { Route53DNSClient } from '../route53/dns-client.js';
@@ -254,8 +254,8 @@ export class CloudFrontOperations {
    * @returns Array of DNS records for all configured domains
    * @private
    */
-  private async fetchAllRelevantDNSRecords(dnsClient: Route53DNSClient): Promise<any[]> {
-    const allRecords: any[] = [];
+  private async fetchAllRelevantDNSRecords(dnsClient: Route53DNSClient): Promise<DNSRecord[]> {
+    const allRecords: DNSRecord[] = [];
 
     // Fetch DNS records for each stage's domain
     for (const [stage, stageConfig] of Object.entries(this.config.stageConfig)) {
