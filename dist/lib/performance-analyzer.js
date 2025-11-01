@@ -146,12 +146,12 @@ export class PerformanceAnalyzer {
         const recommendations = [];
         // Check for slow operations
         if (slowOperations.length > 0) {
-            recommendations.push(`⚠️  ${slowOperations.length} operation(s) took > 5 seconds. Consider optimization.`);
+            recommendations.push(`⚠️  Slow operations detected: ${slowOperations.length} operation(s) took > 5 seconds. Consider optimization.`);
         }
         // Check for operations that could be parallelized
         const sequentialTime = Object.values(statsByName).reduce((sum, stats) => sum + stats.totalTime, 0);
         if (sequentialTime > totalTime * 1.5) {
-            recommendations.push('💡 Consider parallelizing operations. Sequential operations take longer than total time.');
+            recommendations.push('💡 Consider options to parallelize operations. Sequential operations take longer than total time.');
         }
         // Check for high variance operations
         for (const [name, stats] of Object.entries(statsByName)) {
@@ -166,7 +166,7 @@ export class PerformanceAnalyzer {
             return stats?.count ?? 0 > 1;
         });
         if (duplicateOps.length > 0) {
-            recommendations.push(`💾 ${duplicateOps.length} operation(s) run multiple times. Consider caching results.`);
+            recommendations.push(`💾 ${duplicateOps.length} operation(s) run multiple times. Consider adding cache for results.`);
         }
         return {
             timestamp: new Date(),

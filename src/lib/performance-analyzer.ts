@@ -222,7 +222,7 @@ export class PerformanceAnalyzer {
     // Check for slow operations
     if (slowOperations.length > 0) {
       recommendations.push(
-        `⚠️  ${slowOperations.length} operation(s) took > 5 seconds. Consider optimization.`
+        `⚠️  Slow operations detected: ${slowOperations.length} operation(s) took > 5 seconds. Consider optimization.`
       );
     }
 
@@ -233,7 +233,7 @@ export class PerformanceAnalyzer {
     );
     if (sequentialTime > totalTime * 1.5) {
       recommendations.push(
-        '💡 Consider parallelizing operations. Sequential operations take longer than total time.'
+        '💡 Consider options to parallelize operations. Sequential operations take longer than total time.'
       );
     }
 
@@ -255,7 +255,7 @@ export class PerformanceAnalyzer {
 
     if (duplicateOps.length > 0) {
       recommendations.push(
-        `💾 ${duplicateOps.length} operation(s) run multiple times. Consider caching results.`
+        `💾 ${duplicateOps.length} operation(s) run multiple times. Consider adding cache for results.`
       );
     }
 
