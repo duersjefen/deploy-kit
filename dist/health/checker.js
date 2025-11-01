@@ -328,12 +328,9 @@ export function getHealthChecker(config) {
         for (const hc of configuredChecks) {
             checks.push(() => check(hc, stage));
         }
-        let allPass = true;
-        for (const checkFn of checks) {
-            const passed = await checkFn();
-            if (!passed)
-                allPass = false;
-        }
+        // Run all checks in parallel for better performance
+        const results = await Promise.all(checks.map(checkFn => checkFn()));
+        const allPass = results.every(passed => passed);
         console.log(''); // Blank line for readability
         return allPass;
     }
