@@ -23,13 +23,23 @@ export async function startSstDev(
   config: ProjectConfig | null,
   options: DevOptions
 ): Promise<void> {
+  // Determine which port to use (priority: user flag > auto-selected > default 3000)
+  const selectedPort = options.port
+    || (process.env.DEPLOY_KIT_SELECTED_PORT ? parseInt(process.env.DEPLOY_KIT_SELECTED_PORT) : null)
+    || 3000;
+
   console.log(chalk.bold.cyan('═'.repeat(60)));
   console.log(chalk.bold.cyan('🚀 Starting SST dev server...\n'));
 
+  if (selectedPort !== 3000) {
+    console.log(chalk.cyan(`   Frontend: http://localhost:${selectedPort}`));
+    console.log(chalk.gray(`   SST Console: http://localhost:13561\n`));
+  }
+
   const args = ['sst', 'dev'];
 
-  if (options.port) {
-    args.push(`--port=${options.port}`);
+  if (selectedPort !== 3000) {
+    args.push(`--port=${selectedPort}`);
   }
 
   const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;

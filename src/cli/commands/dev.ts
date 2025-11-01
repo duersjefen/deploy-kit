@@ -46,7 +46,8 @@ export async function handleDevCommand(
     // Run pre-flight checks unless skipped
     if (!options.skipChecks) {
       console.log(chalk.bold('⚙️  Pre-Flight Checks\n'));
-      const checksResult = await runDevChecks(projectRoot, config);
+      const requestedPort = options.port || 3000;
+      const checksResult = await runDevChecks(projectRoot, config, requestedPort);
 
       if (!checksResult.allPassed) {
         printCheckFailureMessage();
