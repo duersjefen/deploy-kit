@@ -11,6 +11,7 @@ import { runInit, type InitFlags } from './cli/init.js';
 import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
+import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import type { DeploymentStage } from './types.js';
 import chalk from 'chalk';
@@ -58,6 +59,23 @@ if (command === 'validate') {
 if (command === 'doctor') {
   handleDoctorCommand(process.cwd()).catch(error => {
     console.error(chalk.red('\n❌ Doctor error:'));
+    console.error(chalk.red(error.message));
+    process.exit(1);
+  });
+  process.exit(0);
+}
+
+if (command === 'dev') {
+  // Parse dev flags
+  const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
+  const options: DevOptions = {
+    skipChecks: args.includes('--skip-checks'),
+    port: portArg ? parseInt(portArg, 10) : undefined,
+    verbose: args.includes('--verbose'),
+  };
+
+  handleDevCommand(process.cwd(), options).catch(error => {
+    console.error(chalk.red('\n❌ Dev error:'));
     console.error(chalk.red(error.message));
     process.exit(1);
   });
@@ -223,6 +241,18 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Checks: config, git, AWS, SST, Node.js, tests'));
   console.log(chalk.gray('    Example: deploy-kit doctor\n'));
 
+  console.log(chalk.green('  dev [flags]'));
+  console.log(chalk.gray('    Start SST development server with pre-flight checks'));
+  console.log(chalk.gray('    Checks: AWS credentials, locks, ports, Pulumi Output misuse'));
+  console.log(chalk.gray('    Flags:'));
+  console.log(chalk.gray('      --skip-checks      Skip all pre-flight checks'));
+  console.log(chalk.gray('      --port=<number>    Custom port (default: 3000)'));
+  console.log(chalk.gray('      --verbose          Show detailed SST output'));
+  console.log(chalk.gray('    Examples:'));
+  console.log(chalk.gray('      deploy-kit dev'));
+  console.log(chalk.gray('      deploy-kit dev --verbose'));
+  console.log(chalk.gray('      deploy-kit dev --port=4000\n'));
+
   console.log(chalk.green('  deploy <stage>'));
   console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
   console.log(chalk.gray('    Stages: staging, production'));
@@ -272,6 +302,9 @@ function printHelpMessage(): void {
 
   console.log(chalk.cyan('  # Run pre-deployment checks'));
   console.log(chalk.gray('  $ deploy-kit doctor\n'));
+
+  console.log(chalk.cyan('  # Start SST development server'));
+  console.log(chalk.gray('  $ deploy-kit dev\n'));
 
   console.log(chalk.cyan('  # Deploy to staging with full checks'));
   console.log(chalk.gray('  $ deploy-kit deploy staging\n'));
