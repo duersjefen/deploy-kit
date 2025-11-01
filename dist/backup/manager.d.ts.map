@@ -1,0 +1,1 @@
+{"version":3,"file":"manager.d.ts","sourceRoot":"","sources":["../../src/backup/manager.ts"],"names":[],"mappings":"AAIA,OAAO,EAAE,aAAa,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAI7D;;;;;GAKG;AACH,wBAAgB,gBAAgB,CAAC,MAAM,EAAE,aAAa,EAAE,WAAW,SAAgB;oBAIpD,eAAe,KAAG,OAAO,CAAC,MAAM,CAAC;qBA8FhC,eAAe,cAAc,MAAM,KAAG,OAAO,CAAC,IAAI,CAAC;yBAuC/C,eAAe,KAAG,OAAO,CAAC,MAAM,EAAE,CAAC;EA6BtE"}

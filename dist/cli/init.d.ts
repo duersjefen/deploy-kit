@@ -1,0 +1,6 @@
+/**
+ * Re-export for backward compatibility
+ * The actual implementation has been refactored into smaller modules
+ */
+export { runInit, type InitFlags } from './init/index.js';
+//# sourceMappingURL=init.d.ts.map
