@@ -19,11 +19,16 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { Agent as HttpAgent } from 'http';
 import { Agent as HttpsAgent } from 'https';
 import { ExternalServiceError, ERROR_CODES } from '../errors.js';
+import { SimpleCache, cacheKey } from '../cache.js';
 /**
  * CloudFront API Client for managing distributions and DNS records
  */
 export class CloudFrontAPIClient {
     constructor(region = 'us-east-1', profile) {
+        // Initialize caches with 5-minute TTL (AWS data changes infrequently)
+        this.distributionCache = new SimpleCache(300000);
+        this.distributionsCache = new SimpleCache(300000);
+        this.dnsCache = new SimpleCache(300000);
         this.awsRegion = region;
         this.awsProfile = profile;
         // Set AWS_PROFILE BEFORE creating clients so credential providers can find it
@@ -67,23 +72,26 @@ export class CloudFrontAPIClient {
      * ```
      */
     async listDistributions() {
+        const key = cacheKey('distributions', 'list');
         try {
-            const command = new ListDistributionsCommand({});
-            const response = await this.cfClient.send(command);
-            if (!response.DistributionList || !response.DistributionList.Items) {
-                return [];
-            }
-            return response.DistributionList.Items.map((dist) => ({
-                Id: dist.Id,
-                DomainName: dist.DomainName,
-                OriginDomain: dist.Origins?.Items?.[0]?.DomainName || 'unknown',
-                Status: dist.Status,
-                Comment: dist.Comment,
-                CreatedTime: dist.LastModifiedTime,
-                LastModifiedTime: dist.LastModifiedTime,
-                Enabled: dist.Enabled,
-                AliasedDomains: dist.Aliases?.Items || [],
-            }));
+            return await this.distributionsCache.getOrSet(key, async () => {
+                const command = new ListDistributionsCommand({});
+                const response = await this.cfClient.send(command);
+                if (!response.DistributionList || !response.DistributionList.Items) {
+                    return [];
+                }
+                return response.DistributionList.Items.map((dist) => ({
+                    Id: dist.Id,
+                    DomainName: dist.DomainName,
+                    OriginDomain: dist.Origins?.Items?.[0]?.DomainName || 'unknown',
+                    Status: dist.Status,
+                    Comment: dist.Comment,
+                    CreatedTime: dist.LastModifiedTime,
+                    LastModifiedTime: dist.LastModifiedTime,
+                    Enabled: dist.Enabled,
+                    AliasedDomains: dist.Aliases?.Items || [],
+                }));
+            });
         }
         catch (error) {
             throw new ExternalServiceError('Failed to list CloudFront distributions', ERROR_CODES.CLOUDFRONT_OPERATION_FAILED, error);
@@ -108,26 +116,29 @@ export class CloudFrontAPIClient {
      * ```
      */
     async getDistribution(distributionId) {
+        const key = cacheKey('distribution', distributionId);
         try {
-            const command = new GetDistributionCommand({
-                Id: distributionId,
+            return await this.distributionCache.getOrSet(key, async () => {
+                const command = new GetDistributionCommand({
+                    Id: distributionId,
+                });
+                const response = await this.cfClient.send(command);
+                if (!response.Distribution) {
+                    return null;
+                }
+                const dist = response.Distribution;
+                return {
+                    Id: dist.Id || 'unknown',
+                    DomainName: dist.DomainName || 'unknown',
+                    OriginDomain: dist.DistributionConfig?.Origins?.Items?.[0]?.DomainName || 'unknown',
+                    Status: dist.Status || 'Unknown',
+                    Comment: dist.DistributionConfig?.Comment,
+                    CreatedTime: dist.LastModifiedTime, // Closest to creation time available
+                    LastModifiedTime: dist.LastModifiedTime,
+                    Enabled: dist.DistributionConfig?.Enabled || false,
+                    AliasedDomains: dist.DistributionConfig?.Aliases?.Items || [],
+                };
             });
-            const response = await this.cfClient.send(command);
-            if (!response.Distribution) {
-                return null;
-            }
-            const dist = response.Distribution;
-            return {
-                Id: dist.Id || 'unknown',
-                DomainName: dist.DomainName || 'unknown',
-                OriginDomain: dist.DistributionConfig?.Origins?.Items?.[0]?.DomainName || 'unknown',
-                Status: dist.Status || 'Unknown',
-                Comment: dist.DistributionConfig?.Comment,
-                CreatedTime: dist.LastModifiedTime, // Closest to creation time available
-                LastModifiedTime: dist.LastModifiedTime,
-                Enabled: dist.DistributionConfig?.Enabled || false,
-                AliasedDomains: dist.DistributionConfig?.Aliases?.Items || [],
-            };
         }
         catch (error) {
             throw new ExternalServiceError(`Failed to get CloudFront distribution ${distributionId}`, ERROR_CODES.CLOUDFRONT_NOT_FOUND, error);
@@ -166,6 +177,9 @@ export class CloudFrontAPIClient {
                 IfMatch: configResponse.ETag,
             });
             await this.cfClient.send(updateCommand);
+            // Invalidate cache after state change
+            this.distributionCache.delete(cacheKey('distribution', distributionId));
+            this.distributionsCache.delete(cacheKey('distributions', 'list'));
         }
         catch (error) {
             throw new ExternalServiceError(`Failed to disable CloudFront distribution ${distributionId}`, ERROR_CODES.CLOUDFRONT_OPERATION_FAILED, error);
@@ -235,6 +249,9 @@ export class CloudFrontAPIClient {
                 IfMatch: response.ETag,
             });
             await this.cfClient.send(deleteCommand);
+            // Invalidate cache after deletion
+            this.distributionCache.delete(cacheKey('distribution', distributionId));
+            this.distributionsCache.delete(cacheKey('distributions', 'list'));
         }
         catch (error) {
             throw new ExternalServiceError(`Failed to delete CloudFront distribution ${distributionId}`, ERROR_CODES.CLOUDFRONT_OPERATION_FAILED, error);
@@ -259,21 +276,24 @@ export class CloudFrontAPIClient {
      * ```
      */
     async getDNSRecords(hostedZoneId) {
+        const key = cacheKey('dns', hostedZoneId);
         try {
-            const command = new ListResourceRecordSetsCommand({
-                HostedZoneId: hostedZoneId,
+            return await this.dnsCache.getOrSet(key, async () => {
+                const command = new ListResourceRecordSetsCommand({
+                    HostedZoneId: hostedZoneId,
+                });
+                const response = await this.route53Client.send(command);
+                if (!response.ResourceRecordSets) {
+                    return [];
+                }
+                // Map Route53 records to standardized DNSRecord format
+                return response.ResourceRecordSets.map((record) => ({
+                    name: (record.Name || '').replace(/\.$/, ''), // Remove trailing dot
+                    type: record.Type || '',
+                    value: record.AliasTarget?.DNSName || record.ResourceRecords?.[0]?.Value || '',
+                    ttl: record.TTL,
+                }));
             });
-            const response = await this.route53Client.send(command);
-            if (!response.ResourceRecordSets) {
-                return [];
-            }
-            // Map Route53 records to standardized DNSRecord format
-            return response.ResourceRecordSets.map((record) => ({
-                name: (record.Name || '').replace(/\.$/, ''), // Remove trailing dot
-                type: record.Type || '',
-                value: record.AliasTarget?.DNSName || record.ResourceRecords?.[0]?.Value || '',
-                ttl: record.TTL,
-            }));
         }
         catch (error) {
             throw new ExternalServiceError(`Failed to get DNS records for hosted zone ${hostedZoneId}`, ERROR_CODES.DNS_OPERATION_FAILED, error);

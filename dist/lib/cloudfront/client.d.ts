@@ -44,6 +44,9 @@ export declare class CloudFrontAPIClient {
     private route53Client;
     private awsRegion;
     private awsProfile?;
+    private distributionCache;
+    private distributionsCache;
+    private dnsCache;
     constructor(region?: string, profile?: string);
     /**
      * List all CloudFront distributions in the AWS account
