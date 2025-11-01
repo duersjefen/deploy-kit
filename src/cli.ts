@@ -30,14 +30,13 @@ if (command === 'init') {
     configOnly: args.includes('--config-only'),
     scriptsOnly: args.includes('--scripts-only'),
     makefileOnly: args.includes('--makefile-only'),
+    nonInteractive: args.includes('--non-interactive'),
+    withQualityTools: args.includes('--with-quality-tools'),
+    projectName: args.find(a => a.startsWith('--project-name='))?.split('=')[1],
+    domain: args.find(a => a.startsWith('--domain='))?.split('=')[1],
+    awsProfile: args.find(a => a.startsWith('--aws-profile='))?.split('=')[1],
+    awsRegion: args.find(a => a.startsWith('--aws-region='))?.split('=')[1],
   };
-  
-  // Validate flag combinations
-  const flagCount = Object.values(flags).filter(Boolean).length;
-  if (flagCount > 1) {
-    console.error(chalk.red('❌ Error: Use only one flag at a time (--config-only, --scripts-only, or --makefile-only)'));
-    process.exit(1);
-  }
   
   runInit(process.cwd(), flags).catch(error => {
     console.error(chalk.red('\n❌ Init error:'));
@@ -223,13 +222,20 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Interactive setup wizard for new projects'));
   console.log(chalk.gray('    Creates .deploy-config.json, Makefile, and npm scripts'));
   console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --config-only      Only create .deploy-config.json'));
-  console.log(chalk.gray('      --scripts-only     Only update npm scripts (requires existing config)'));
-  console.log(chalk.gray('      --makefile-only    Only create Makefile (requires existing config)'));
+  console.log(chalk.gray('      --config-only           Only create .deploy-config.json'));
+  console.log(chalk.gray('      --scripts-only          Only update npm scripts (requires existing config)'));
+  console.log(chalk.gray('      --makefile-only         Only create Makefile (requires existing config)'));
+  console.log(chalk.gray('      --non-interactive       Non-interactive mode (for automation/Claude Code)'));
+  console.log(chalk.gray('      --with-quality-tools    Setup Husky + lint-staged + tsc-files'));
+  console.log(chalk.gray('      --project-name=<name>   Project name (kebab-case, overrides auto-detect)'));
+  console.log(chalk.gray('      --domain=<domain>       Main domain (overrides default)'));
+  console.log(chalk.gray('      --aws-profile=<name>    AWS profile name (overrides default)'));
+  console.log(chalk.gray('      --aws-region=<region>   AWS region (default: eu-north-1)'));
   console.log(chalk.gray('    Examples:'));
   console.log(chalk.gray('      deploy-kit init'));
   console.log(chalk.gray('      deploy-kit init --config-only'));
-  console.log(chalk.gray('      deploy-kit init --scripts-only\n'));
+  console.log(chalk.gray('      deploy-kit init --non-interactive --with-quality-tools'));
+  console.log(chalk.gray('      deploy-kit init --non-interactive --project-name=my-app --domain=myapp.com\n'));
 
   console.log(chalk.green('  validate'));
   console.log(chalk.gray('    Validate .deploy-config.json configuration'));
