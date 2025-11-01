@@ -384,20 +384,60 @@ npx @duersjefen/deploy-kit dev --verbose
 3. **Port Availability** - Verifies development port is available
 4. **Config Validity** - Validates `sst.config.ts` syntax
 5. **.sst Directory** - Checks `.sst` directory health
-6. **Pulumi Output Misuse** - Detects common "Partition 1 is not valid" errors
+6. **Recursive SST Dev Script** - Detects infinite recursion in package.json dev script
+7. **Next.js Canary Features** - Detects canary-only features in stable Next.js
+8. **Pulumi Output Misuse** - Detects common "Partition 1 is not valid" errors
+
+**Hybrid Auto-Fix Approach:**
+- **Safe Fixes (Auto-Apply):** Recursive scripts, canary features, SST locks
+- **Risky Fixes (Manual Only):** Pulumi Output transformations (requires verification)
 
 **Error Recovery:**
+- Automatically fixes recursive dev scripts (separates SST from framework)
+- Automatically removes unsupported Next.js canary features
 - Automatically unlocks SST if locked
-- Provides specific fixes for Pulumi Output errors
+- Provides specific fixes for Pulumi Output errors (manual intervention required)
 - Translates common SST errors into actionable guidance
 
-**Example Error Detection:**
+**Example Error Detections:**
+
 ```typescript
-// ❌ Detected and warned
+// Pattern 1: Pulumi Output Misuse
+// ❌ Detected and warned (manual fix required)
 resources: [table.arn]  // Missing .apply()
 
 // ✅ Correct suggestion
 resources: [table.arn.apply(arn => arn)]
+```
+
+```json
+// Pattern 2: Recursive SST Dev Script
+// ❌ Detected and auto-fixed
+{
+  "scripts": {
+    "dev": "sst dev"  // Creates infinite recursion!
+  }
+}
+
+// ✅ Auto-fixed to
+{
+  "scripts": {
+    "dev": "next dev",       // What SST calls internally
+    "sst:dev": "sst dev"     // What you run
+  }
+}
+```
+
+```typescript
+// Pattern 3: Next.js Canary Features
+// ❌ Detected and auto-fixed
+const nextConfig = {
+  experimental: {
+    turbopackFileSystemCacheForBuild: true,  // Canary-only!
+  }
+};
+
+// ✅ Auto-fixed: Features removed for stable Next.js
 ```
 
 ### `deploy` - Production Deployment
@@ -708,8 +748,11 @@ If you see 403 errors:
 ### 1.4.0 (2024-11-01)
 - ✨ **Dev Command with Pre-Flight Checks**
   - Wraps `sst dev` with automatic validation
-  - 6 pre-flight checks: AWS, locks, ports, config, .sst, Pulumi Outputs
+  - 8 pre-flight checks: AWS, locks, ports, config, .sst, recursive scripts, canary features, Pulumi Outputs
   - Detects "Partition 1 is not valid" error from incorrect Pulumi Output usage
+  - Detects recursive SST dev scripts (infinite recursion)
+  - Detects Next.js canary-only features in stable versions
+  - Hybrid auto-fix: Safe fixes auto-apply, risky fixes require manual intervention
   - Auto-unlocks SST if locked
   - Error translation layer for common SST errors
   - Flags: `--skip-checks`, `--port=<number>`, `--verbose`
