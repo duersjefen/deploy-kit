@@ -43,7 +43,7 @@ if (command === 'init') {
     console.error(chalk.red(error.message));
     process.exit(1);
   });
-  process.exit(0);
+  // Process will exit naturally after async completion
 }
 
 if (command === 'validate') {
@@ -52,7 +52,7 @@ if (command === 'validate') {
     console.error(chalk.red(error.message));
     process.exit(1);
   });
-  process.exit(0);
+  // Process will exit naturally after async completion
 }
 
 if (command === 'doctor') {
@@ -61,7 +61,7 @@ if (command === 'doctor') {
     console.error(chalk.red(error.message));
     process.exit(1);
   });
-  process.exit(0);
+  // Process will exit naturally after async completion
 }
 
 if (command === 'dev') {
@@ -78,7 +78,7 @@ if (command === 'dev') {
     console.error(chalk.red(error.message));
     process.exit(1);
   });
-  process.exit(0);
+  // Process will exit naturally after async completion
 }
 
 if (command === '--help' || command === '-h' || command === 'help') {

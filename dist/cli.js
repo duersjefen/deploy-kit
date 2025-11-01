@@ -38,7 +38,7 @@ if (command === 'init') {
         console.error(chalk.red(error.message));
         process.exit(1);
     });
-    process.exit(0);
+    // Process will exit naturally after async completion
 }
 if (command === 'validate') {
     handleValidateCommand(process.cwd()).catch(error => {
@@ -46,7 +46,7 @@ if (command === 'validate') {
         console.error(chalk.red(error.message));
         process.exit(1);
     });
-    process.exit(0);
+    // Process will exit naturally after async completion
 }
 if (command === 'doctor') {
     handleDoctorCommand(process.cwd()).catch(error => {
@@ -54,7 +54,7 @@ if (command === 'doctor') {
         console.error(chalk.red(error.message));
         process.exit(1);
     });
-    process.exit(0);
+    // Process will exit naturally after async completion
 }
 if (command === 'dev') {
     // Parse dev flags
@@ -69,7 +69,7 @@ if (command === 'dev') {
         console.error(chalk.red(error.message));
         process.exit(1);
     });
-    process.exit(0);
+    // Process will exit naturally after async completion
 }
 if (command === '--help' || command === '-h' || command === 'help') {
     printHelpMessage();
