@@ -11,6 +11,7 @@ import { runInit } from './cli/init.js';
 import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
+import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import type { DeploymentStage } from './types.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
@@ -72,6 +73,12 @@ try {
 } catch (error) {
   console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
   process.exit(1);
+}
+
+// Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
+const resolvedProfile = resolveAwsProfile(config, projectRoot);
+if (resolvedProfile && !config.awsProfile) {
+  config.awsProfile = resolvedProfile;
 }
 
 // Initialize kit with the project root where the config file is located

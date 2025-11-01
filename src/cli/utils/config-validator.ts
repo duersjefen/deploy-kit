@@ -98,15 +98,24 @@ export function validateConfig(config: any): ValidationResult {
   }
 
   // Check AWS profile exists (if specified)
+  // For SST projects, awsProfile is optional (can be auto-detected from sst.config.ts)
+  // For non-SST projects, awsProfile is required
   if (config.awsProfile) {
     try {
-      const profiles = execSync('aws configure list-profiles', { encoding: 'utf-8' }).trim().split('\n');
+      const profilesStr = execSync('aws configure list-profiles', { encoding: 'utf-8' });
+      const profiles = profilesStr.trim().split('\n');
       if (!profiles.includes(config.awsProfile)) {
         warnings.push(`AWS profile "${config.awsProfile}" not found in local AWS config`);
       }
     } catch {
       warnings.push('Could not verify AWS profiles (AWS CLI not available)');
     }
+  } else if (config.infrastructure !== 'sst-serverless') {
+    // Non-SST projects should specify awsProfile explicitly
+    warnings.push(
+      'awsProfile not specified. Will use default AWS profile. ' +
+      'For SST projects, profile can be auto-detected from sst.config.ts'
+    );
   }
 
   return {

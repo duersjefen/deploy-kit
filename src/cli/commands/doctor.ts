@@ -9,6 +9,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import { validateConfig } from '../utils/config-validator.js';
+import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 
 interface DoctorCheck {
   name: string;
@@ -111,7 +112,7 @@ export async function handleDoctorCommand(projectRoot: string = process.cwd()): 
     });
   }
 
-  // Check 3: AWS
+  // Check 3: AWS & Profile
   const awsSpinner = ora('Checking AWS credentials...').start();
   try {
     const result = execSync('aws sts get-caller-identity --output json', {
@@ -119,16 +120,23 @@ export async function handleDoctorCommand(projectRoot: string = process.cwd()): 
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     const identity = JSON.parse(result);
+    
+    // Check if profile is auto-detected for SST projects
+    const resolvedProfile = resolveAwsProfile(config, projectRoot);
+    const profileInfo = resolvedProfile 
+      ? `(auto-detected from sst.config.ts) - Account: ${identity.Account}`
+      : `Account: ${identity.Account}`;
+    
     awsSpinner.succeed('AWS credentials configured');
     checks.push({
-      name: 'AWS Credentials',
+      name: 'AWS Credentials & Profile',
       status: 'pass',
-      message: 'Account: ' + identity.Account,
+      message: profileInfo,
     });
   } catch (error) {
     awsSpinner.fail('AWS credentials not configured');
     checks.push({
-      name: 'AWS Credentials',
+      name: 'AWS Credentials & Profile',
       status: 'fail',
       message: 'Run: aws configure',
     });

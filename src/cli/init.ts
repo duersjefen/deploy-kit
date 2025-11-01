@@ -8,11 +8,12 @@ import ora from 'ora';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import prompt from 'prompts';
+import { detectProfileFromSstConfig } from './utils/aws-profile-detector.js';
 
 interface InitAnswers {
   projectName: string;
   mainDomain: string;
-  awsProfile: string;
+  awsProfile?: string; // Optional: can be auto-detected from sst.config.ts
   stagingDomain: string;
   productionDomain: string;
   awsRegion: string;
@@ -35,8 +36,22 @@ function printBanner(): void {
 /**
  * Ask user for project configuration
  */
-async function askQuestions(): Promise<InitAnswers> {
-  const answers = await prompt([
+async function askQuestions(projectRoot: string = process.cwd()): Promise<InitAnswers> {
+  // Check if this is an SST project and try to auto-detect profile
+  let detectedProfile: string | undefined;
+  let showProfileQuestion = true;
+  
+  const sstConfigExists = existsSync(join(projectRoot, 'sst.config.ts'));
+  if (sstConfigExists) {
+    detectedProfile = detectProfileFromSstConfig(projectRoot);
+    if (detectedProfile) {
+      console.log(chalk.cyan(`\n📝 Found AWS profile in sst.config.ts: ${chalk.bold(detectedProfile)}`));
+      console.log(chalk.gray('   This profile will be auto-detected, so you can skip specifying it here.\n'));
+      showProfileQuestion = false;
+    }
+  }
+
+  const questions: any[] = [
     {
       type: 'text',
       name: 'projectName',
@@ -51,12 +66,19 @@ async function askQuestions(): Promise<InitAnswers> {
       initial: 'myapp.com',
       validate: (val: string) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(val) ? true : 'Please enter a valid domain',
     },
-    {
+  ];
+
+  // Only ask for AWS profile if not auto-detected from SST
+  if (showProfileQuestion) {
+    questions.push({
       type: 'text',
       name: 'awsProfile',
       message: 'AWS profile name (for credentials)',
       initial: 'my-awesome-app',
-    },
+    });
+  }
+
+  questions.push(
     {
       type: 'text',
       name: 'stagingDomain',
@@ -88,7 +110,14 @@ async function askQuestions(): Promise<InitAnswers> {
       message: 'Run tests before deploy?',
       initial: true,
     },
-  ]);
+  );
+
+  const answers = await prompt(questions);
+
+  // If profile was auto-detected from SST, include it in answers
+  if (detectedProfile && !answers.awsProfile) {
+    answers.awsProfile = detectedProfile;
+  }
 
   return answers as InitAnswers;
 }
@@ -404,7 +433,7 @@ export async function runInit(projectRoot: string = process.cwd()): Promise<void
         } else if (action.action === 'merge') {
           // Ask new questions and merge
           console.log();
-          const newAnswers = await askQuestions();
+          const newAnswers = await askQuestions(projectRoot);
           const newConfig = JSON.parse(generateDeployConfig(newAnswers));
           const merged = mergeConfigs(existingConfig, newConfig);
           answers = newAnswers;
@@ -412,7 +441,7 @@ export async function runInit(projectRoot: string = process.cwd()): Promise<void
         } else {
           // Overwrite: ask questions fresh
           console.log();
-          answers = await askQuestions();
+          answers = await askQuestions(projectRoot);
           existingConfig = null;
         }
       } catch (error) {
@@ -421,7 +450,7 @@ export async function runInit(projectRoot: string = process.cwd()): Promise<void
       }
     } else {
       // No existing config, ask questions fresh
-      answers = await askQuestions();
+      answers = await askQuestions(projectRoot);
     }
 
     console.log();
