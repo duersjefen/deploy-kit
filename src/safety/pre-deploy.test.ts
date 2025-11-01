@@ -77,13 +77,16 @@ describe('pre-deployment checks', () => {
     it('supports per-stage health check toggle', () => {
       const config = createMockProjectConfig({
         stageConfig: {
+          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
             skipHealthChecks: true,
-          } as any,
+            skipCacheInvalidation: false,
+          },
           production: {
             domain: 'example.com',
             skipHealthChecks: false,
+            skipCacheInvalidation: false,
           },
         },
       });
@@ -103,12 +106,15 @@ describe('pre-deployment checks', () => {
     it('supports per-stage cache invalidation toggle', () => {
       const config = createMockProjectConfig({
         stageConfig: {
+          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
+            skipHealthChecks: false,
             skipCacheInvalidation: true,
           },
           production: {
             domain: 'example.com',
+            skipHealthChecks: false,
             skipCacheInvalidation: false,
           },
         },
@@ -129,12 +135,17 @@ describe('pre-deployment checks', () => {
     it('supports deployment confirmation requirement', () => {
       const config = createMockProjectConfig({
         stageConfig: {
+          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
+            skipHealthChecks: false,
+            skipCacheInvalidation: false,
             requiresConfirmation: false,
           },
           production: {
             domain: 'example.com',
+            skipHealthChecks: false,
+            skipCacheInvalidation: false,
             requiresConfirmation: true,
           },
         },
@@ -178,10 +189,10 @@ describe('pre-deployment checks', () => {
         ],
       });
 
-      assertEqual(config.healthChecks.length, 3, 'Should have 3 health checks');
-      assertEqual(config.healthChecks[0].name, 'Homepage', 'First check should be homepage');
-      assertEqual(config.healthChecks[1].name, 'API Health', 'Second check should be API health');
-      assertEqual(config.healthChecks[2].name, 'Ready Probe', 'Third check should be ready probe');
+      assertEqual(config.healthChecks!.length, 3, 'Should have 3 health checks');
+      assertEqual(config.healthChecks![0].name, 'Homepage', 'First check should be homepage');
+      assertEqual(config.healthChecks![1].name, 'API Health', 'Second check should be API health');
+      assertEqual(config.healthChecks![2].name, 'Ready Probe', 'Third check should be ready probe');
     });
 
     it('validates health check structure', () => {
@@ -207,7 +218,7 @@ describe('pre-deployment checks', () => {
         },
       });
 
-      assertEqual(config.hooks.preDeploy, 'npm test', 'Should support preDeploy hook');
+      assertEqual(config.hooks!.preDeploy, 'npm test', 'Should support preDeploy hook');
     });
 
     it('supports post-build hook', () => {
@@ -217,7 +228,7 @@ describe('pre-deployment checks', () => {
         },
       });
 
-      assertEqual(config.hooks.postBuild, 'npm run build', 'Should support postBuild hook');
+      assertEqual(config.hooks!.postBuild, 'npm run build', 'Should support postBuild hook');
     });
 
     it('supports custom pre-deploy script', () => {
@@ -228,7 +239,7 @@ describe('pre-deployment checks', () => {
       });
 
       assert(
-        config.hooks.preDeploy?.includes('pre-deploy.sh'),
+        config.hooks!.preDeploy?.includes('pre-deploy.sh') ?? false,
         'Should support custom pre-deploy script'
       );
     });
@@ -238,13 +249,18 @@ describe('pre-deployment checks', () => {
     it('supports per-stage AWS region', () => {
       const config = createMockProjectConfig({
         stageConfig: {
+          dev: { domain: 'dev.example.com', skipHealthChecks: false, skipCacheInvalidation: false },
           staging: {
             domain: 'staging.example.com',
             awsRegion: 'eu-north-1',
+            skipHealthChecks: false,
+            skipCacheInvalidation: false,
           },
           production: {
             domain: 'example.com',
             awsRegion: 'us-east-1',
+            skipHealthChecks: false,
+            skipCacheInvalidation: false,
           },
         },
       });
@@ -305,9 +321,9 @@ describe('pre-deployment checks', () => {
         customDeployScript: 'bash ./scripts/deploy.sh',
       });
 
-      assert(config.customDeployScript !== undefined, 'Should support custom deploy script');
+      assert(config.customDeployScript! !== undefined, 'Should support custom deploy script');
       assert(
-        config.customDeployScript.includes('deploy.sh'),
+        config.customDeployScript!.includes('deploy.sh'),
         'Custom script path should be configured'
       );
     });
