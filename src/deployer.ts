@@ -53,7 +53,8 @@ export class DeploymentKit {
    * Detect if this is an SST project
    */
   private isSSTProject(): boolean {
-    return existsSync(join(this.projectRoot, 'sst.config.ts'));
+    return existsSync(join(this.projectRoot, 'sst.config.ts')) ||
+           existsSync(join(this.projectRoot, 'sst.config.js'));
   }
 
   /**

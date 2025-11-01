@@ -38,7 +38,8 @@ function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): InitAn
 
 import chalk from 'chalk';
 import ora from 'ora';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, chmodSync } from 'fs';
+import { execSync } from 'child_process';
 import { join } from 'path';
 import prompt from 'prompts';
 import { detectProfileFromSstConfig } from './utils/aws-profile-detector.js';
@@ -424,8 +425,7 @@ function createHuskyPreCommitHook(projectRoot: string): void {
     
     // Create .husky directory if it doesn't exist
     if (!existsSync(huskyDir)) {
-      const fs = require('fs');
-      fs.mkdirSync(huskyDir, { recursive: true });
+      mkdirSync(huskyDir, { recursive: true });
     }
 
     const content = `#!/usr/bin/env sh
@@ -434,7 +434,7 @@ npx lint-staged --config .lintstagedrc.js
 
     writeFileSync(hookPath, content, 'utf-8');
     // Make hook executable
-    require('fs').chmodSync(hookPath, 0o755);
+    chmodSync(hookPath, 0o755);
     spinner.succeed(chalk.green('✅ Configured Husky pre-commit hook'));
   } catch (error) {
     spinner.fail('Failed to configure Husky pre-commit hook');
@@ -482,7 +482,6 @@ async function installQualityTools(projectRoot: string): Promise<void> {
   const spinner = ora('Installing quality tools...').start();
 
   try {
-    const { execSync } = require('child_process');
     
     // Install husky, lint-staged, and tsc-files as dev dependencies
     spinner.text = 'Installing husky, lint-staged, tsc-files...';
