@@ -113,8 +113,6 @@ async function cli() {
     if (resolvedProfile && !config.awsProfile) {
         config.awsProfile = resolvedProfile;
     }
-    // Initialize kit with the project root where the config file is located
-    const kit = new DeploymentKit(config, projectRoot);
     // Handle config-dependent commands
     async function main() {
         switch (command) {
@@ -129,8 +127,17 @@ async function cli() {
                     console.error(chalk.gray('   Valid stages: staging, production'));
                     process.exit(1);
                 }
-                // Parse --dry-run flag
+                // Parse observability flags
                 const isDryRun = args.includes('--dry-run');
+                const verbose = args.includes('--verbose');
+                const logLevelArg = args.find(a => a.startsWith('--log-level='))?.split('=')[1];
+                const metricsBackendArg = args.find(a => a.startsWith('--metrics-backend='))?.split('=')[1];
+                // Initialize kit with observability options
+                const kit = new DeploymentKit(config, projectRoot, {
+                    logLevel: logLevelArg || (verbose ? 'debug' : 'info'),
+                    metricsBackend: metricsBackendArg || 'memory',
+                    verbose,
+                });
                 const result = await kit.deploy(stage, { isDryRun });
                 // Deployment result is now printed by the deployer itself
                 // Exit with appropriate code
@@ -175,7 +182,8 @@ async function cli() {
                 }
                 console.log(chalk.bold.cyan(`\n🏥 Running health checks for ${stage}...`));
                 console.log(chalk.gray('Testing deployed application health\n'));
-                const healthy = await kit.validateHealth(stage);
+                const kitHealth = new DeploymentKit(config, projectRoot);
+                const healthy = await kitHealth.validateHealth(stage);
                 if (healthy) {
                     console.log(chalk.green('\n✅ All health checks passed\n'));
                     process.exit(0);
@@ -266,10 +274,15 @@ function printHelpMessage() {
     console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
     console.log(chalk.gray('    Stages: staging, production'));
     console.log(chalk.gray('    Flags:'));
-    console.log(chalk.gray('      --dry-run           Preview deployment without executing'));
+    console.log(chalk.gray('      --dry-run                Preview deployment without executing'));
+    console.log(chalk.gray('      --verbose                Enable detailed logging and debug output'));
+    console.log(chalk.gray('      --log-level=<level>      Set log level: debug, info, warn, error (default: info)'));
+    console.log(chalk.gray('      --metrics-backend=<type> Metrics backend: memory, datadog, cloudwatch, prometheus'));
     console.log(chalk.gray('    Examples:'));
     console.log(chalk.gray('      deploy-kit deploy staging'));
     console.log(chalk.gray('      deploy-kit deploy staging --dry-run'));
+    console.log(chalk.gray('      deploy-kit deploy staging --verbose'));
+    console.log(chalk.gray('      deploy-kit deploy staging --log-level=debug --metrics-backend=datadog\n'));
     console.log(chalk.green('  status [stage]'));
     console.log(chalk.gray('    Check deployment status for all stages or specific stage'));
     console.log(chalk.gray('    Detects: active locks, Pulumi state, previous failures'));

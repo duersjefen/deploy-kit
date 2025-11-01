@@ -6,6 +6,8 @@ import { getPostDeploymentChecks } from './safety/post-deploy.js';
 import { DeploymentOrchestrator } from './deployment/orchestrator.js';
 import { RollbackManager } from './deployment/rollback-manager.js';
 import { CloudFrontOperations } from './lib/cloudfront/operations.js';
+import { StructuredLogger } from './monitoring/structured-logger.js';
+import { MetricsCollector } from './monitoring/metrics-collector.js';
 /**
  * DeploymentKit - Main facade for deployment operations
  *
@@ -49,7 +51,7 @@ export class DeploymentKit {
      * const kit = new DeploymentKit(config, '/path/to/project');
      * ```
      */
-    constructor(config, projectRoot = process.cwd()) {
+    constructor(config, projectRoot = process.cwd(), options) {
         this.config = config;
         this.projectRoot = projectRoot;
         this.lockManager = getLockManager(projectRoot);
@@ -59,6 +61,20 @@ export class DeploymentKit {
         this.orchestrator = new DeploymentOrchestrator(config, projectRoot);
         this.rollbackManager = new RollbackManager(this.lockManager);
         this.cloudFrontOps = new CloudFrontOperations(config, config.awsProfile);
+        // Initialize observability components
+        const minLevel = options?.logLevel || (options?.verbose ? 'debug' : 'info');
+        const backend = options?.metricsBackend || 'memory';
+        this.logger = new StructuredLogger({
+            minLevel,
+            enableRemote: backend !== 'memory',
+            remoteProvider: backend === 'memory' ? 'otel' : backend,
+        });
+        this.metrics = new MetricsCollector({
+            backend,
+            maxBufferSize: 1000,
+        });
+        // Set deployment context for structured logging
+        this.logger.setDeploymentContext(config.projectName, projectRoot);
     }
     /**
      * Execute full deployment workflow
@@ -84,14 +100,15 @@ export class DeploymentKit {
      */
     async deploy(stage, options) {
         const isDryRun = options?.isDryRun || false;
-        const startTime = new Date();
+        const startTimeDate = new Date();
+        const startTime = startTimeDate.getTime();
         const stageTimings = [];
         let cloudFrontDistId = null;
         const result = {
             success: false,
             stage,
             isDryRun,
-            startTime,
+            startTime: startTimeDate,
             endTime: new Date(),
             durationSeconds: 0,
             message: '',
@@ -104,6 +121,13 @@ export class DeploymentKit {
             },
         };
         try {
+            // Log deployment start
+            this.logger.info('Deployment started', {
+                stage,
+                isDryRun,
+                projectName: this.config.projectName,
+            });
+            this.metrics.startTimer('deployment.total');
             // Print deployment header
             console.log(chalk.bold.cyan('\n' + '═'.repeat(60)));
             const headerMode = isDryRun ? '🔍 DRY-RUN PREVIEW' : '🚀 DEPLOYMENT PIPELINE';
@@ -112,23 +136,31 @@ export class DeploymentKit {
             // Stage 1: Pre-deployment safety checks (BEFORE lock acquisition)
             // This way, if pre-checks fail, lock is never acquired
             let stage1Start = Date.now();
+            this.logger.debug('Running pre-deployment checks', { stage });
+            this.metrics.startTimer('stage.pre-checks');
             console.log(chalk.bold.white('▸ Stage 1: Pre-Deployment Checks'));
             console.log(chalk.gray('  Validating: git status, AWS credentials, tests, SSL\n'));
             await this.preChecks.run(stage);
             result.details.gitStatusOk = true;
             result.details.testsOk = true;
-            stageTimings.push({ name: 'Pre-Deployment Checks', duration: Date.now() - stage1Start });
+            const stage1Duration = Date.now() - stage1Start;
+            this.metrics.stopTimer('stage.pre-checks');
+            this.logger.info('Pre-deployment checks passed', { stage, durationMs: stage1Duration });
+            stageTimings.push({ name: 'Pre-Deployment Checks', duration: stage1Duration });
             // Only acquire lock AFTER pre-checks pass (skip in dry-run mode)
             let newLock;
             if (!isDryRun) {
                 await this.lockManager.checkAndCleanPulumiLock(stage);
                 newLock = await this.lockManager.acquireLock(stage);
+                this.logger.debug('Lock acquired', { stage });
             }
             else {
                 console.log(chalk.yellow('ℹ️  Dry-run mode: skipping lock acquisition\n'));
             }
             // Stage 2: Build & Deploy (delegated to orchestrator)
             let stage2Start = Date.now();
+            this.logger.debug('Starting build and deploy', { stage });
+            this.metrics.startTimer('stage.build-deploy');
             console.log(chalk.bold.white('\n▸ Stage 2: Build & Deploy'));
             console.log(chalk.gray('  Building application and deploying to AWS\n'));
             // For SST projects, build is handled by sst deploy, skip separate build
@@ -141,23 +173,35 @@ export class DeploymentKit {
             }
             cloudFrontDistId = await this.orchestrator.executeDeploy(stage, { isDryRun });
             result.details.deploymentOk = true;
-            stageTimings.push({ name: 'Build & Deploy', duration: Date.now() - stage2Start });
+            const stage2Duration = Date.now() - stage2Start;
+            this.metrics.stopTimer('stage.build-deploy');
+            this.logger.info('Build and deploy completed', { stage, durationMs: stage2Duration, cloudFrontDistId });
+            stageTimings.push({ name: 'Build & Deploy', duration: stage2Duration });
             // Stage 3: Post-deployment validation
             let stage3Start = Date.now();
+            this.logger.debug('Running post-deployment validation', { stage });
+            this.metrics.startTimer('stage.health-checks');
             console.log(chalk.bold.white('\n▸ Stage 3: Post-Deployment Validation'));
             console.log(chalk.gray('  Testing health checks and CloudFront configuration\n'));
             if (!isDryRun) {
                 await this.postChecks.run(stage);
             }
             result.details.healthChecksOk = true;
-            stageTimings.push({ name: 'Health Checks', duration: Date.now() - stage3Start });
+            const stage3Duration = Date.now() - stage3Start;
+            this.metrics.stopTimer('stage.health-checks');
+            this.logger.info('Health checks passed', { stage, durationMs: stage3Duration });
+            stageTimings.push({ name: 'Health Checks', duration: stage3Duration });
             // Stage 4: Cache invalidation (background, delegated to CloudFront operations, skip in dry-run)
             let stage4Start = Date.now();
             if (!isDryRun && !this.config.stageConfig[stage].skipCacheInvalidation) {
+                this.logger.debug('Starting cache invalidation', { stage, cloudFrontDistId });
+                this.metrics.startTimer('stage.cache-invalidation');
                 console.log(chalk.bold.white('\n▸ Stage 4: Cache Invalidation'));
                 console.log(chalk.gray('  Clearing CloudFront cache (runs in background)\n'));
                 await this.cloudFrontOps.invalidateCache(stage, cloudFrontDistId);
                 result.details.cacheInvalidatedOk = true;
+                this.metrics.stopTimer('stage.cache-invalidation');
+                this.logger.info('Cache invalidation completed', { stage, cloudFrontDistId });
             }
             stageTimings.push({ name: 'Cache Invalidation', duration: Date.now() - stage4Start });
             result.success = true;
@@ -166,7 +210,18 @@ export class DeploymentKit {
             // Release lock (if not dry-run)
             if (!isDryRun && newLock) {
                 await this.lockManager.releaseLock(newLock);
+                this.logger.debug('Lock released', { stage });
             }
+            // Record total deployment duration
+            const totalDuration = Date.now() - startTime;
+            this.metrics.stopTimer('deployment.total');
+            this.metrics.recordHistogram('deployment.duration', totalDuration);
+            this.metrics.incrementCounter('deployment.success');
+            this.logger.info('Deployment completed successfully', {
+                stage,
+                durationMs: totalDuration,
+                isDryRun,
+            });
             // Print deployment summary (delegated to orchestrator)
             this.orchestrator.printDeploymentSummary(result, stageTimings);
             // Post-deployment: Audit CloudFront and offer cleanup (delegated to CloudFront operations, skip in dry-run)
@@ -178,6 +233,13 @@ export class DeploymentKit {
             result.success = false;
             result.message = `❌ Deployment to ${stage} failed`;
             result.error = error instanceof Error ? error.message : String(error);
+            // Log deployment failure
+            const err = error instanceof Error ? error : new Error(String(error));
+            this.logger.error('Deployment failed', err, {
+                stage,
+                durationMs: Date.now() - startTime,
+            });
+            this.metrics.incrementCounter('deployment.failure');
             // Print failure summary (delegated to orchestrator)
             this.orchestrator.printDeploymentFailureSummary(result, stageTimings);
             // Release lock if it was acquired
@@ -188,6 +250,7 @@ export class DeploymentKit {
                 const existingLock = await this.lockManager.getFileLock(stage);
                 if (existingLock) {
                     await this.lockManager.releaseLock(existingLock);
+                    this.logger.debug('Lock released after error', { stage });
                 }
             }
             catch (lockErr) {
@@ -196,6 +259,9 @@ export class DeploymentKit {
         }
         result.endTime = new Date();
         result.durationSeconds = Math.round((result.endTime.getTime() - result.startTime.getTime()) / 1000);
+        // Flush observability data
+        this.logger.flush();
+        this.metrics.flush();
         return result;
     }
     /**
