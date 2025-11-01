@@ -5,7 +5,7 @@
 
 import chalk from 'chalk';
 import { spawn, ChildProcess } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
@@ -43,7 +43,7 @@ export async function handleDevCommand(
     let config: ProjectConfig | null = null;
     
     if (existsSync(configPath)) {
-      const configContent = require(configPath);
+      const configContent = JSON.parse(readFileSync(configPath, 'utf-8'));
       config = configContent;
     }
 

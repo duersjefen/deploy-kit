@@ -7,7 +7,7 @@
 import { DeploymentKit } from './deployer.js';
 import { getStatusChecker } from './status/checker.js';
 import { getRecoveryManager } from './recovery/manager.js';
-import { runInit, type InitFlags } from './cli/init.js';
+import { runInit, type InitFlags } from './cli/init/index.js';
 import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
