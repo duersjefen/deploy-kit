@@ -250,3 +250,208 @@ export async function stopLocalstack(): Promise<void> {
   // Cleanup handled by Docker or test runner
   // This is a placeholder for future docker-compose integration
 }
+
+
+/**
+ * Performance benchmarking utilities
+ */
+
+/**
+ * Result of a performance benchmark
+ */
+export interface BenchmarkResult {
+  name: string;
+  duration: number; // milliseconds
+  memoryUsed?: number; // bytes
+  operations: number;
+  opsPerSecond: number;
+}
+
+/**
+ * Options for running a benchmark
+ */
+export interface BenchmarkOptions {
+  iterations?: number; // Default: 100
+  warmup?: number; // Default: 10 (iterations to run before measuring)
+  trackMemory?: boolean; // Default: false
+  verbose?: boolean; // Default: false
+}
+
+/**
+ * Run a performance benchmark on an async function
+ *
+ * Measures execution time and operations per second.
+ * Optionally tracks memory usage and runs warmup iterations.
+ *
+ * @param name - Benchmark name for reporting
+ * @param fn - Async function to benchmark
+ * @param options - Benchmark configuration
+ * @returns BenchmarkResult with timing and performance metrics
+ *
+ * @example
+ * ```typescript
+ * const result = await benchmark('config validation', async () => {
+ *   await validateConfig(largeConfig);
+ * }, { iterations: 1000, trackMemory: true });
+ *
+ * console.log(`${result.name}: ${result.opsPerSecond} ops/sec`);
+ * ```
+ */
+export async function benchmark(
+  name: string,
+  fn: () => Promise<void>,
+  options: BenchmarkOptions = {}
+): Promise<BenchmarkResult> {
+  const iterations = options.iterations ?? 100;
+  const warmup = options.warmup ?? 10;
+  const trackMemory = options.trackMemory ?? false;
+  const verbose = options.verbose ?? false;
+
+  // Warmup iterations
+  if (verbose) {
+    console.log(`  Warming up (${warmup} iterations)...`);
+  }
+  for (let i = 0; i < warmup; i++) {
+    await fn();
+  }
+
+  // Get initial memory if tracking
+  const initialMemory = trackMemory && global.gc
+    ? (global.gc(), process.memoryUsage().heapUsed)
+    : 0;
+
+  // Benchmark iterations
+  const startTime = performance.now();
+
+  for (let i = 0; i < iterations; i++) {
+    await fn();
+  }
+
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+  const opsPerSecond = (iterations / duration) * 1000;
+  const memoryUsed = trackMemory && global.gc
+    ? (global.gc(), process.memoryUsage().heapUsed - initialMemory)
+    : undefined;
+
+  const result: BenchmarkResult = {
+    name,
+    duration,
+    memoryUsed,
+    operations: iterations,
+    opsPerSecond,
+  };
+
+  if (verbose) {
+    console.log(`  Completed: ${duration.toFixed(2)}ms for ${iterations} operations`);
+  }
+
+  return result;
+}
+
+/**
+ * Run a performance benchmark on a synchronous function
+ *
+ * @param name - Benchmark name for reporting
+ * @param fn - Synchronous function to benchmark
+ * @param options - Benchmark configuration
+ * @returns BenchmarkResult with timing metrics
+ */
+export function benchmarkSync(
+  name: string,
+  fn: () => void,
+  options: BenchmarkOptions = {}
+): BenchmarkResult {
+  const iterations = options.iterations ?? 100;
+  const warmup = options.warmup ?? 10;
+  const trackMemory = options.trackMemory ?? false;
+  const verbose = options.verbose ?? false;
+
+  // Warmup iterations
+  if (verbose) {
+    console.log(`  Warming up (${warmup} iterations)...`);
+  }
+  for (let i = 0; i < warmup; i++) {
+    fn();
+  }
+
+  // Get initial memory if tracking
+  const initialMemory = trackMemory && global.gc
+    ? (global.gc(), process.memoryUsage().heapUsed)
+    : 0;
+
+  // Benchmark iterations
+  const startTime = performance.now();
+
+  for (let i = 0; i < iterations; i++) {
+    fn();
+  }
+
+  const endTime = performance.now();
+  const duration = endTime - startTime;
+  const opsPerSecond = (iterations / duration) * 1000;
+  const memoryUsed = trackMemory && global.gc
+    ? (global.gc(), process.memoryUsage().heapUsed - initialMemory)
+    : undefined;
+
+  const result: BenchmarkResult = {
+    name,
+    duration,
+    memoryUsed,
+    operations: iterations,
+    opsPerSecond,
+  };
+
+  if (verbose) {
+    console.log(`  Completed: ${duration.toFixed(2)}ms for ${iterations} operations`);
+  }
+
+  return result;
+}
+
+/**
+ * Compare multiple benchmarks and report results
+ *
+ * @param results - Array of benchmark results
+ * @param threshold - Warn if slowest is >threshold slower than fastest (default: 1.5x)
+ * @returns Formatted comparison report
+ *
+ * @example
+ * ```typescript
+ * const results = [
+ *   await benchmark('method-a', methodA),
+ *   await benchmark('method-b', methodB),
+ * ];
+ *
+ * const report = compareBenchmarks(results);
+ * console.log(report);
+ * ```
+ */
+export function compareBenchmarks(results: BenchmarkResult[], threshold: number = 1.5): string {
+  let report = '\n╔════════════════════════════════════════════════════╗\n';
+  report += '║         Performance Benchmark Results               ║\n';
+  report += '╚════════════════════════════════════════════════════╝\n\n';
+
+  // Sort by ops/sec (fastest first)
+  const sorted = [...results].sort((a, b) => b.opsPerSecond - a.opsPerSecond);
+  const fastestOpsPerSec = sorted[0].opsPerSecond;
+
+  for (const result of sorted) {
+    const relative = result.opsPerSecond / fastestOpsPerSec;
+    const relativeStr = relative === 1 ? '(fastest)' : `(${(relative * 100).toFixed(0)}%)`;
+    const memoryStr = result.memoryUsed !== undefined 
+      ? ` | ${(result.memoryUsed / 1024 / 1024).toFixed(2)}MB`
+      : '';
+
+    report += `${result.name.padEnd(25)} ${result.opsPerSecond.toFixed(0).padStart(10)} ops/sec  ${relativeStr.padEnd(12)}${memoryStr}\n`;
+  }
+
+  // Warn if performance varies too much
+  const slowestOpsPerSec = sorted[sorted.length - 1].opsPerSecond;
+  const variance = fastestOpsPerSec / slowestOpsPerSec;
+  if (variance > threshold) {
+    report += `\n⚠️  Warning: Performance varies by ${variance.toFixed(1)}x (consider investigation)\n`;
+  }
+
+  return report;
+}
