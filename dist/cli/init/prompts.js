@@ -116,6 +116,11 @@ export function printSummary(answers, optionalFiles) {
     if (optionalFiles?.createMakefile) {
         console.log('  ✅ Makefile - User-friendly deployment targets');
     }
+    if (optionalFiles?.createQualityTools) {
+        console.log('  ✅ Installed quality tools (Husky, lint-staged, tsc-files)');
+        console.log('  ✅ Configured pre-commit hooks');
+        console.log('  ✅ Updated .gitignore with SST entries');
+    }
     console.log('\n🚀 Next Steps:\n');
     console.log(chalk.green('  1. Review .deploy-config.json to verify settings'));
     console.log(chalk.green('  2. Install dependencies: npm install'));

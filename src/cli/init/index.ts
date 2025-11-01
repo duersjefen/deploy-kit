@@ -210,6 +210,12 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
               message: 'Create/update Makefile?',
               initial: false,
             },
+            {
+              type: 'confirm',
+              name: 'updateQualityTools',
+              message: 'Setup pre-commit validation (Husky + lint-staged)?',
+              initial: false,
+            },
           ] as any);
 
           if (updateScripts.updateScripts) {
@@ -217,6 +223,14 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           }
           if (updateScripts.updateMakefile) {
             createMakefile(existingConfig, projectRoot);
+          }
+          if ((updateScripts as any).updateQualityTools) {
+            console.log();
+            await installQualityTools(projectRoot);
+            createLintStagedConfig(projectRoot);
+            createHuskyPreCommitHook(projectRoot);
+            addPrepareScript(projectRoot);
+            updateGitIgnore(projectRoot);
           }
 
           console.log('\n' + chalk.bold.green('═'.repeat(60)));
@@ -228,6 +242,11 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           }
           if (updateScripts.updateMakefile) {
             console.log(chalk.green('✅ Makefile created/updated'));
+          }
+          if ((updateScripts as any).updateQualityTools) {
+            console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
+            console.log(chalk.green('✅ Configured pre-commit hooks'));
+            console.log(chalk.green('✅ Updated .gitignore with SST entries'));
           }
           console.log('\n' + chalk.bold.cyan('═'.repeat(60)) + '\n');
           return;
@@ -287,6 +306,12 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
         message: 'Create a Makefile? (optional, adds convenience)',
         initial: false,
       },
+      {
+        type: 'confirm',
+        name: 'createQualityTools',
+        message: 'Setup pre-commit validation (Husky + lint-staged)?',
+        initial: false,
+      },
     ] as any);
 
     if (optionalFiles.createScripts) {
@@ -294,6 +319,14 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
     }
     if (optionalFiles.createMakefile) {
       createMakefile(answers, projectRoot);
+    }
+    if (optionalFiles.createQualityTools) {
+      console.log();
+      await installQualityTools(projectRoot);
+      createLintStagedConfig(projectRoot);
+      createHuskyPreCommitHook(projectRoot);
+      addPrepareScript(projectRoot);
+      updateGitIgnore(projectRoot);
     }
 
     // Print summary
