@@ -15,6 +15,7 @@ export interface DevOptions {
   port?: number;         // Custom port (default: 3000)
   verbose?: boolean;     // Verbose output
   quiet?: boolean;       // Minimal output (only errors)
+  native?: boolean;      // Use native SST output (no filtering)
 }
 
 /**
@@ -40,6 +41,16 @@ export async function startSstDev(
 
   const args = ['sst', 'dev'];
 
+  // Determine if we should use output handler
+  // Use output handler when: NOT quiet AND NOT native
+  const useOutputHandler = !options.quiet && !options.native;
+
+  // When using output handler, add --mode=mono for clean sequential output
+  // (better for parsing and filtering)
+  if (useOutputHandler) {
+    args.push('--mode=mono');
+  }
+
   if (selectedPort !== 3000) {
     args.push(`--port=${selectedPort}`);
   }
@@ -47,8 +58,7 @@ export async function startSstDev(
   const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
 
   try {
-    // Use 'inherit' for quiet mode, otherwise capture for processing
-    const useOutputHandler = !options.quiet;
+    // Use 'inherit' for quiet/native mode, otherwise capture for processing
     const stdio: 'inherit' | ['inherit', 'pipe', 'pipe'] = useOutputHandler
       ? ['inherit', 'pipe', 'pipe']
       : 'inherit';

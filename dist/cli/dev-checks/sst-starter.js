@@ -22,13 +22,20 @@ export async function startSstDev(projectRoot, config, options) {
         console.log(chalk.gray(`   SST Console: http://localhost:13561\n`));
     }
     const args = ['sst', 'dev'];
+    // Determine if we should use output handler
+    // Use output handler when: NOT quiet AND NOT native
+    const useOutputHandler = !options.quiet && !options.native;
+    // When using output handler, add --mode=mono for clean sequential output
+    // (better for parsing and filtering)
+    if (useOutputHandler) {
+        args.push('--mode=mono');
+    }
     if (selectedPort !== 3000) {
         args.push(`--port=${selectedPort}`);
     }
     const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
     try {
-        // Use 'inherit' for quiet mode, otherwise capture for processing
-        const useOutputHandler = !options.quiet;
+        // Use 'inherit' for quiet/native mode, otherwise capture for processing
         const stdio = useOutputHandler
             ? ['inherit', 'pipe', 'pipe']
             : 'inherit';

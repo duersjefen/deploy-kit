@@ -81,6 +81,7 @@ async function cli() {
       port: portArg ? parseInt(portArg, 10) : undefined,
       verbose: args.includes('--verbose'),
       quiet: args.includes('--quiet'),
+      native: args.includes('--native'),
     };
 
     try {
@@ -359,11 +360,17 @@ function printHelpMessage(): void {
   console.log(chalk.gray('      --port=<number>    Custom port (default: 3000)'));
   console.log(chalk.gray('      --verbose          Show detailed SST output with filtering'));
   console.log(chalk.gray('      --quiet            Minimal output (raw SST, no filtering)'));
+  console.log(chalk.gray('      --native           Use native SST output (no filtering)'));
+  console.log(chalk.gray('    Output modes:'));
+  console.log(chalk.gray('      • Default: Smart filtering with mono mode (clean sequential output)'));
+  console.log(chalk.gray('      • --verbose: More details with mono mode'));
+  console.log(chalk.gray('      • --quiet/--native: Raw SST output (no mono mode, native TTY)'));
   console.log(chalk.gray('    Examples:'));
   console.log(chalk.gray('      deploy-kit dev'));
   console.log(chalk.gray('      deploy-kit dev --verbose'));
   console.log(chalk.gray('      deploy-kit dev --port=4000'));
-  console.log(chalk.gray('      deploy-kit dev --quiet\n'));
+  console.log(chalk.gray('      deploy-kit dev --quiet'));
+  console.log(chalk.gray('      deploy-kit dev --native\n'));
 
   console.log(chalk.green('  deploy <stage> [flags]'));
   console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
