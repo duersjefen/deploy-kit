@@ -904,52 +904,39 @@ If you see 403 errors:
 
 ## Contributing & Publishing
 
-### Publishing New Versions
+### For Deploy-Kit Contributors
 
-This package is published to GitHub Packages. To publish a new version:
+If you're developing deploy-kit itself, use these npm scripts:
 
-**Option 1: Using npm script (Recommended)**
 ```bash
-# Set version
-npm version [major|minor|patch]
+# Development
+npm run build          # Compile TypeScript
+npm run watch          # Watch mode for development
+npm test               # Run tests (auto-builds first)
 
-# Publish (automatically sets GITHUB_TOKEN)
-npm run publish:gh
+# Publishing new versions
+npm run release:patch  # Patch release (2.5.0 → 2.5.1) - Bug fixes
+npm run release:minor  # Minor release (2.5.0 → 2.6.0) - New features
+npm run release:major  # Major release (2.5.0 → 3.0.0) - Breaking changes
 ```
 
-**Option 2: Set GITHUB_TOKEN in shell profile (One-time setup)**
+**What the release scripts do automatically:**
+- ✅ Builds TypeScript
+- ✅ Runs all tests
+- ✅ Bumps version in package.json
+- ✅ Creates git commit and tag
+- ✅ Pushes to GitHub
+- ✅ Publishes to GitHub Packages
+
+**Manual publishing (if needed):**
 ```bash
-# Add to ~/.zshrc or ~/.bashrc
-echo 'export GITHUB_TOKEN=$(gh auth token)' >> ~/.zshrc
-source ~/.zshrc
-
-# Then publish normally
-npm publish
+npm version patch      # Bump version
+npm run publish:gh     # Publish (sets GITHUB_TOKEN automatically)
 ```
 
-**Option 3: Manual token export**
-```bash
-export GITHUB_TOKEN=$(gh auth token)
-npm publish
-```
+### For Deploy-Kit Users
 
-### Why is GITHUB_TOKEN needed?
-
-The project's `.npmrc` file uses `${GITHUB_TOKEN}` for authentication:
-```
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-```
-
-This approach keeps tokens out of version control while allowing flexible authentication.
-
-### Creating a Release
-
-After publishing:
-```bash
-gh release create v2.5.0 \
-  --title "v2.5.0: Description" \
-  --notes "Release notes here"
-```
+Users of deploy-kit should create Makefiles in their projects for easy deployment (see Quick Start guide above). The `init` command does this automatically.
 
 ## License
 
