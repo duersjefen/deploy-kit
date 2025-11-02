@@ -902,6 +902,55 @@ If you see 403 errors:
 - Health check framework
 - CloudFront validation
 
+## Contributing & Publishing
+
+### Publishing New Versions
+
+This package is published to GitHub Packages. To publish a new version:
+
+**Option 1: Using npm script (Recommended)**
+```bash
+# Set version
+npm version [major|minor|patch]
+
+# Publish (automatically sets GITHUB_TOKEN)
+npm run publish:gh
+```
+
+**Option 2: Set GITHUB_TOKEN in shell profile (One-time setup)**
+```bash
+# Add to ~/.zshrc or ~/.bashrc
+echo 'export GITHUB_TOKEN=$(gh auth token)' >> ~/.zshrc
+source ~/.zshrc
+
+# Then publish normally
+npm publish
+```
+
+**Option 3: Manual token export**
+```bash
+export GITHUB_TOKEN=$(gh auth token)
+npm publish
+```
+
+### Why is GITHUB_TOKEN needed?
+
+The project's `.npmrc` file uses `${GITHUB_TOKEN}` for authentication:
+```
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+This approach keeps tokens out of version control while allowing flexible authentication.
+
+### Creating a Release
+
+After publishing:
+```bash
+gh release create v2.5.0 \
+  --title "v2.5.0: Description" \
+  --notes "Release notes here"
+```
+
 ## License
 
 MIT

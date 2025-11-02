@@ -27,7 +27,9 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",
-    "test": "node --test 'dist/**/*.test.js'"
+    "test": "node --test 'dist/**/*.test.js'",
+    "publish:gh": "GITHUB_TOKEN=$(gh auth token) npm publish",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "deployment",
