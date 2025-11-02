@@ -8,11 +8,13 @@ import { spawn, ChildProcess } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 import type { ProjectConfig } from '../../types.js';
 import { handleSstDevError } from './error-handler.js';
+import { SstOutputHandler } from './sst-output-handler.js';
 
 export interface DevOptions {
   skipChecks?: boolean;  // Skip pre-flight checks (for advanced users)
   port?: number;         // Custom port (default: 3000)
   verbose?: boolean;     // Verbose output
+  quiet?: boolean;       // Minimal output (only errors)
 }
 
 /**
@@ -45,8 +47,14 @@ export async function startSstDev(
   const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
 
   try {
+    // Use 'inherit' for quiet mode, otherwise capture for processing
+    const useOutputHandler = !options.quiet;
+    const stdio: 'inherit' | ['inherit', 'pipe', 'pipe'] = useOutputHandler
+      ? ['inherit', 'pipe', 'pipe']
+      : 'inherit';
+
     const child: ChildProcess = spawn('npx', args, {
-      stdio: 'inherit',
+      stdio,
       shell: true,
       cwd: projectRoot,
       env: {
@@ -55,9 +63,29 @@ export async function startSstDev(
       },
     });
 
+    // Set up output handler if not in quiet mode
+    let outputHandler: SstOutputHandler | null = null;
+    if (useOutputHandler && child.stdout && child.stderr) {
+      outputHandler = new SstOutputHandler({
+        verbose: options.verbose || false,
+        projectRoot,
+      });
+
+      child.stdout.on('data', (data: Buffer) => {
+        outputHandler!.processStdout(data);
+      });
+
+      child.stderr.on('data', (data: Buffer) => {
+        outputHandler!.processStderr(data);
+      });
+    }
+
     // Handle graceful shutdown
     const cleanup = () => {
       console.log(chalk.yellow('\n\n🛑 Stopping SST dev server...'));
+      if (outputHandler) {
+        outputHandler.flush();
+      }
       if (child.pid) {
         try {
           process.kill(child.pid, 'SIGINT');
@@ -73,6 +101,9 @@ export async function startSstDev(
 
     await new Promise<void>((resolve, reject) => {
       child.on('exit', (code) => {
+        if (outputHandler) {
+          outputHandler.flush();
+        }
         if (code === 0 || code === null) {
           resolve();
         } else {
