@@ -6,6 +6,7 @@ import chalk from 'chalk';
 import { spawn } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 import { handleSstDevError } from './error-handler.js';
+import { SstOutputHandler } from './sst-output-handler.js';
 /**
  * Start SST dev server with proper environment and error handling
  */
@@ -26,8 +27,13 @@ export async function startSstDev(projectRoot, config, options) {
     }
     const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
     try {
+        // Use 'inherit' for quiet mode, otherwise capture for processing
+        const useOutputHandler = !options.quiet;
+        const stdio = useOutputHandler
+            ? ['inherit', 'pipe', 'pipe']
+            : 'inherit';
         const child = spawn('npx', args, {
-            stdio: 'inherit',
+            stdio,
             shell: true,
             cwd: projectRoot,
             env: {
@@ -35,9 +41,26 @@ export async function startSstDev(projectRoot, config, options) {
                 ...(profile && { AWS_PROFILE: profile }),
             },
         });
+        // Set up output handler if not in quiet mode
+        let outputHandler = null;
+        if (useOutputHandler && child.stdout && child.stderr) {
+            outputHandler = new SstOutputHandler({
+                verbose: options.verbose || false,
+                projectRoot,
+            });
+            child.stdout.on('data', (data) => {
+                outputHandler.processStdout(data);
+            });
+            child.stderr.on('data', (data) => {
+                outputHandler.processStderr(data);
+            });
+        }
         // Handle graceful shutdown
         const cleanup = () => {
             console.log(chalk.yellow('\n\n🛑 Stopping SST dev server...'));
+            if (outputHandler) {
+                outputHandler.flush();
+            }
             if (child.pid) {
                 try {
                     process.kill(child.pid, 'SIGINT');
@@ -52,6 +75,9 @@ export async function startSstDev(projectRoot, config, options) {
         process.on('SIGTERM', cleanup);
         await new Promise((resolve, reject) => {
             child.on('exit', (code) => {
+                if (outputHandler) {
+                    outputHandler.flush();
+                }
                 if (code === 0 || code === null) {
                     resolve();
                 }

@@ -69,7 +69,6 @@ export async function runDevChecks(
   for (const check of checks) {
     try {
       const result = await check.check();
-      results.push(result);
 
       if (!result.passed && result.canAutoFix && result.autoFix) {
         const isSafe = result.errorType && SAFE_FIX_TYPES.includes(result.errorType);
@@ -78,19 +77,33 @@ export async function runDevChecks(
           // Safe fixes: Auto-apply without prompting
           console.log(chalk.yellow(`🔧 Auto-fixing: ${result.issue}`));
           await result.autoFix();
-          console.log(chalk.green('✅ Fixed\n'));
+          console.log(chalk.green('✅ Fixed'));
+
+          // Re-run the check to verify the fix worked
+          console.log(chalk.gray('   Verifying fix...'));
+          const reCheckResult = await check.check();
+          results.push(reCheckResult);
+
+          if (!reCheckResult.passed) {
+            console.log(chalk.red(`   ⚠️  Fix verification failed\n`));
+          }
         } else {
           // Risky fixes: Show issue but don't auto-fix (manual intervention required)
           console.log(chalk.red(`❌ ${result.issue}`));
           if (result.manualFix) {
             console.log(chalk.gray(`   Fix: ${result.manualFix}\n`));
           }
+          results.push(result);
         }
-      } else if (!result.passed) {
-        console.log(chalk.red(`❌ ${result.issue}`));
-        if (result.manualFix) {
-          console.log(chalk.gray(`   Fix: ${result.manualFix}\n`));
+      } else {
+        // Check passed or no auto-fix available
+        if (!result.passed) {
+          console.log(chalk.red(`❌ ${result.issue}`));
+          if (result.manualFix) {
+            console.log(chalk.gray(`   Fix: ${result.manualFix}\n`));
+          }
         }
+        results.push(result);
       }
     } catch (error) {
       console.log(chalk.yellow(`⚠️  ${check.name}: Could not verify (skipping)\n`));

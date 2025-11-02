@@ -74,6 +74,7 @@ async function cli() {
             skipChecks: args.includes('--skip-checks'),
             port: portArg ? parseInt(portArg, 10) : undefined,
             verbose: args.includes('--verbose'),
+            quiet: args.includes('--quiet'),
         };
         try {
             await handleDevCommand(process.cwd(), options);
@@ -320,11 +321,13 @@ function printHelpMessage() {
     console.log(chalk.gray('    Flags:'));
     console.log(chalk.gray('      --skip-checks      Skip all pre-flight checks'));
     console.log(chalk.gray('      --port=<number>    Custom port (default: 3000)'));
-    console.log(chalk.gray('      --verbose          Show detailed SST output'));
+    console.log(chalk.gray('      --verbose          Show detailed SST output with filtering'));
+    console.log(chalk.gray('      --quiet            Minimal output (raw SST, no filtering)'));
     console.log(chalk.gray('    Examples:'));
     console.log(chalk.gray('      deploy-kit dev'));
     console.log(chalk.gray('      deploy-kit dev --verbose'));
-    console.log(chalk.gray('      deploy-kit dev --port=4000\n'));
+    console.log(chalk.gray('      deploy-kit dev --port=4000'));
+    console.log(chalk.gray('      deploy-kit dev --quiet\n'));
     console.log(chalk.green('  deploy <stage> [flags]'));
     console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
     console.log(chalk.gray('    Stages: staging, production'));
