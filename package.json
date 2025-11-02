@@ -32,9 +32,9 @@
     "publish:gh": "GITHUB_TOKEN=$(gh auth token) npm publish",
     "prepublishOnly": "npm run build && npm test",
     "postversion": "git push && git push --tags",
-    "release:patch": "npm version patch && npm run publish:gh",
-    "release:minor": "npm version minor && npm run publish:gh",
-    "release:major": "npm version major && npm run publish:gh"
+    "release:patch": "./scripts/release.sh patch",
+    "release:minor": "./scripts/release.sh minor",
+    "release:major": "./scripts/release.sh major"
   },
   "keywords": [
     "deployment",
