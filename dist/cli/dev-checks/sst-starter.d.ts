@@ -8,6 +8,7 @@ export interface DevOptions {
     port?: number;
     verbose?: boolean;
     quiet?: boolean;
+    native?: boolean;
 }
 /**
  * Start SST dev server with proper environment and error handling
