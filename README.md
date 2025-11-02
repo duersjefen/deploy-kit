@@ -902,6 +902,42 @@ If you see 403 errors:
 - Health check framework
 - CloudFront validation
 
+## Contributing & Publishing
+
+### For Deploy-Kit Contributors
+
+If you're developing deploy-kit itself, use these npm scripts:
+
+```bash
+# Development
+npm run build          # Compile TypeScript
+npm run watch          # Watch mode for development
+npm test               # Run tests (auto-builds first)
+
+# Publishing new versions
+npm run release:patch  # Patch release (2.5.0 → 2.5.1) - Bug fixes
+npm run release:minor  # Minor release (2.5.0 → 2.6.0) - New features
+npm run release:major  # Major release (2.5.0 → 3.0.0) - Breaking changes
+```
+
+**What the release scripts do automatically:**
+- ✅ Builds TypeScript
+- ✅ Runs all tests
+- ✅ Bumps version in package.json
+- ✅ Creates git commit and tag
+- ✅ Pushes to GitHub
+- ✅ Publishes to GitHub Packages
+
+**Manual publishing (if needed):**
+```bash
+npm version patch      # Bump version
+npm run publish:gh     # Publish (sets GITHUB_TOKEN automatically)
+```
+
+### For Deploy-Kit Users
+
+Users of deploy-kit should create Makefiles in their projects for easy deployment (see Quick Start guide above). The `init` command does this automatically.
+
 ## License
 
 MIT
