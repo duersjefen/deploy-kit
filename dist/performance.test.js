@@ -9,16 +9,16 @@
  */
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { benchmark, benchmarkSync, compareBenchmarks, createMockProjectConfig, } from './test-utils.js';
+import { benchmarkSync, compareBenchmarks, createMockProjectConfig, } from './test-utils.js';
 import { validateConfig, mergeConfigs, } from './cli/utils/config-validator.js';
 import { extractRootDomain, validateDomain } from './lib/domain-utils.js';
 import { isReservedLambdaVar, findReservedVarsInSstConfig } from './lib/lambda-reserved-vars.js';
 describe('Performance Benchmarks', () => {
     describe('Configuration Validation Performance', () => {
-        it('validates config in reasonable time', async () => {
+        it('validates config in reasonable time', () => {
             const config = createMockProjectConfig();
             const unvalidatedConfig = { ...config };
-            const result = await benchmark('validateConfig', async () => {
+            const result = benchmarkSync('validateConfig', () => {
                 validateConfig(unvalidatedConfig);
             }, { iterations: 1000, warmup: 50, verbose: false });
             assert.ok(result.opsPerSecond > 1000, `Config validation should exceed 1000 ops/sec (got ${result.opsPerSecond.toFixed(0)})`);
@@ -193,7 +193,7 @@ export default {
         });
     });
     describe('Memory Performance', () => {
-        it('config validation memory usage', async () => {
+        it('config validation memory usage', () => {
             const config = createMockProjectConfig();
             const unvalidatedConfig = { ...config };
             // Only measure memory if global.gc is available
@@ -201,7 +201,7 @@ export default {
                 console.log('  ⚠️  Skipping memory test (requires --expose-gc flag)');
                 return;
             }
-            const result = await benchmark('validateConfig (with memory tracking)', async () => {
+            const result = benchmarkSync('validateConfig (with memory tracking)', () => {
                 validateConfig(unvalidatedConfig);
             }, { iterations: 100, warmup: 10, trackMemory: true });
             if (result.memoryUsed !== undefined) {
@@ -214,10 +214,10 @@ export default {
     });
 });
 describe('Performance Thresholds', () => {
-    it('critical operations meet minimum performance requirements', async () => {
+    it('critical operations meet minimum performance requirements', () => {
         const results = [];
         // Config validation
-        const configResult = await benchmark('Config Validation', async () => {
+        const configResult = benchmarkSync('Config Validation', () => {
             const config = createMockProjectConfig();
             validateConfig(config);
         }, { iterations: 500, warmup: 50 });

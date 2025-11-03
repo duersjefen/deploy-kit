@@ -729,6 +729,20 @@ If you see 403 errors:
 2. Check Origin Access Control is configured
 3. Run: `npx @duersjefen/deploy-kit health staging`
 
+## Documentation
+
+### Comprehensive Guides
+
+- **[Architecture Documentation](./docs/architecture.md)** - System architecture, module dependencies, data flow diagrams
+- **[Dev Command Guide](./docs/dev-command.md)** - Complete guide to the development server with pre-flight checks
+- **[Best Practices](./docs/best-practices.md)** - Production-ready deployment guidelines and workflows
+
+### Quick Links
+
+- **Architecture** - Understand the system design and module structure
+- **Dev Command** - Learn about the 9 pre-flight checks, auto-fixes, and output filtering
+- **Best Practices** - Security, performance, CI/CD integration, and troubleshooting
+
 ## Roadmap & Future Improvements
 
 ### Planned Features (High Impact)
