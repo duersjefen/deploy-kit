@@ -25,13 +25,13 @@ import { isReservedLambdaVar, findReservedVarsInSstConfig } from './lib/lambda-r
 
 describe('Performance Benchmarks', () => {
   describe('Configuration Validation Performance', () => {
-    it('validates config in reasonable time', async () => {
+    it('validates config in reasonable time', () => {
       const config = createMockProjectConfig();
       const unvalidatedConfig = { ...config } as any;
 
-      const result = await benchmark(
+      const result = benchmarkSync(
         'validateConfig',
-        async () => {
+        () => {
           validateConfig(unvalidatedConfig);
         },
         { iterations: 1000, warmup: 50, verbose: false }
@@ -332,7 +332,7 @@ export default {
   });
 
   describe('Memory Performance', () => {
-    it('config validation memory usage', async () => {
+    it('config validation memory usage', () => {
       const config = createMockProjectConfig();
       const unvalidatedConfig = { ...config } as any;
 
@@ -342,9 +342,9 @@ export default {
         return;
       }
 
-      const result = await benchmark(
+      const result = benchmarkSync(
         'validateConfig (with memory tracking)',
-        async () => {
+        () => {
           validateConfig(unvalidatedConfig);
         },
         { iterations: 100, warmup: 10, trackMemory: true }
@@ -364,13 +364,13 @@ export default {
 });
 
 describe('Performance Thresholds', () => {
-  it('critical operations meet minimum performance requirements', async () => {
+  it('critical operations meet minimum performance requirements', () => {
     const results = [];
 
     // Config validation
-    const configResult = await benchmark(
+    const configResult = benchmarkSync(
       'Config Validation',
-      async () => {
+      () => {
         const config = createMockProjectConfig();
         validateConfig(config as any);
       },
