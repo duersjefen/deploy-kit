@@ -9,6 +9,10 @@ export interface DevOptions {
     verbose?: boolean;
     quiet?: boolean;
     native?: boolean;
+    profile?: 'silent' | 'normal' | 'verbose' | 'debug';
+    hideInfo?: boolean;
+    noGroup?: boolean;
+    interactive?: boolean;
 }
 /**
  * Start SST dev server with proper environment and error handling

@@ -70,12 +70,17 @@ async function cli() {
     if (command === 'dev') {
         // Parse dev flags
         const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
+        const profileArg = args.find(a => a.startsWith('--profile='))?.split('=')[1];
         const options = {
             skipChecks: args.includes('--skip-checks'),
             port: portArg ? parseInt(portArg, 10) : undefined,
             verbose: args.includes('--verbose'),
             quiet: args.includes('--quiet'),
             native: args.includes('--native'),
+            profile: profileArg,
+            hideInfo: args.includes('--hide-info'),
+            noGroup: args.includes('--no-group'),
+            interactive: args.includes('--interactive'),
         };
         try {
             await handleDevCommand(process.cwd(), options);
@@ -317,24 +322,31 @@ function printHelpMessage() {
     console.log(chalk.gray('    Checks: config, git, AWS, SST, Node.js, tests'));
     console.log(chalk.gray('    Example: deploy-kit doctor\n'));
     console.log(chalk.green('  dev [flags]'));
-    console.log(chalk.gray('    Start SST development server with pre-flight checks'));
+    console.log(chalk.gray('    Start SST development server with enhanced output and pre-flight checks'));
     console.log(chalk.gray('    Checks: AWS credentials, locks, ports, Pulumi Output misuse'));
     console.log(chalk.gray('    Flags:'));
-    console.log(chalk.gray('      --skip-checks      Skip all pre-flight checks'));
-    console.log(chalk.gray('      --port=<number>    Custom port (default: 3000)'));
-    console.log(chalk.gray('      --verbose          Show detailed SST output with filtering'));
-    console.log(chalk.gray('      --quiet            Minimal output (raw SST, no filtering)'));
-    console.log(chalk.gray('      --native           Use native SST output (no filtering)'));
-    console.log(chalk.gray('    Output modes:'));
-    console.log(chalk.gray('      • Default: Smart filtering with mono mode (clean sequential output)'));
-    console.log(chalk.gray('      • --verbose: More details with mono mode'));
-    console.log(chalk.gray('      • --quiet/--native: Raw SST output (no mono mode, native TTY)'));
+    console.log(chalk.gray('      --skip-checks          Skip all pre-flight checks'));
+    console.log(chalk.gray('      --port=<number>        Custom port (default: 3000)'));
+    console.log(chalk.gray('      --interactive          Run interactive setup wizard'));
+    console.log(chalk.gray('      --profile=<profile>    Output profile: silent, normal, verbose, debug'));
+    console.log(chalk.gray('      --hide-info            Suppress info/debug logs'));
+    console.log(chalk.gray('      --no-group             Disable message grouping'));
+    console.log(chalk.gray('      --verbose              Verbose output (alias for --profile=verbose)'));
+    console.log(chalk.gray('      --quiet                Minimal output (DEPRECATED, use --profile=silent)'));
+    console.log(chalk.gray('      --native               Use native SST output (bypass all filtering)'));
+    console.log(chalk.gray('    Output Profiles:'));
+    console.log(chalk.gray('      • silent:  Errors and ready state only'));
+    console.log(chalk.gray('      • normal:  Balanced with smart grouping (default)'));
+    console.log(chalk.gray('      • verbose: All messages with grouping'));
+    console.log(chalk.gray('      • debug:   Include debug logs and traces'));
     console.log(chalk.gray('    Examples:'));
-    console.log(chalk.gray('      deploy-kit dev'));
-    console.log(chalk.gray('      deploy-kit dev --verbose'));
-    console.log(chalk.gray('      deploy-kit dev --port=4000'));
-    console.log(chalk.gray('      deploy-kit dev --quiet'));
-    console.log(chalk.gray('      deploy-kit dev --native\n'));
+    console.log(chalk.gray('      deploy-kit dev                        # Normal mode with grouping'));
+    console.log(chalk.gray('      deploy-kit dev --interactive          # Interactive wizard'));
+    console.log(chalk.gray('      deploy-kit dev --profile=silent       # Minimal output'));
+    console.log(chalk.gray('      deploy-kit dev --profile=verbose      # Detailed output'));
+    console.log(chalk.gray('      deploy-kit dev --hide-info            # Suppress info logs'));
+    console.log(chalk.gray('      deploy-kit dev --no-group             # Disable grouping'));
+    console.log(chalk.gray('      deploy-kit dev --port=4000 --verbose  # Custom port + verbose\n'));
     console.log(chalk.green('  deploy <stage> [flags]'));
     console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
     console.log(chalk.gray('    Stages: staging, production'));

@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import { spawn } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 import { handleSstDevError } from './error-handler.js';
-import { SstOutputHandler } from './sst-output-handler.js';
+import { EnhancedOutputHandler } from './enhanced-output-handler.js';
 /**
  * Start SST dev server with proper environment and error handling
  */
@@ -24,7 +24,16 @@ export async function startSstDev(projectRoot, config, options) {
     const args = ['sst', 'dev'];
     // Determine if we should use output handler
     // Use output handler when: NOT quiet AND NOT native
+    // (quiet is deprecated but still supported for backwards compatibility)
     const useOutputHandler = !options.quiet && !options.native;
+    // Determine output profile
+    let outputProfile = 'normal';
+    if (options.quiet) {
+        outputProfile = 'silent'; // Backwards compatibility
+    }
+    else if (options.profile) {
+        outputProfile = options.profile;
+    }
     // When using output handler, add --mode=mono for clean sequential output
     // (better for parsing and filtering)
     if (useOutputHandler) {
@@ -48,12 +57,15 @@ export async function startSstDev(projectRoot, config, options) {
                 ...(profile && { AWS_PROFILE: profile }),
             },
         });
-        // Set up output handler if not in quiet mode
+        // Set up output handler if not in quiet/native mode
         let outputHandler = null;
         if (useOutputHandler && child.stdout && child.stderr) {
-            outputHandler = new SstOutputHandler({
-                verbose: options.verbose || false,
+            outputHandler = new EnhancedOutputHandler({
                 projectRoot,
+                profile: outputProfile,
+                verbose: options.verbose,
+                hideInfo: options.hideInfo,
+                noGroup: options.noGroup,
             });
             child.stdout.on('data', (data) => {
                 outputHandler.processStdout(data);

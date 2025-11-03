@@ -8,14 +8,18 @@ import { spawn, ChildProcess } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 import type { ProjectConfig } from '../../types.js';
 import { handleSstDevError } from './error-handler.js';
-import { SstOutputHandler } from './sst-output-handler.js';
+import { EnhancedOutputHandler } from './enhanced-output-handler.js';
 
 export interface DevOptions {
-  skipChecks?: boolean;  // Skip pre-flight checks (for advanced users)
-  port?: number;         // Custom port (default: 3000)
-  verbose?: boolean;     // Verbose output
-  quiet?: boolean;       // Minimal output (only errors)
-  native?: boolean;      // Use native SST output (no filtering)
+  skipChecks?: boolean;   // Skip pre-flight checks (for advanced users)
+  port?: number;          // Custom port (default: 3000)
+  verbose?: boolean;      // Verbose output (overrides profile)
+  quiet?: boolean;        // Minimal output (only errors) - DEPRECATED, use profile='silent'
+  native?: boolean;       // Use native SST output (no filtering)
+  profile?: 'silent' | 'normal' | 'verbose' | 'debug';  // Output profile
+  hideInfo?: boolean;     // Suppress info/debug logs
+  noGroup?: boolean;      // Disable message grouping
+  interactive?: boolean;  // Run interactive wizard
 }
 
 /**
@@ -43,7 +47,16 @@ export async function startSstDev(
 
   // Determine if we should use output handler
   // Use output handler when: NOT quiet AND NOT native
+  // (quiet is deprecated but still supported for backwards compatibility)
   const useOutputHandler = !options.quiet && !options.native;
+
+  // Determine output profile
+  let outputProfile: 'silent' | 'normal' | 'verbose' | 'debug' = 'normal';
+  if (options.quiet) {
+    outputProfile = 'silent';  // Backwards compatibility
+  } else if (options.profile) {
+    outputProfile = options.profile;
+  }
 
   // When using output handler, add --mode=mono for clean sequential output
   // (better for parsing and filtering)
@@ -73,12 +86,15 @@ export async function startSstDev(
       },
     });
 
-    // Set up output handler if not in quiet mode
-    let outputHandler: SstOutputHandler | null = null;
+    // Set up output handler if not in quiet/native mode
+    let outputHandler: EnhancedOutputHandler | null = null;
     if (useOutputHandler && child.stdout && child.stderr) {
-      outputHandler = new SstOutputHandler({
-        verbose: options.verbose || false,
+      outputHandler = new EnhancedOutputHandler({
         projectRoot,
+        profile: outputProfile,
+        verbose: options.verbose,
+        hideInfo: options.hideInfo,
+        noGroup: options.noGroup,
       });
 
       child.stdout.on('data', (data: Buffer) => {
