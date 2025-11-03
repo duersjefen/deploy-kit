@@ -35,7 +35,8 @@
     "postversion": "git push && git push --tags",
     "release:patch": "./scripts/release.sh patch",
     "release:minor": "./scripts/release.sh minor",
-    "release:major": "./scripts/release.sh major"
+    "release:major": "./scripts/release.sh major",
+    "prepare": "husky"
   },
   "keywords": [
     "deployment",
@@ -70,6 +71,8 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/prompts": "^2.4.9",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
     "typescript": "^5.3.3"
   },
   "engines": {
