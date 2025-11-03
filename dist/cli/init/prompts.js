@@ -6,6 +6,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import prompt from 'prompts';
 import { detectProfileFromSstConfig } from '../utils/aws-profile-detector.js';
+import { getPackageManagerExamples } from '../../utils/package-manager.js';
 /**
  * Ask user for project configuration
  */
@@ -121,24 +122,26 @@ export function printSummary(answers, optionalFiles) {
         console.log('  ✅ Configured pre-commit hooks');
         console.log('  ✅ Updated .gitignore with SST entries');
     }
+    // Get package manager examples for user-facing messages
+    const pm = getPackageManagerExamples(process.cwd());
     console.log('\n🚀 Next Steps:\n');
     console.log(chalk.green('  1. Review .deploy-config.json to verify settings'));
-    console.log(chalk.green('  2. Install dependencies: npm install'));
+    console.log(chalk.green(`  2. Install dependencies: ${pm.install}`));
     if (optionalFiles?.createScripts) {
-        console.log(chalk.green('  3. Deploy to staging: npm run deploy:staging'));
+        console.log(chalk.green(`  3. Deploy to staging: ${pm.run('deploy:staging')}`));
     }
     else {
         console.log(chalk.green('  3. Deploy to staging: npx deploy-kit deploy staging'));
     }
     if (optionalFiles?.createScripts) {
-        console.log('\n📚 Deployment Commands (npm scripts):\n');
-        console.log(chalk.cyan('  npm run validate:config         ') + 'Validate configuration');
-        console.log(chalk.cyan('  npm run doctor                  ') + 'Pre-deployment health check');
-        console.log(chalk.cyan('  npm run deploy:staging          ') + `Deploy to staging (${answers.stagingDomain})`);
-        console.log(chalk.cyan('  npm run deploy:prod             ') + `Deploy to production (${answers.productionDomain})`);
-        console.log(chalk.cyan('  npm run deployment-status       ') + 'Check status of all deployments');
-        console.log(chalk.cyan('  npm run recover:staging         ') + 'Recover from failed staging deployment');
-        console.log(chalk.cyan('  npm run recover:prod            ') + 'Recover from failed production deployment');
+        console.log('\n📚 Deployment Commands (package.json scripts):\n');
+        console.log(chalk.cyan(`  ${pm.run('validate:config').padEnd(32)}`) + 'Validate configuration');
+        console.log(chalk.cyan(`  ${pm.run('doctor').padEnd(32)}`) + 'Pre-deployment health check');
+        console.log(chalk.cyan(`  ${pm.run('deploy:staging').padEnd(32)}`) + `Deploy to staging (${answers.stagingDomain})`);
+        console.log(chalk.cyan(`  ${pm.run('deploy:prod').padEnd(32)}`) + `Deploy to production (${answers.productionDomain})`);
+        console.log(chalk.cyan(`  ${pm.run('deployment-status').padEnd(32)}`) + 'Check status of all deployments');
+        console.log(chalk.cyan(`  ${pm.run('recover:staging').padEnd(32)}`) + 'Recover from failed staging deployment');
+        console.log(chalk.cyan(`  ${pm.run('recover:prod').padEnd(32)}`) + 'Recover from failed production deployment');
     }
     if (optionalFiles?.createMakefile) {
         console.log('\n📚 Deployment Commands (make targets):\n');

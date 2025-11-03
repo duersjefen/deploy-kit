@@ -41,14 +41,14 @@ echo -e "${GREEN}✅ Working directory is clean${NC}\n"
 
 # Step 3: Bump version
 echo -e "${BLUE}Step 3/8:${NC} Bumping version (${BUMP_TYPE})..."
-npm version $BUMP_TYPE --no-git-tag-version > /dev/null
+pnpm version $BUMP_TYPE --no-git-tag-version > /dev/null
 NEW_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*: "\(.*\)".*/\1/')
 VERSION_TAG="v${NEW_VERSION}"
 echo -e "${GREEN}✅ Version bumped to ${NEW_VERSION}${NC}\n"
 
 # Step 4: Commit version bump
 echo -e "${BLUE}Step 4/8:${NC} Committing version bump..."
-git add package.json package-lock.json
+git add package.json pnpm-lock.yaml
 git commit -m "chore: Bump version to $NEW_VERSION" > /dev/null
 echo -e "${GREEN}✅ Version bump committed${NC}\n"
 
@@ -66,8 +66,8 @@ echo -e "${GREEN}✅ Pushed to GitHub${NC}\n"
 
 # Step 7: Build and publish
 echo -e "${BLUE}Step 7/8:${NC} Building and publishing to GitHub Packages..."
-npm run prepublishOnly > /dev/null 2>&1
-GITHUB_TOKEN=$(gh auth token) npm publish > /dev/null 2>&1
+pnpm run prepublishOnly > /dev/null 2>&1
+GITHUB_TOKEN=$(gh auth token) pnpm publish --no-git-checks > /dev/null 2>&1
 echo -e "${GREEN}✅ Published to GitHub Packages${NC}\n"
 
 # Step 8: Create GitHub release
@@ -84,7 +84,14 @@ $COMMIT_MSG
 ## Installation
 
 \`\`\`bash
+# npm
 npm install @duersjefen/deploy-kit@${NEW_VERSION}
+
+# pnpm
+pnpm add @duersjefen/deploy-kit@${NEW_VERSION}
+
+# yarn
+yarn add @duersjefen/deploy-kit@${NEW_VERSION}
 \`\`\`
 
 Configure your project to use GitHub Packages:

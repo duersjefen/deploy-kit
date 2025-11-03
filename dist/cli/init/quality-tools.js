@@ -6,6 +6,7 @@ import ora from 'ora';
 import { writeFileSync, existsSync, mkdirSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
+import { formatCommand } from '../../utils/package-manager.js';
 /**
  * Create .lintstagedrc.js configuration file
  */
@@ -88,7 +89,8 @@ export async function installQualityTools(projectRoot) {
     try {
         // Install husky, lint-staged, and tsc-files as dev dependencies
         spinner.text = 'Installing husky, lint-staged, tsc-files...';
-        execSync('npm install -D husky lint-staged tsc-files', {
+        const installCmd = formatCommand('npm install -D husky lint-staged tsc-files', projectRoot);
+        execSync(installCmd, {
             cwd: projectRoot,
             stdio: 'pipe',
         });

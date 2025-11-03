@@ -54,7 +54,7 @@ const ERROR_RECOVERY_GUIDE: Record<string, { suggestion: string; steps: string[]
   'Build.*failed': {
     suggestion: 'Application build failed',
     steps: [
-      'Run build locally: npm run build',
+      'Run build locally: [package-manager] run build',
       'Review error messages in build output',
       'Fix build errors and commit changes',
       'Then retry deployment',

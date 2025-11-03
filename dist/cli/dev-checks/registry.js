@@ -8,7 +8,7 @@ import { createSstLockCheck } from './sst-lock.js';
 import { createRunningSstProcessCheck } from './running-sst-processes.js';
 import { createPortAvailabilityCheck } from './port-availability.js';
 import { createSstConfigCheck } from './sst-config.js';
-import { createSstStateHealthCheck } from './sst-state.js';
+import { createSstStateHealthCheck } from './sst-state-health.js';
 import { createRecursiveSstDevCheck } from './recursive-sst-dev.js';
 import { createNextJsCanaryFeaturesCheck } from './nextjs-canary.js';
 import { createTurbopackMigrationCheck } from './turbopack-migration.js';
@@ -28,7 +28,7 @@ export function getDevChecks(projectRoot, config, requestedPort = 3000, verbose 
         { name: 'Running SST Processes', check: createRunningSstProcessCheck(projectRoot, verbose) },
         { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
         { name: 'SST Config', check: createSstConfigCheck(projectRoot) },
-        { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot) },
+        { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot, config) },
         { name: 'Lambda Reserved Environment Variables', check: createLambdaReservedVarsCheck(projectRoot, verbose) },
         { name: 'Recursive SST Dev Script', check: createRecursiveSstDevCheck(projectRoot) },
         { name: 'Next.js Canary Features', check: createNextJsCanaryFeaturesCheck(projectRoot) },

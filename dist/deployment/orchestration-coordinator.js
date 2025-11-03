@@ -7,6 +7,7 @@
 import { promisify } from 'util';
 import { exec, spawn } from 'child_process';
 import chalk from 'chalk';
+import { formatCommand } from '../utils/package-manager.js';
 import ora from 'ora';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -59,8 +60,9 @@ export async function runBuild(projectRoot, config) {
             spinner.info(`Build output: ${stdout}`);
         }
         else {
-            // Default: npm run build
-            await execAsync('npm run build', {
+            // Default: use detected package manager
+            const buildCmd = formatCommand('npm run build', projectRoot);
+            await execAsync(buildCmd, {
                 cwd: projectRoot,
             });
         }
