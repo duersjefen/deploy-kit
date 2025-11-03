@@ -10,6 +10,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { runDevChecks } from '../dev-checks/registry.js';
 import { startSstDev } from '../dev-checks/sst-starter.js';
+import { InteractiveWizard } from '../dev-checks/interactive-wizard.js';
 /**
  * Main dev command entry point
  *
@@ -38,6 +39,18 @@ export async function handleDevCommand(projectRoot = process.cwd(), options = {}
         printHeader();
         // Load config
         const config = loadProjectConfig(projectRoot);
+        // Run interactive wizard if requested
+        if (options.interactive) {
+            const wizard = new InteractiveWizard(projectRoot, config);
+            const wizardResult = await wizard.run();
+            if (!wizardResult || !wizardResult.proceed) {
+                console.log(chalk.yellow('\n⚠️  Dev environment setup cancelled\n'));
+                process.exit(0);
+            }
+            // Apply wizard selections to options
+            options.port = wizardResult.port;
+            options.profile = wizardResult.profile;
+        }
         // Run pre-flight checks unless skipped
         if (!options.skipChecks) {
             console.log(chalk.bold('⚙️  Pre-Flight Checks\n'));

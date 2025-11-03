@@ -12,6 +12,7 @@ import { join } from 'path';
 import type { ProjectConfig } from '../../types.js';
 import { runDevChecks } from '../dev-checks/registry.js';
 import { startSstDev, type DevOptions } from '../dev-checks/sst-starter.js';
+import { InteractiveWizard } from '../dev-checks/interactive-wizard.js';
 
 // Re-export types for backward compatibility
 export type { DevOptions } from '../dev-checks/sst-starter.js';
@@ -49,6 +50,21 @@ export async function handleDevCommand(
 
     // Load config
     const config = loadProjectConfig(projectRoot);
+
+    // Run interactive wizard if requested
+    if (options.interactive) {
+      const wizard = new InteractiveWizard(projectRoot, config);
+      const wizardResult = await wizard.run();
+
+      if (!wizardResult || !wizardResult.proceed) {
+        console.log(chalk.yellow('\n⚠️  Dev environment setup cancelled\n'));
+        process.exit(0);
+      }
+
+      // Apply wizard selections to options
+      options.port = wizardResult.port;
+      options.profile = wizardResult.profile as 'silent' | 'normal' | 'verbose' | 'debug';
+    }
 
     // Run pre-flight checks unless skipped
     if (!options.skipChecks) {
