@@ -240,6 +240,12 @@ describe('EnhancedOutputHandler', () => {
         });
         it('handles flush errors gracefully', () => {
             const consoleErrorSpy = mock.method(console, 'error', () => { });
+            // Add grouped messages so buildGroupedMessagesTable will be called
+            mockGrouper.mockGroupedMessages = [{
+                    pattern: '✓ Deployed',
+                    count: 1,
+                    representative: 'test message',
+                }];
             // Make summary builder throw
             mockSummary.buildGroupedMessagesTable = () => {
                 throw new Error('Test error');
