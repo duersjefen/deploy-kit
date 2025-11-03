@@ -1,1 +1,3 @@
+# Run build to catch TypeScript errors
+# TODO: Add 'pnpm run test:unit' once all unit tests pass
 pnpm run build
