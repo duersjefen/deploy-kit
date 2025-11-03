@@ -7,6 +7,7 @@ import ora from 'ora';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { ProjectConfig } from '../../types.js';
+import { getPackageManagerExamples } from '../../utils/package-manager.js';
 
 export interface InitAnswers {
   projectName: string;
@@ -133,6 +134,7 @@ export function createMakefile(answers: InitAnswers | any, projectRoot: string):
   const spinner = ora('Creating Makefile...').start();
 
   try {
+    const pm = getPackageManagerExamples(projectRoot);
     const makefilePath = join(projectRoot, 'Makefile');
     const content = `.PHONY: deploy-staging deploy-prod deployment-status recover-staging recover-prod validate doctor help
 
@@ -142,25 +144,25 @@ help: ## Show this help message
 \t@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-25s %s\\\\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 validate: ## Validate deploy-kit configuration
-\tnpm run validate:config
+\t${pm.run('validate:config')}
 
 doctor: ## Run pre-deployment health checks
-\tnpm run doctor
+\t${pm.run('doctor')}
 
 deploy-staging: ## Deploy to staging (${answers.stagingDomain})
-\tnpm run deploy:staging
+\t${pm.run('deploy:staging')}
 
 deploy-prod: ## Deploy to production (${answers.productionDomain})
-\tnpm run deploy:prod
+\t${pm.run('deploy:prod')}
 
 deployment-status: ## Check deployment status for all stages
-\tnpm run deployment-status
+\t${pm.run('deployment-status')}
 
 recover-staging: ## Recover from failed staging deployment
-\tnpm run recover:staging
+\t${pm.run('recover:staging')}
 
 recover-prod: ## Recover from failed production deployment
-\tnpm run recover:prod
+\t${pm.run('recover:prod')}
 `;
 
     writeFileSync(makefilePath, content, 'utf-8');

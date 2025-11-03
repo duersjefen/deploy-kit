@@ -7,14 +7,14 @@
 
 ```bash
 # Development
-npm run build          # Build TypeScript
-npm run watch         # Watch mode
-npm test              # Run tests
+pnpm run build          # Build TypeScript
+pnpm run watch         # Watch mode
+pnpm test              # Run tests
 
 # Release (ONE COMMAND!)
-npm run release:minor # Release minor version
-npm run release:patch # Release patch version
-npm run release:major # Release major version
+pnpm run release:minor # Release minor version
+pnpm run release:patch # Release patch version
+pnpm run release:major # Release major version
 ```
 
 ---
@@ -24,20 +24,20 @@ npm run release:major # Release major version
 ### Setup
 ```bash
 cd deploy-kit
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ### Local Development
 ```bash
 # Watch mode for development
-npm run watch
+pnpm run watch
 
 # Run tests
-npm test
+pnpm test
 
 # Build and test before committing
-npm run build && npm test
+pnpm run build && pnpm test
 ```
 
 ### Code Organization
@@ -57,8 +57,8 @@ npm run build && npm test
 ### Making Changes
 
 1. **Edit source files** in `src/`
-2. **Run tests**: `npm test`
-3. **Build**: `npm run build`
+2. **Run tests**: `pnpm test`
+3. **Build**: `pnpm run build`
 4. **Verify**: Check `dist/` files compile correctly
 5. **Commit**: Include both `src/` and `dist/` changes
 
@@ -71,7 +71,7 @@ npm run build && npm test
 **After merging a PR to main:**
 
 ```bash
-npm run release:minor
+pnpm run release:minor
 ```
 
 This single command:
@@ -88,15 +88,15 @@ This single command:
 
 ### Release Types
 
-- **`npm run release:patch`** - Bug fixes (v2.6.0 → v2.6.1)
+- **`pnpm run release:patch`** - Bug fixes (v2.6.0 → v2.6.1)
   - Backwards compatible fixes only
   - No new features or breaking changes
 
-- **`npm run release:minor`** - New features (v2.6.0 → v2.7.0)
+- **`pnpm run release:minor`** - New features (v2.6.0 → v2.7.0)
   - Backwards compatible additions
   - New CLI flags, improved output, etc.
 
-- **`npm run release:major`** - Breaking changes (v2.6.0 → v3.0.0)
+- **`pnpm run release:major`** - Breaking changes (v2.6.0 → v3.0.0)
   - Breaking API changes
   - Major refactors
 
@@ -155,12 +155,19 @@ In your project's `.npmrc`:
 
 **Installation:**
 ```bash
+# npm
 npm install @duersjefen/deploy-kit@latest
+
+# pnpm
+pnpm add @duersjefen/deploy-kit@latest
+
+# yarn
+yarn add @duersjefen/deploy-kit@latest
 ```
 
 ### Verifying Release
 
-After running `npm run release:minor`:
+After running `pnpm run release:minor`:
 
 1. **GitHub Release**: https://github.com/duersjefen/deploy-kit/releases
    - Should show latest version as "Latest"
@@ -206,7 +213,7 @@ After running `npm run release:minor`:
    ```bash
    git checkout main
    git pull origin main
-   npm run release:minor
+   pnpm run release:minor
    ```
 
 ---
@@ -224,15 +231,15 @@ git push origin HEAD:main  # Pushes current branch to main on origin
 
 ### Release script fails at step 7 (publish)
 
-**Problem:** Tests fail during `npm run prepublishOnly`
+**Problem:** Tests fail during `pnpm run prepublishOnly`
 
 **Solution:** Fix the failing tests before releasing:
 ```bash
-npm test  # See what's failing
+pnpm test  # See what's failing
 # Fix issues in src/
-npm run build && npm test  # Verify fix
+pnpm run build && pnpm test  # Verify fix
 # Then try release again
-npm run release:minor
+pnpm run release:minor
 ```
 
 ### Release script fails at step 8 (GitHub release)
@@ -251,14 +258,14 @@ Each step of the release can be run manually:
 
 ```bash
 # Manual release (for debugging)
-npm version minor --no-git-tag-version
-git add package.json package-lock.json
+pnpm version minor --no-git-tag-version
+git add package.json pnpm-lock.yaml
 git commit -m "chore: Bump version to X.Y.Z"
 git tag -a vX.Y.Z -m "vX.Y.Z"
 git push origin HEAD:main
 git push origin vX.Y.Z
-npm run prepublishOnly
-npm run publish:gh
+pnpm run prepublishOnly
+pnpm run publish:gh
 gh release create vX.Y.Z --title "..." --notes "..."
 ```
 
@@ -303,7 +310,7 @@ v2.6.0 → v3.0.0  (major)  - CLI rewritten, breaking changes
 git checkout main && git pull
 
 # Release!
-npm run release:patch
+pnpm run release:patch
 ```
 
 ### "I added a new feature, how do I release it?"
@@ -312,7 +319,7 @@ npm run release:patch
 git checkout main && git pull
 
 # Release!
-npm run release:minor
+pnpm run release:minor
 ```
 
 ### "I need to undo the last release"

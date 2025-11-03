@@ -65,13 +65,13 @@ export async function handleSstDevError(error: Error, projectRoot?: string): Pro
     console.log(chalk.red('❌ Recursive SST Dev Script Detected\n'));
     console.log(chalk.yellow('Your package.json has a dev script that calls SST:\n'));
     console.log(chalk.gray('This creates infinite recursion because SST runs'));
-    console.log(chalk.gray('`npm run dev` internally to start your framework.\n'));
+    console.log(chalk.gray('your dev script internally to start your framework.\n'));
     console.log(chalk.bold('Fix:'));
     console.log(chalk.gray('  Separate SST from framework dev scripts:'));
     console.log(chalk.red('  ❌ "dev": "sst dev"'));
     console.log(chalk.green('  ✅ "dev": "next dev"              ← What SST calls'));
     console.log(chalk.green('  ✅ "sst:dev": "sst dev"           ← What you run\n'));
-    console.log(chalk.gray('Then use: npm run sst:dev (or make dev)\n'));
+    console.log(chalk.gray('Then use: [package-manager] run sst:dev (or make dev)\n'));
     return;
   }
 
