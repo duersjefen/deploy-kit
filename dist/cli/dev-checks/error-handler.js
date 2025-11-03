@@ -1,10 +1,35 @@
 /**
  * SST Dev Error Handler
  * Translates cryptic SST errors into actionable guidance
+ *
+ * UX Improvements (v2.7.0) - Lock Error Handling:
+ * - Interactive recovery for "concurrent update" / lock errors
+ * - Automatic stage detection from .sst directory
+ * - Contextual explanation of lock cause
+ * - Non-interactive mode support (falls back to manual instructions)
+ *
+ * BEFORE:
+ * 🔧 Recovery Steps:
+ *   1. Run: npx sst unlock
+ *   2. Retry: npx deploy-kit dev
+ *
+ * AFTER:
+ * 🔒 SST Lock Detected
+ *
+ * The deployment is locked (usually from a previous session that didn't exit cleanly).
+ *
+ * Stage: staging
+ * Lock Type: Pulumi state lock
+ * Likely Cause: Previous 'npx deploy-kit dev' or 'sst dev' crashed
+ *
+ * 🔧 Auto-Recovery Available:
+ *   Would you like to automatically unlock? [Y/n]: _
  */
 import chalk from 'chalk';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { execSync } from 'child_process';
+import { promptYesNo } from '../../lib/prompt.js';
 /**
  * Handle and provide guidance for common SST dev errors
  *
@@ -59,9 +84,7 @@ export async function handleSstDevError(error, projectRoot) {
     }
     // Pattern 4: Concurrent Update / Lock
     if (message.includes('concurrent update') || message.includes('lock')) {
-        console.log(chalk.yellow('🔧 Recovery Steps:'));
-        console.log(chalk.gray('  1. Run: npx sst unlock'));
-        console.log(chalk.gray('  2. Retry: npx deploy-kit dev\n'));
+        await handleLockError(projectRoot);
         return;
     }
     // Pattern 5: Port in Use
@@ -129,6 +152,93 @@ function parseErrorFromLog(logContent) {
                 return match[1].trim();
             }
         }
+    }
+    return null;
+}
+/**
+ * Handle SST lock errors with interactive recovery
+ *
+ * Provides context about the lock and offers automatic unlock with user confirmation
+ */
+async function handleLockError(projectRoot) {
+    console.log(chalk.bold.yellow('\n🔒 SST Lock Detected\n'));
+    console.log(chalk.gray('The deployment is locked (usually from a previous session that didn\'t exit cleanly).\n'));
+    // Detect which stage is locked
+    const lockedStage = detectLockedStage(projectRoot);
+    if (lockedStage) {
+        console.log(chalk.gray(`Stage: ${chalk.white(lockedStage)}`));
+    }
+    console.log(chalk.gray('Lock Type: Pulumi state lock'));
+    console.log(chalk.gray('Likely Cause: Previous \'npx deploy-kit dev\' or \'sst dev\' crashed\n'));
+    // Check if we're in non-interactive mode
+    if (process.env.CI === 'true' || process.env.NON_INTERACTIVE === 'true' || !process.stdin.isTTY) {
+        console.log(chalk.yellow('🔧 Non-interactive mode: Manual unlock required'));
+        console.log(chalk.gray('  Run: npx sst unlock' + (lockedStage ? ` --stage ${lockedStage}` : '')));
+        console.log(chalk.gray('  Then retry: npx deploy-kit dev\n'));
+        return;
+    }
+    // Ask user if they want to auto-unlock
+    console.log(chalk.bold.cyan('🔧 Auto-Recovery Available:'));
+    const shouldUnlock = await promptYesNo('  Would you like to automatically unlock?', true);
+    if (shouldUnlock) {
+        console.log(chalk.gray('\n⏳ Unlocking...'));
+        try {
+            const unlockCmd = lockedStage
+                ? `npx sst unlock --stage ${lockedStage}`
+                : 'npx sst unlock';
+            execSync(unlockCmd, {
+                cwd: projectRoot || process.cwd(),
+                stdio: 'pipe', // Suppress output
+            });
+            console.log(chalk.green('✅ Lock cleared successfully!\n'));
+            console.log(chalk.gray('You can now retry: npx deploy-kit dev\n'));
+        }
+        catch (error) {
+            console.log(chalk.yellow('⚠️  Auto-unlock failed\n'));
+            console.log(chalk.gray('Manual steps:'));
+            console.log(chalk.gray('  1. npx sst unlock' + (lockedStage ? ` --stage ${lockedStage}` : '')));
+            console.log(chalk.gray('  2. npx deploy-kit dev\n'));
+        }
+    }
+    else {
+        console.log(chalk.gray('\n📋 Manual unlock steps:'));
+        console.log(chalk.gray('  1. npx sst unlock' + (lockedStage ? ` --stage ${lockedStage}` : '')));
+        console.log(chalk.gray('  2. npx deploy-kit dev\n'));
+    }
+}
+/**
+ * Detect which SST stage is locked by checking SST directory
+ *
+ * @param projectRoot - Root directory of the project
+ * @returns The locked stage name or null if cannot be determined
+ */
+function detectLockedStage(projectRoot) {
+    if (!projectRoot) {
+        return null;
+    }
+    try {
+        const sstDir = join(projectRoot, '.sst');
+        if (!existsSync(sstDir)) {
+            return null;
+        }
+        // Check for lock file that might contain stage info
+        const lockPath = join(sstDir, 'lock');
+        if (existsSync(lockPath)) {
+            // Try to read stage from lock file or SST directory structure
+            // SST typically creates .sst/stage-name directories
+            const fs = require('fs');
+            const sstContents = fs.readdirSync(sstDir);
+            // Look for common stage names
+            const commonStages = ['staging', 'production', 'dev', 'prod', 'development'];
+            for (const stage of commonStages) {
+                if (sstContents.includes(stage)) {
+                    return stage;
+                }
+            }
+        }
+    }
+    catch {
+        // Ignore errors, just return null
     }
     return null;
 }
