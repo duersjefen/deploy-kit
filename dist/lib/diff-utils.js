@@ -97,6 +97,29 @@ function compareValues(oldVal, newVal, path, changes) {
         });
         return;
     }
+    // Handle special object types (Date, RegExp, etc.)
+    // Compare by value rather than structure
+    if (oldVal instanceof Date && newVal instanceof Date) {
+        if (oldVal.getTime() !== newVal.getTime()) {
+            changes.push({
+                type: 'modified',
+                path: path || 'root',
+                oldValue: oldVal,
+                newValue: newVal,
+            });
+        }
+        return;
+    }
+    // One is Date, other is not
+    if (oldVal instanceof Date || newVal instanceof Date) {
+        changes.push({
+            type: 'modified',
+            path: path || 'root',
+            oldValue: oldVal,
+            newValue: newVal,
+        });
+        return;
+    }
     // Both are objects - compare recursively
     const oldIsArray = Array.isArray(oldVal);
     const newIsArray = Array.isArray(newVal);
