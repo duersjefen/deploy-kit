@@ -137,7 +137,7 @@ export class DeploymentKit {
                 canaryConfig: options?.canary,
                 projectName: this.config.projectName,
             });
-            this.metrics.startTimer('deployment.total');
+            const deploymentTimer = this.metrics.startTimer('deployment.total');
             // Print deployment header
             console.log(chalk.bold.cyan('\n' + '═'.repeat(60)));
             let headerMode = isDryRun ? '🔍 DRY-RUN PREVIEW' : '🚀 DEPLOYMENT PIPELINE';
@@ -186,7 +186,7 @@ export class DeploymentKit {
             // This way, if pre-checks fail, lock is never acquired
             let stage1Start = Date.now();
             this.logger.debug('Running pre-deployment checks', { stage });
-            this.metrics.startTimer('stage.pre-checks');
+            const preChecksTimer = this.metrics.startTimer('stage.pre-checks');
             if (perfAnalyzer)
                 perfAnalyzer.start('stage.pre-checks');
             console.log(chalk.bold.white('▸ Stage 1: Pre-Deployment Checks'));
@@ -195,7 +195,7 @@ export class DeploymentKit {
             result.details.gitStatusOk = true;
             result.details.testsOk = true;
             const stage1Duration = Date.now() - stage1Start;
-            this.metrics.stopTimer('stage.pre-checks');
+            this.metrics.stopTimer(preChecksTimer);
             if (perfAnalyzer)
                 perfAnalyzer.end('stage.pre-checks');
             this.logger.info('Pre-deployment checks passed', { stage, durationMs: stage1Duration });
@@ -213,7 +213,7 @@ export class DeploymentKit {
             // Stage 2: Build & Deploy (delegated to orchestrator)
             let stage2Start = Date.now();
             this.logger.debug('Starting build and deploy', { stage });
-            this.metrics.startTimer('stage.build-deploy');
+            const buildDeployTimer = this.metrics.startTimer('stage.build-deploy');
             if (perfAnalyzer)
                 perfAnalyzer.start('stage.build-deploy');
             console.log(chalk.bold.white('\n▸ Stage 2: Build & Deploy'));
@@ -229,7 +229,7 @@ export class DeploymentKit {
             cloudFrontDistId = await this.orchestrator.executeDeploy(stage, { isDryRun });
             result.details.deploymentOk = true;
             const stage2Duration = Date.now() - stage2Start;
-            this.metrics.stopTimer('stage.build-deploy');
+            this.metrics.stopTimer(buildDeployTimer);
             if (perfAnalyzer)
                 perfAnalyzer.end('stage.build-deploy');
             this.logger.info('Build and deploy completed', { stage, durationMs: stage2Duration, cloudFrontDistId });
@@ -237,7 +237,7 @@ export class DeploymentKit {
             // Stage 3: Post-deployment validation
             let stage3Start = Date.now();
             this.logger.debug('Running post-deployment validation', { stage });
-            this.metrics.startTimer('stage.health-checks');
+            const healthChecksTimer = this.metrics.startTimer('stage.health-checks');
             if (perfAnalyzer)
                 perfAnalyzer.start('stage.health-checks');
             console.log(chalk.bold.white('\n▸ Stage 3: Post-Deployment Validation'));
@@ -247,7 +247,7 @@ export class DeploymentKit {
             }
             result.details.healthChecksOk = true;
             const stage3Duration = Date.now() - stage3Start;
-            this.metrics.stopTimer('stage.health-checks');
+            this.metrics.stopTimer(healthChecksTimer);
             if (perfAnalyzer)
                 perfAnalyzer.end('stage.health-checks');
             this.logger.info('Health checks passed', { stage, durationMs: stage3Duration });
@@ -256,14 +256,14 @@ export class DeploymentKit {
             let stage4Start = Date.now();
             if (!isDryRun && !this.config.stageConfig[stage].skipCacheInvalidation) {
                 this.logger.debug('Starting cache invalidation', { stage, cloudFrontDistId });
-                this.metrics.startTimer('stage.cache-invalidation');
+                const cacheInvalidationTimer = this.metrics.startTimer('stage.cache-invalidation');
                 if (perfAnalyzer)
                     perfAnalyzer.start('stage.cache-invalidation');
                 console.log(chalk.bold.white('\n▸ Stage 4: Cache Invalidation'));
                 console.log(chalk.gray('  Clearing CloudFront cache (runs in background)\n'));
                 await this.cloudFrontOps.invalidateCache(stage, cloudFrontDistId);
                 result.details.cacheInvalidatedOk = true;
-                this.metrics.stopTimer('stage.cache-invalidation');
+                this.metrics.stopTimer(cacheInvalidationTimer);
                 if (perfAnalyzer)
                     perfAnalyzer.end('stage.cache-invalidation');
                 this.logger.info('Cache invalidation completed', { stage, cloudFrontDistId });
@@ -279,7 +279,7 @@ export class DeploymentKit {
             }
             // Record total deployment duration
             const totalDuration = Date.now() - startTime;
-            this.metrics.stopTimer('deployment.total');
+            this.metrics.stopTimer(deploymentTimer);
             this.metrics.recordHistogram('deployment.duration', totalDuration);
             this.metrics.incrementCounter('deployment.success');
             // End performance tracking and generate report
