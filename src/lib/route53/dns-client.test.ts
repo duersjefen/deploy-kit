@@ -1,9 +1,9 @@
 /**
- * Route53 DNS Client Test Suite
+ * Route53 DNS Client Test Suite (Integration)
  *
  * Integration tests for Route53DNSClient.
  * Tests verify correct Route53 API interactions.
- * Gracefully skips if AWS credentials are not available.
+ * These tests require AWS credentials.
  */
 
 import { describe, it, beforeEach } from 'node:test';
@@ -11,7 +11,8 @@ import { strict as assert } from 'node:assert';
 import { Route53DNSClient } from './dns-client.js';
 import { hasAwsCredentials } from '../aws-cli-utils.js';
 
-describe('Route53DNSClient', () => {
+// Skip integration tests in unit test runs
+describe.skip('Route53DNSClient (Integration)', () => {
   let client: Route53DNSClient;
 
   beforeEach(() => {
