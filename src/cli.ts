@@ -12,6 +12,7 @@ import { handleCloudFrontCommand } from './cli/commands/cloudfront.js';
 import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
 import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
+import { recover } from './cli/commands/recover.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
@@ -68,6 +69,27 @@ async function cli() {
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('\n❌ Doctor error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'recover') {
+    const target = args[1];
+    if (!target) {
+      console.log(chalk.red('\n❌ Missing recovery target'));
+      console.log(chalk.gray('\nAvailable targets:'));
+      console.log(chalk.cyan('  deploy-kit recover cloudfront  ') + '- Fix stuck CloudFront distributions');
+      console.log(chalk.cyan('  deploy-kit recover state       ') + '- Fix corrupted Pulumi state');
+      console.log(chalk.cyan('  deploy-kit recover dev         ') + '- General dev environment recovery\n');
+      process.exit(1);
+    }
+
+    try {
+      await recover(target, process.cwd());
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Recovery error:'));
       console.error(chalk.red((error as Error).message));
       process.exit(1);
     }

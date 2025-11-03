@@ -5,6 +5,13 @@
 export interface SstOutputHandlerOptions {
     verbose: boolean;
     projectRoot: string;
+    onCriticalError?: (error: CriticalError) => void;
+}
+export interface CriticalError {
+    type: 'cloudfront_stuck' | 'resource_in_use' | 'state_corruption' | 'deployment_failed';
+    message: string;
+    rawOutput: string;
+    suggestedFix: string;
 }
 /**
  * Handles streaming SST output with intelligent filtering and formatting
@@ -14,6 +21,8 @@ export declare class SstOutputHandler {
     private projectRoot;
     private buffer;
     private hasShownReady;
+    private onCriticalError?;
+    private errorBuffer;
     private readonly PATTERNS;
     constructor(options: SstOutputHandlerOptions);
     /**
@@ -32,5 +41,15 @@ export declare class SstOutputHandler {
      * Process a single line of output
      */
     private processLine;
+    /**
+     * Detect critical errors that should stop the deployment
+     * This is the KEY feature that prevents your exact issue:
+     * "CloudFront fails → SST continues → IAM role never updates"
+     */
+    private detectCriticalErrors;
+    /**
+     * Emit critical error via callback
+     */
+    private emitCriticalError;
 }
 //# sourceMappingURL=sst-output-handler.d.ts.map

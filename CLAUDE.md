@@ -75,4 +75,36 @@ Published to `@duersjefen/deploy-kit` on GitHub Packages (not public npm).
 
 ---
 
+## SST State Recovery
+
+**New in this version:** Comprehensive SST state recovery to prevent stuck deployments.
+
+**Pre-flight checks detect:**
+- CloudFront distributions stuck in "InProgress" state
+- Corrupted Pulumi state files
+- Stale lock files
+- IAM role drift
+
+**Recovery commands:**
+```bash
+deploy-kit recover cloudfront  # Fix stuck CloudFront distributions
+deploy-kit recover state       # Fix corrupted Pulumi state
+deploy-kit recover dev         # General dev environment recovery
+```
+
+**Real-time error detection:** The `dev` command now detects critical errors like:
+- "Cannot delete KeyValueStore - in use"
+- "ResourceInUseException"
+- "Deployment partially failed"
+
+When detected, deploy-kit will:
+1. Stop the deployment
+2. Show clear explanation
+3. Offer recovery steps
+4. Prevent SST from continuing in broken state
+
+This prevents the exact issue: "CloudFront fails → SST continues → IAM role never updates → stuck state"
+
+---
+
 That's it! Everything else should be self-explanatory from the code.
