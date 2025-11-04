@@ -16,6 +16,7 @@ import { handleReleaseCommand } from './cli/commands/release.js';
 import { resolveAwsProfile } from './cli/utils/aws-profile-detector.js';
 import { getFormattedVersion } from './cli/utils/version.js';
 import { runPreDeploymentChecks } from './pre-deployment/index.js';
+import { runSstEnvironmentChecks } from './shared/sst-checks/index.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -193,7 +194,18 @@ async function cli() {
                 printDeploymentHeader(stage);
                 // Parse pre-deployment flags
                 const skipChecks = args.includes('--skip-checks');
-                // Run pre-deployment checks unless skipped
+                const verbose = args.includes('--verbose');
+                // STAGE 1: Run SST environment checks (BEFORE quality checks for fast feedback)
+                if (!skipChecks) {
+                    const sstChecksSummary = await runSstEnvironmentChecks(projectRoot, config, stage, verbose);
+                    if (!sstChecksSummary.allPassed) {
+                        console.log(chalk.red('❌ Deployment blocked by failed SST environment checks'));
+                        console.log(chalk.gray('   Fix the SST environment issues above and try again'));
+                        console.log(chalk.gray('   Or use --skip-checks to bypass (not recommended)\n'));
+                        process.exit(1);
+                    }
+                }
+                // STAGE 2: Run quality checks (TypeCheck, Tests, Build, Lint, E2E)
                 if (!skipChecks) {
                     const checksSummary = await runPreDeploymentChecks(projectRoot, stage);
                     if (!checksSummary.allPassed) {
@@ -204,7 +216,7 @@ async function cli() {
                     }
                 }
                 else {
-                    console.log(chalk.yellow('\n⚠️  WARNING: Skipping pre-deployment checks!'));
+                    console.log(chalk.yellow('\n⚠️  WARNING: Skipping all deployment checks!'));
                     console.log(chalk.yellow('   This should only be used for emergency hotfixes.'));
                     console.log(chalk.yellow('   Deploy at your own risk.\n'));
                 }
@@ -212,7 +224,6 @@ async function cli() {
                 const isDryRun = args.includes('--dry-run');
                 const showDiff = args.includes('--show-diff');
                 const benchmark = args.includes('--benchmark');
-                const verbose = args.includes('--verbose');
                 const logLevelArg = args.find(a => a.startsWith('--log-level='))?.split('=')[1];
                 const metricsBackendArg = args.find(a => a.startsWith('--metrics-backend='))?.split('=')[1];
                 // Parse canary deployment flags

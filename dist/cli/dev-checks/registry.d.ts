@@ -13,6 +13,12 @@ export declare function getDevChecks(projectRoot: string, config: ProjectConfig 
  *
  * - Safe fixes: Auto-apply without prompting
  * - Risky fixes: Show issue but require manual intervention
+ *
+ * Enhanced Output (v2.9.0):
+ * - Progress indicators (▶)
+ * - Individual check timing
+ * - Summary box with results
+ * - Total duration
  */
 export declare function runDevChecks(projectRoot: string, config: ProjectConfig | null, requestedPort?: number, verbose?: boolean): Promise<{
     allPassed: boolean;

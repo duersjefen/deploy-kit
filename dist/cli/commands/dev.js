@@ -53,14 +53,12 @@ export async function handleDevCommand(projectRoot = process.cwd(), options = {}
         }
         // Run pre-flight checks unless skipped
         if (!options.skipChecks) {
-            console.log(chalk.bold('⚙️  Pre-Flight Checks\n'));
             const requestedPort = options.port || 3000;
-            const checksResult = await runDevChecks(projectRoot, config, requestedPort, false);
+            const checksResult = await runDevChecks(projectRoot, config, requestedPort, options.verbose || false);
             if (!checksResult.allPassed) {
                 printCheckFailureMessage();
                 process.exit(1);
             }
-            console.log(chalk.bold.green('✨ All pre-flight checks passed!\n'));
         }
         // Start SST dev
         await startSstDev(projectRoot, config, options);
