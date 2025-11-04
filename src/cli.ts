@@ -163,9 +163,14 @@ async function cli() {
   }
 
   if (command === '--version' || command === '-v') {
-    // Version is managed in package.json and updated during builds
-    const version = '1.4.0';
-    console.log(`deploy-kit ${version}`);
+    // Read version dynamically from package.json (one level up from dist/)
+    try {
+      const packageJsonPath = resolve(dirname(new URL(import.meta.url).pathname), '../package.json');
+      const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+      console.log(`deploy-kit ${packageJson.version}`);
+    } catch (error) {
+      console.log('deploy-kit (version unknown)');
+    }
     process.exit(0);
   }
 
