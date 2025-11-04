@@ -11,6 +11,7 @@ import { join } from 'path';
 import { runDevChecks } from '../dev-checks/registry.js';
 import { startSstDev } from '../dev-checks/sst-starter.js';
 import { InteractiveWizard } from '../dev-checks/interactive-wizard.js';
+import { getFormattedVersion } from '../utils/version.js';
 /**
  * Main dev command entry point
  *
@@ -77,8 +78,10 @@ export async function handleDevCommand(projectRoot = process.cwd(), options = {}
    * Improves user experience with clear visual feedback.
    */
 function printHeader() {
+    const version = getFormattedVersion();
     console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
     console.log(chalk.bold.cyan('║       🚀 SST Development Environment                       ║'));
+    console.log(chalk.bold.cyan(`║       Deploy-Kit ${version.padEnd(43)} ║`));
     console.log(chalk.bold.cyan('╚════════════════════════════════════════════════════════════╝\n'));
 }
 /**

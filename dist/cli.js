@@ -14,6 +14,7 @@ import { handleDevCommand } from './cli/commands/dev.js';
 import { recover } from './cli/commands/recover.js';
 import { handleReleaseCommand } from './cli/commands/release.js';
 import { resolveAwsProfile } from './cli/utils/aws-profile-detector.js';
+import { getFormattedVersion } from './cli/utils/version.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -194,6 +195,8 @@ async function cli() {
                     console.error(chalk.gray('   Valid stages: staging, production'));
                     process.exit(1);
                 }
+                // Print deployment header with version
+                printDeploymentHeader(stage);
                 // Parse observability flags
                 const isDryRun = args.includes('--dry-run');
                 const showDiff = args.includes('--show-diff');
@@ -354,6 +357,18 @@ cli().catch(error => {
     console.error(chalk.red(error instanceof Error ? error.message : String(error)));
     process.exit(1);
 });
+/**
+ * Print deployment header with version
+ *
+ * @param stage - Deployment stage (staging, production)
+ */
+function printDeploymentHeader(stage) {
+    const version = getFormattedVersion();
+    console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
+    console.log(chalk.bold.cyan(`║       🚀 Deploying to ${stage.toUpperCase().padEnd(42)} ║`));
+    console.log(chalk.bold.cyan(`║       Deploy-Kit ${version.padEnd(43)} ║`));
+    console.log(chalk.bold.cyan('╚════════════════════════════════════════════════════════════╝\n'));
+}
 function printHelpMessage() {
     console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
     console.log(chalk.bold.cyan('║       🚀 Deploy-Kit: Sophisticated Deployment Toolkit     ║'));
