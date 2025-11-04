@@ -18,6 +18,7 @@ import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detect
 import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
 import { getFormattedVersion } from './cli/utils/version.js';
+import { runPreDeploymentChecks } from './pre-deployment/index.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -212,6 +213,24 @@ async function cli() {
 
       // Print deployment header with version
       printDeploymentHeader(stage);
+
+      // Parse pre-deployment flags
+      const skipChecks = args.includes('--skip-checks');
+
+      // Run pre-deployment checks unless skipped
+      if (!skipChecks) {
+        const checksSummary = await runPreDeploymentChecks(projectRoot, stage);
+        if (!checksSummary.allPassed) {
+          console.log(chalk.red('\n❌ Deployment blocked by failed pre-deployment checks'));
+          console.log(chalk.gray('   Fix the issues above and try again'));
+          console.log(chalk.gray('   Or use --skip-checks to bypass (not recommended)\n'));
+          process.exit(1);
+        }
+      } else {
+        console.log(chalk.yellow('\n⚠️  WARNING: Skipping pre-deployment checks!'));
+        console.log(chalk.yellow('   This should only be used for emergency hotfixes.'));
+        console.log(chalk.yellow('   Deploy at your own risk.\n'));
+      }
 
       // Parse observability flags
       const isDryRun = args.includes('--dry-run');
@@ -475,6 +494,7 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
   console.log(chalk.gray('    Stages: staging, production'));
   console.log(chalk.gray('    Flags:'));
+  console.log(chalk.gray('      --skip-checks            Skip pre-deployment checks (tests, build, typecheck)'));
   console.log(chalk.gray('      --dry-run                Preview deployment without executing'));
   console.log(chalk.gray('      --show-diff              Show AWS resource diffs (CloudFront, SSL, DNS) before deployment'));
   console.log(chalk.gray('      --benchmark              Display detailed performance report after deployment'));
