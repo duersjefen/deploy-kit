@@ -1,6 +1,6 @@
 {
   "name": "@duersjefen/deploy-kit",
-  "version": "2.8.6",
+  "version": "2.8.7",
   "packageManager": "pnpm@9.15.0",
   "description": "Reusable deployment system for SST + Next.js + DynamoDB applications with safety checks, CloudFront validation, and automated SSL certificates",
   "main": "dist/index.js",
