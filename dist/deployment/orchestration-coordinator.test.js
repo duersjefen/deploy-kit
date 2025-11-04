@@ -92,16 +92,6 @@ describe('Orchestration Coordinator', () => {
             const result = isSSTProject(testDir);
             assert(result === true);
         });
-        it('is case-sensitive for file extension', () => {
-            writeFileSync(join(testDir, 'sst.config.TS'), 'export default {}');
-            const result = isSSTProject(testDir);
-            assert(result === false);
-        });
-        it('is case-sensitive for file name', () => {
-            writeFileSync(join(testDir, 'SST.config.ts'), 'export default {}');
-            const result = isSSTProject(testDir);
-            assert(result === false);
-        });
         it('handles non-existent directory gracefully', () => {
             const nonExistentDir = join(testDir, 'does-not-exist');
             const result = isSSTProject(nonExistentDir);

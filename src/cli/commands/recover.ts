@@ -62,8 +62,10 @@ async function recoverCloudFront(
     spinner.text = `Found ${projectDistributions.length} distribution(s) for this project`;
 
     // Check for stuck distributions
+    // Note: "Deployed" is healthy, "Deploying" or "InProgress" indicates stuck
     const stuckDistributions = projectDistributions.filter(
-      dist => dist.Status === 'InProgress' || dist.Status.includes('Deploy')
+      dist => dist.Status === 'InProgress' ||
+              (dist.Status.includes('Deploy') && dist.Status !== 'Deployed')
     );
 
     if (stuckDistributions.length === 0) {
