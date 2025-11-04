@@ -16,7 +16,7 @@ export class MessageGrouper {
             { pattern: /Deploying.*stack ([\w-]+)/i, category: 'stack-deploy' },
             { pattern: /✓.*stack ([\w-]+).*deployed/i, category: 'stack-deployed' },
             // General success/build patterns
-            { pattern: /✓\s*([\w\s]+)\s*\((\d+)ms\)/i, category: 'success' },
+            { pattern: /✓\s*(?!.*(?:Lambda|stack))([\w\s]+)\s*\((\d+)ms\)/i, category: 'success' },
             { pattern: /🔨\s*Building ([\w\s]+)/i, category: 'building' },
         ];
     }
@@ -38,7 +38,7 @@ export class MessageGrouper {
                     // Extract duration if present
                     if (match[2]) {
                         const duration = parseInt(match[2], 10);
-                        if (!existing.avgDuration) {
+                        if (existing.avgDuration === undefined) {
                             existing.avgDuration = duration;
                         }
                         else {

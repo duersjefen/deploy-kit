@@ -304,7 +304,7 @@ export class EnhancedOutputHandler {
                     console.log(chalk.bold.green(`\n✅ ${line}`));
                     return true;
                 }
-                return false;
+                return true; // Always suppress duplicate ready messages
             default:
                 return false;
         }
