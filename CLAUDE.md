@@ -38,7 +38,7 @@ node dist/cli.js release minor --dry-run  # Preview changes
 4. Bumps version in package.json
 5. Commits and creates git tag
 6. Pushes to GitHub (main + tag)
-7. Publishes to GitHub Packages
+7. Publishes to public npm registry
 8. Creates GitHub release with notes
 9. Auto-rollback on failure
 
@@ -50,15 +50,18 @@ node dist/cli.js release minor --dry-run  # Preview changes
 
 ---
 
-## GitHub Packages
+## npm Publishing
 
-Published to `@duersjefen/deploy-kit` on GitHub Packages (not public npm).
+Published to public npm registry as `@duersjefen/deploy-kit`.
 
-**.npmrc configuration:**
-```ini
-@duersjefen:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+**Installation:**
+```bash
+npm install -g @duersjefen/deploy-kit  # Global
+npm install --save-dev @duersjefen/deploy-kit  # Dev dependency
+npx @duersjefen/deploy-kit --version  # Direct usage
 ```
+
+**Note:** `.npmrc` has GitHub Packages configuration commented out (switched to public npm).
 
 ---
 

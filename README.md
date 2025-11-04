@@ -2,7 +2,7 @@
 
 > **Production-grade deployment orchestration for SST + Next.js + DynamoDB applications**
 
-[![Version](https://img.shields.io/badge/version-2.7.0-blue.svg)](https://github.com/duersjefen/deploy-kit/releases)
+[![npm version](https://img.shields.io/npm/v/@duersjefen/deploy-kit.svg)](https://www.npmjs.com/package/@duersjefen/deploy-kit)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -51,19 +51,15 @@ npx @duersjefen/deploy-kit dev
 
 ## 📦 Installation
 
-### From GitHub Packages
-
 ```bash
+# Install globally (recommended)
+npm install -g @duersjefen/deploy-kit
+
+# Or install as dev dependency
 npm install --save-dev @duersjefen/deploy-kit
-```
 
-**Note**: Requires authentication with GitHub Packages. See [installation guide](./docs/installation.md) for setup.
-
-### Quick Verification
-
-```bash
+# Or use directly with npx
 npx @duersjefen/deploy-kit --version
-# Expected: 2.7.0
 ```
 
 ---
