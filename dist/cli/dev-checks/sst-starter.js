@@ -34,10 +34,10 @@ export async function startSstDev(projectRoot, config, options) {
     else if (options.profile) {
         outputProfile = options.profile;
     }
-    // When using output handler, add --mode=mono for clean sequential output
-    // (better for parsing and filtering)
+    // When using output handler, add --mode=basic to disable TUI multiplexer
+    // (allows us to capture and format plain text output)
     if (useOutputHandler) {
-        args.push('--mode=mono');
+        args.push('--mode=basic');
     }
     if (selectedPort !== 3000) {
         args.push(`--port=${selectedPort}`);
