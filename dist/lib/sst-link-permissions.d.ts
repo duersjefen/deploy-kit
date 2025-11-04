@@ -13,7 +13,7 @@
  * @see https://github.com/duersjefen/deploy-kit/issues/88
  */
 export interface LinkPermissionsViolation {
-    type: 'link-permissions-conflict' | 'missing-gsi-permissions' | 'pulumi-output-misuse';
+    type: 'link-permissions-conflict' | 'missing-gsi-permissions' | 'pulumi-output-misuse' | 's3-lifecycle-schema' | 'aws-resource-string-reference';
     message: string;
     lineNumber?: number;
     suggestion: string;
@@ -49,14 +49,48 @@ export declare function findMissingGSIPermissions(configContent: string): LinkPe
  * Detects incorrect usage like:
  * ```ts
  * resources: [`${table.arn}/index/*`]  // ← Wrong: uses template literal
+ * sourceArn: `arn:aws:events:...:${aws.getCallerIdentityOutput().accountId}:...`  // ← Wrong
  * ```
  *
  * Should be:
  * ```ts
  * resources: [$interpolate`${table.arn}/index/*`]  // ← Correct: uses $interpolate
+ * sourceArn: $interpolate`arn:aws:events:...:${aws.getCallerIdentityOutput().accountId}:...`  // ← Correct
  * ```
  */
 export declare function findPulumiOutputMisuse(configContent: string): LinkPermissionsViolation[];
+/**
+ * Find S3 lifecycle rule schema issues
+ *
+ * Detects common schema mistakes in S3 bucket lifecycle rules:
+ * 1. Using `expiration` (object) instead of `expirations` (array)
+ * 2. Using unsupported `abortIncompleteMultipartUploads` in BucketV2 transform
+ *
+ * Example errors:
+ * ```ts
+ * lifecycleRules: [{
+ *   expiration: { days: 180 }  // ❌ Should be 'expirations' (array)
+ * }]
+ * ```
+ */
+export declare function findS3LifecycleRuleIssues(configContent: string): LinkPermissionsViolation[];
+/**
+ * Find AWS resource string references that should use resource properties
+ *
+ * Detects patterns where resource names are hardcoded as strings instead of
+ * referencing the actual resource property:
+ * ```ts
+ * const rule = new aws.cloudwatch.EventRule("DeletionWarning", {
+ *   name: `${stage}-deletion-warning`
+ * });
+ *
+ * new aws.cloudwatch.EventTarget("Target", {
+ *   rule: "DeletionWarning",  // ❌ String reference - should be rule.name
+ *   arn: func.arn
+ * });
+ * ```
+ */
+export declare function findAWSResourceStringReferences(configContent: string): LinkPermissionsViolation[];
 /**
  * Run all SST config validations
  */

@@ -8,6 +8,8 @@ import {
   findLinkPermissionsConflicts,
   findMissingGSIPermissions,
   findPulumiOutputMisuse,
+  findS3LifecycleRuleIssues,
+  findAWSResourceStringReferences,
   validateSSTConfig,
   formatValidationErrors,
 } from './sst-link-permissions.js';
@@ -152,6 +154,39 @@ describe('SST Link + Permissions Validation', () => {
       assert.ok(violations[0].message.includes('Pulumi Output'));
     });
 
+    it('detects aws.getCallerIdentityOutput() in template literal', () => {
+      const config = `
+        new aws.lambda.Permission("Permission", {
+          sourceArn: \`arn:aws:events:eu-north-1:\${aws.getCallerIdentityOutput().accountId}:rule/\${stage}-rule\`,
+        });
+      `;
+
+      const violations = findPulumiOutputMisuse(config);
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].type, 'pulumi-output-misuse');
+      assert.ok(violations[0].message.includes('Output function call'));
+    });
+
+    it('detects .id property in template literal', () => {
+      const config = `
+        const vpc = \`\${network.id}/subnet\`;
+      `;
+
+      const violations = findPulumiOutputMisuse(config);
+      assert.strictEqual(violations.length, 1);
+      assert.ok(violations[0].message.includes('.id property'));
+    });
+
+    it('detects .name property in template literal', () => {
+      const config = `
+        const ruleName = \`\${rule.name}-target\`;
+      `;
+
+      const violations = findPulumiOutputMisuse(config);
+      assert.strictEqual(violations.length, 1);
+      assert.ok(violations[0].message.includes('.name property'));
+    });
+
     it('passes when using $interpolate', () => {
       const config = `
         permissions: [
@@ -166,7 +201,7 @@ describe('SST Link + Permissions Validation', () => {
       assert.strictEqual(violations.length, 0);
     });
 
-    it('passes when template literal does not reference .arn', () => {
+    it('passes when template literal does not reference outputs', () => {
       const config = `
         permissions: [
           {
@@ -177,6 +212,137 @@ describe('SST Link + Permissions Validation', () => {
       `;
 
       const violations = findPulumiOutputMisuse(config);
+      assert.strictEqual(violations.length, 0);
+    });
+  });
+
+  describe('findS3LifecycleRuleIssues', () => {
+    it('detects expiration (object) instead of expirations (array)', () => {
+      const config = `
+        const bucket = new sst.aws.Bucket("Bucket", {
+          transform: {
+            bucket: (args) => {
+              args.lifecycleRules = [
+                {
+                  id: "expire-old-files",
+                  enabled: true,
+                  expiration: { days: 180 },
+                }
+              ];
+            }
+          }
+        });
+      `;
+
+      const violations = findS3LifecycleRuleIssues(config);
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].type, 's3-lifecycle-schema');
+      assert.strictEqual(violations[0].severity, 'error');
+      assert.ok(violations[0].message.includes('expiration'));
+      assert.ok(violations[0].suggestion.includes('expirations'));
+    });
+
+    it('detects unsupported abortIncompleteMultipartUploads', () => {
+      const config = `
+        lifecycleRules = [
+          {
+            id: "cleanup",
+            abortIncompleteMultipartUploads: { daysAfterInitiation: 7 }
+          }
+        ];
+      `;
+
+      const violations = findS3LifecycleRuleIssues(config);
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].type, 's3-lifecycle-schema');
+      assert.ok(violations[0].message.includes('abortIncompleteMultipartUploads'));
+      assert.ok(violations[0].suggestion.includes('BucketLifecycleConfigurationV2'));
+    });
+
+    it('passes for correct expirations array syntax', () => {
+      const config = `
+        lifecycleRules = [
+          {
+            id: "expire-old-files",
+            enabled: true,
+            expirations: [{ days: 180 }]
+          }
+        ];
+      `;
+
+      const violations = findS3LifecycleRuleIssues(config);
+      assert.strictEqual(violations.length, 0);
+    });
+
+    it('passes when no lifecycle rules present', () => {
+      const config = `
+        const bucket = new sst.aws.Bucket("Bucket");
+      `;
+
+      const violations = findS3LifecycleRuleIssues(config);
+      assert.strictEqual(violations.length, 0);
+    });
+  });
+
+  describe('findAWSResourceStringReferences', () => {
+    it('detects string reference to AWS resource', () => {
+      const config = `
+        const deletionWarningSchedule = new aws.cloudwatch.EventRule("DeletionWarningSchedule", {
+          name: \`\${stage}-deletion-warning-schedule\`,
+        });
+
+        new aws.cloudwatch.EventTarget("DeletionWarningTarget", {
+          rule: "DeletionWarningSchedule",
+          arn: deletionWarningFunction.arn,
+        });
+      `;
+
+      const violations = findAWSResourceStringReferences(config);
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].type, 'aws-resource-string-reference');
+      assert.strictEqual(violations[0].severity, 'warning');
+      assert.ok(violations[0].message.includes('DeletionWarningSchedule'));
+      assert.ok(violations[0].suggestion.includes('resource.name'));
+    });
+
+    it('detects multiple string references', () => {
+      const config = `
+        const rule1 = new aws.cloudwatch.EventRule("Rule1", {});
+        const rule2 = new aws.cloudwatch.EventRule("Rule2", {});
+
+        new aws.cloudwatch.EventTarget("Target1", { rule: "Rule1" });
+        new aws.cloudwatch.EventTarget("Target2", { rule: "Rule2" });
+      `;
+
+      const violations = findAWSResourceStringReferences(config);
+      assert.strictEqual(violations.length, 2);
+    });
+
+    it('passes when using resource properties', () => {
+      const config = `
+        const deletionWarningSchedule = new aws.cloudwatch.EventRule("DeletionWarningSchedule", {
+          name: \`\${stage}-deletion-warning-schedule\`,
+        });
+
+        new aws.cloudwatch.EventTarget("DeletionWarningTarget", {
+          rule: deletionWarningSchedule.name,
+          arn: deletionWarningFunction.arn,
+        });
+      `;
+
+      const violations = findAWSResourceStringReferences(config);
+      assert.strictEqual(violations.length, 0);
+    });
+
+    it('passes when string does not reference a known resource', () => {
+      const config = `
+        new aws.cloudwatch.EventTarget("Target", {
+          rule: "some-external-rule",
+          arn: func.arn,
+        });
+      `;
+
+      const violations = findAWSResourceStringReferences(config);
       assert.strictEqual(violations.length, 0);
     });
   });

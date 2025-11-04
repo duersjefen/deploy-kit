@@ -14,7 +14,7 @@
  */
 
 export interface LinkPermissionsViolation {
-  type: 'link-permissions-conflict' | 'missing-gsi-permissions' | 'pulumi-output-misuse';
+  type: 'link-permissions-conflict' | 'missing-gsi-permissions' | 'pulumi-output-misuse' | 's3-lifecycle-schema' | 'aws-resource-string-reference';
   message: string;
   lineNumber?: number;
   suggestion: string;
@@ -175,39 +175,192 @@ export function findMissingGSIPermissions(configContent: string): LinkPermission
  * Detects incorrect usage like:
  * ```ts
  * resources: [`${table.arn}/index/*`]  // ← Wrong: uses template literal
+ * sourceArn: `arn:aws:events:...:${aws.getCallerIdentityOutput().accountId}:...`  // ← Wrong
  * ```
  *
  * Should be:
  * ```ts
  * resources: [$interpolate`${table.arn}/index/*`]  // ← Correct: uses $interpolate
+ * sourceArn: $interpolate`arn:aws:events:...:${aws.getCallerIdentityOutput().accountId}:...`  // ← Correct
  * ```
  */
 export function findPulumiOutputMisuse(configContent: string): LinkPermissionsViolation[] {
   const violations: LinkPermissionsViolation[] = [];
+  const lines = configContent.split('\n');
 
-  // Pattern: Find template literals with .arn access inside arrays (likely permissions/resources)
-  // This catches: resources: [`${something.arn}...`]
-  const templateLiteralPattern = /resources\s*:\s*\[\s*`\$\{[^}]*\.arn[^}]*\}[^`]*`/g;
-  const matches = configContent.matchAll(templateLiteralPattern);
+  // Patterns to detect Pulumi Output usage in template literals:
+  const pulumiOutputPatterns = [
+    // Pattern 1: aws.getCallerIdentityOutput() or any *Output() function
+    { regex: /`[^`]*\$\{[^}]*Output\([^)]*\)[^}]*\}[^`]*`/, name: 'Output function call' },
+    // Pattern 2: .arn property access
+    { regex: /`[^`]*\$\{[^}]*\.arn[^}]*\}[^`]*`/, name: '.arn property' },
+    // Pattern 3: .id property access
+    { regex: /`[^`]*\$\{[^}]*\.id[^}]*\}[^`]*`/, name: '.id property' },
+    // Pattern 4: .name property access
+    { regex: /`[^`]*\$\{[^}]*\.name[^}]*\}[^`]*`/, name: '.name property' },
+  ];
 
-  for (const match of matches) {
-    const startIndex = match.index || 0;
-    const lineNumber = configContent.substring(0, startIndex).split('\n').length;
+  lines.forEach((line, index) => {
+    for (const pattern of pulumiOutputPatterns) {
+      if (pattern.regex.test(line)) {
+        // Check if this line already uses $interpolate
+        const usesInterpolate = /\$interpolate\s*`/.test(line);
 
-    // Check if this is NOT using $interpolate
-    const context = configContent.substring(Math.max(0, startIndex - 20), startIndex);
-    const usesInterpolate = context.includes('$interpolate');
+        if (!usesInterpolate) {
+          // Extract a snippet of what's being used incorrectly
+          const match = line.match(/`([^`]+)`/);
+          const snippet = match ? match[1].substring(0, 50) : 'template literal';
 
-    if (!usesInterpolate) {
-      violations.push({
-        type: 'pulumi-output-misuse',
-        message: 'Pulumi Output in template literal - deployment will fail',
-        lineNumber,
-        suggestion: 'Pulumi Outputs cannot be used in regular template literals. Use `$interpolate\\`\\${resource.arn}\\`` instead of \\``\\${resource.arn}\\``. Regular template literals evaluate at config-time; $interpolate evaluates at deployment-time.',
-        severity: 'error',
+          violations.push({
+            type: 'pulumi-output-misuse',
+            message: `Pulumi Output (${pattern.name}) in template literal - deployment will fail`,
+            lineNumber: index + 1,
+            suggestion: `Pulumi Outputs cannot be used in regular template literals. Wrap with $interpolate: $interpolate\`${snippet}...\`. Regular template literals evaluate at config-time; $interpolate evaluates at deployment-time when Output values are available.`,
+            severity: 'error',
+          });
+
+          // Only report once per line
+          break;
+        }
+      }
+    }
+  });
+
+  return violations;
+}
+
+/**
+ * Find S3 lifecycle rule schema issues
+ *
+ * Detects common schema mistakes in S3 bucket lifecycle rules:
+ * 1. Using `expiration` (object) instead of `expirations` (array)
+ * 2. Using unsupported `abortIncompleteMultipartUploads` in BucketV2 transform
+ *
+ * Example errors:
+ * ```ts
+ * lifecycleRules: [{
+ *   expiration: { days: 180 }  // ❌ Should be 'expirations' (array)
+ * }]
+ * ```
+ */
+export function findS3LifecycleRuleIssues(configContent: string): LinkPermissionsViolation[] {
+  const violations: LinkPermissionsViolation[] = [];
+  const lines = configContent.split('\n');
+
+  // Find lifecycleRules blocks
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (/lifecycleRules\s*[:=]\s*\[/.test(line)) {
+      // Find the entire lifecycleRules block
+      let rulesBlock = '';
+      let bracketCount = 0;
+      let started = false;
+
+      for (let j = i; j < lines.length; j++) {
+        const blockLine = lines[j];
+
+        if (blockLine.includes('[')) {
+          started = true;
+          bracketCount += (blockLine.match(/\[/g) || []).length;
+        }
+
+        if (started) {
+          rulesBlock += blockLine + '\n';
+        }
+
+        if (blockLine.includes(']')) {
+          bracketCount -= (blockLine.match(/\]/g) || []).length;
+        }
+
+        if (started && bracketCount === 0) {
+          break;
+        }
+      }
+
+      // Check for common schema errors
+      const blockLines = rulesBlock.split('\n');
+
+      blockLines.forEach((blockLine, idx) => {
+        const lineNum = i + idx + 1;
+
+        // Error 1: Using 'expiration' (object) instead of 'expirations' (array)
+        if (/expiration\s*:\s*\{/.test(blockLine)) {
+          violations.push({
+            type: 's3-lifecycle-schema',
+            message: 'S3 lifecycle rule uses "expiration" (object) - should be "expirations" (array)',
+            lineNumber: lineNum,
+            suggestion: 'BucketV2 requires "expirations: [{ days: 180 }]" not "expiration: { days: 180 }". Change singular to plural and wrap in array.',
+            severity: 'error',
+          });
+        }
+
+        // Error 2: Using unsupported abortIncompleteMultipartUploads
+        if (/abortIncompleteMultipartUploads/.test(blockLine)) {
+          violations.push({
+            type: 's3-lifecycle-schema',
+            message: 'S3 lifecycle rule uses unsupported "abortIncompleteMultipartUploads"',
+            lineNumber: lineNum,
+            suggestion: '"abortIncompleteMultipartUploads" is not supported in BucketV2 transform. Remove this rule or use aws.s3.BucketLifecycleConfigurationV2 directly.',
+            severity: 'error',
+          });
+        }
       });
     }
   }
+
+  return violations;
+}
+
+/**
+ * Find AWS resource string references that should use resource properties
+ *
+ * Detects patterns where resource names are hardcoded as strings instead of
+ * referencing the actual resource property:
+ * ```ts
+ * const rule = new aws.cloudwatch.EventRule("DeletionWarning", {
+ *   name: `${stage}-deletion-warning`
+ * });
+ *
+ * new aws.cloudwatch.EventTarget("Target", {
+ *   rule: "DeletionWarning",  // ❌ String reference - should be rule.name
+ *   arn: func.arn
+ * });
+ * ```
+ */
+export function findAWSResourceStringReferences(configContent: string): LinkPermissionsViolation[] {
+  const violations: LinkPermissionsViolation[] = [];
+  const lines = configContent.split('\n');
+
+  // Build a map of AWS resource names from "new aws.*.*(\"ResourceName\")"
+  const resourceNames = new Set<string>();
+  lines.forEach(line => {
+    const match = line.match(/new\s+aws\.\w+\.\w+\s*\(\s*["']([^"']+)["']/);
+    if (match) {
+      resourceNames.add(match[1]);
+    }
+  });
+
+  // Check for string references to those resource names in common properties
+  const stringRefProperties = ['rule', 'targetGroupArn', 'securityGroupId', 'vpcId', 'subnetId'];
+
+  lines.forEach((line, index) => {
+    for (const prop of stringRefProperties) {
+      // Match: property: "ResourceName" where ResourceName is a known resource
+      const regex = new RegExp(`${prop}\\s*:\\s*["']([^"']+)["']`);
+      const match = line.match(regex);
+
+      if (match && resourceNames.has(match[1])) {
+        violations.push({
+          type: 'aws-resource-string-reference',
+          message: `AWS resource property uses string reference "${match[1]}" instead of resource property`,
+          lineNumber: index + 1,
+          suggestion: `String "${match[1]}" references a resource defined elsewhere. Use the resource's property (e.g., resource.name, resource.arn, resource.id) instead of hardcoding the name. This ensures the correct runtime value is used.`,
+          severity: 'warning',
+        });
+      }
+    }
+  });
 
   return violations;
 }
@@ -220,6 +373,8 @@ export function validateSSTConfig(configContent: string): LinkPermissionsViolati
     ...findLinkPermissionsConflicts(configContent),
     ...findMissingGSIPermissions(configContent),
     ...findPulumiOutputMisuse(configContent),
+    ...findS3LifecycleRuleIssues(configContent),
+    ...findAWSResourceStringReferences(configContent),
   ];
 }
 
