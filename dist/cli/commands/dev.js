@@ -50,13 +50,12 @@ export async function handleDevCommand(projectRoot = process.cwd(), options = {}
             }
             // Apply wizard selections to options
             options.port = wizardResult.port;
-            options.profile = wizardResult.profile;
         }
         // Run pre-flight checks unless skipped
         if (!options.skipChecks) {
             console.log(chalk.bold('⚙️  Pre-Flight Checks\n'));
             const requestedPort = options.port || 3000;
-            const checksResult = await runDevChecks(projectRoot, config, requestedPort, options.verbose || false);
+            const checksResult = await runDevChecks(projectRoot, config, requestedPort, false);
             if (!checksResult.allPassed) {
                 printCheckFailureMessage();
                 process.exit(1);

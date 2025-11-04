@@ -6,12 +6,6 @@ import type { ProjectConfig } from '../../types.js';
 export interface DevOptions {
     skipChecks?: boolean;
     port?: number;
-    verbose?: boolean;
-    quiet?: boolean;
-    native?: boolean;
-    profile?: 'silent' | 'normal' | 'verbose' | 'debug';
-    hideInfo?: boolean;
-    noGroup?: boolean;
     interactive?: boolean;
 }
 /**
