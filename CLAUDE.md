@@ -18,22 +18,35 @@ pnpm test           # Run tests
 
 ## Release Workflow
 
-**One command does everything:**
+**TypeScript release command:**
 
 ```bash
-pnpm run release:patch  # Bug fixes (2.7.0 → 2.7.1)
-pnpm run release:minor  # New features (2.7.0 → 2.8.0)
-pnpm run release:major  # Breaking changes (2.7.0 → 3.0.0)
+# Using npm scripts
+pnpm run release:patch  # Bug fixes (2.8.0 → 2.8.1)
+pnpm run release:minor  # New features (2.8.0 → 2.9.0)
+pnpm run release:major  # Breaking changes (2.8.0 → 3.0.0)
+
+# Or directly
+node dist/cli.js release patch
+node dist/cli.js release minor --dry-run  # Preview changes
 ```
 
-This automatically:
-1. Bumps version in package.json
-2. Commits and tags
-3. Pushes to GitHub (main + tag)
-4. Builds and publishes to GitHub Packages
-5. Creates GitHub release with notes
+**The release command automatically:**
+1. Finds or creates main worktree (works from Conductor!)
+2. Verifies clean git state
+3. Runs build and tests
+4. Bumps version in package.json
+5. Commits and creates git tag
+6. Pushes to GitHub (main + tag)
+7. Publishes to GitHub Packages
+8. Creates GitHub release with notes
+9. Auto-rollback on failure
 
-**Note:** Requires clean git state and main branch. See `scripts/release.sh` for details.
+**Flags:**
+- `--dry-run` - Preview all steps without making changes
+- `--skip-tests` - Skip test validation (use with caution)
+
+**Note:** Uses `git -C` flag to operate on main worktree from anywhere, including Conductor worktrees.
 
 ---
 
@@ -57,7 +70,7 @@ Published to `@duersjefen/deploy-kit` on GitHub Packages (not public npm).
 - Deploy-Kit users can use any package manager - we detect and adapt
 
 **Important Files:**
-- `scripts/release.sh` - Automated release workflow
+- `src/cli/commands/release.ts` - TypeScript release command (replaces bash script)
 - `src/cli/init/` - Project initialization with package manager detection
 - `dist/` - Compiled output (auto-generated, committed to repo)
 
@@ -69,9 +82,6 @@ Published to `@duersjefen/deploy-kit` on GitHub Packages (not public npm).
 - Expected - integration tests require AWS credentials
 - Unit tests (like package-manager.test.ts) should pass
 - Run specific tests: `node --test dist/path/to/test.js`
-
-**"Release script fails at step 6"**
-- Conductor workaround: `git push origin HEAD:main` (already in script)
 
 ---
 
