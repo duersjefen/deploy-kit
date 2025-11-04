@@ -1,7 +1,7 @@
 # Deploy-Kit - Project Context
 
 **Package Manager:** pnpm (required for development)
-**Last Updated:** 2025-11-03
+**Last Updated:** 2025-11-04
 
 ---
 
@@ -82,38 +82,6 @@ Published to `@duersjefen/deploy-kit` on GitHub Packages (not public npm).
 - Expected - integration tests require AWS credentials
 - Unit tests (like package-manager.test.ts) should pass
 - Run specific tests: `node --test dist/path/to/test.js`
-
----
-
-## SST State Recovery
-
-**New in this version:** Comprehensive SST state recovery to prevent stuck deployments.
-
-**Pre-flight checks detect:**
-- CloudFront distributions stuck in "InProgress" state
-- Corrupted Pulumi state files
-- Stale lock files
-- IAM role drift
-
-**Recovery commands:**
-```bash
-deploy-kit recover cloudfront  # Fix stuck CloudFront distributions
-deploy-kit recover state       # Fix corrupted Pulumi state
-deploy-kit recover dev         # General dev environment recovery
-```
-
-**Real-time error detection:** The `dev` command now detects critical errors like:
-- "Cannot delete KeyValueStore - in use"
-- "ResourceInUseException"
-- "Deployment partially failed"
-
-When detected, deploy-kit will:
-1. Stop the deployment
-2. Show clear explanation
-3. Offer recovery steps
-4. Prevent SST from continuing in broken state
-
-This prevents the exact issue: "CloudFront fails → SST continues → IAM role never updates → stuck state"
 
 ---
 
