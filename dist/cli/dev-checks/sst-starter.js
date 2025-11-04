@@ -34,21 +34,16 @@ export async function startSstDev(projectRoot, config, options) {
         outputProfile = options.profile;
     }
     // Build command string (all args are static, safe for shell)
+    // TEMPORARY: Removed --mode=basic to debug
     let command = 'npx sst dev';
-    // When using output handler, add --mode=basic to disable TUI multiplexer
-    // (allows us to capture and format plain text output)
-    if (useOutputHandler) {
-        command += ' --mode=basic';
-    }
     if (selectedPort !== 3000) {
         command += ` --port=${selectedPort}`;
     }
     const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
     try {
-        // Use 'inherit' for quiet/native mode, otherwise capture for processing
-        const stdio = useOutputHandler
-            ? ['inherit', 'pipe', 'pipe']
-            : 'inherit';
+        // TEMPORARY: Use 'inherit' for all stdio to debug
+        // This bypasses our output handler to see if SST actually works
+        const stdio = 'inherit';
         // Use shell with command string (safe - all args are static)
         // This allows SST to detect TTY properly even with piped stdio
         const child = spawn(command, {
