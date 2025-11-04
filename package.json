@@ -17,7 +17,8 @@
     }
   },
   "bin": {
-    "deploy-kit": "bin/cli.js"
+    "deploy-kit": "bin/cli.js",
+    "dk": "bin/cli.js"
   },
   "files": [
     "dist",
