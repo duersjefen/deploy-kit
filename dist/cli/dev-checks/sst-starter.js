@@ -50,7 +50,6 @@ export async function startSstDev(projectRoot, config, options) {
             : 'inherit';
         const child = spawn('npx', args, {
             stdio,
-            shell: true,
             cwd: projectRoot,
             env: {
                 ...process.env,
