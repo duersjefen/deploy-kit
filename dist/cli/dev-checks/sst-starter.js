@@ -17,7 +17,9 @@ export async function startSstDev(projectRoot, config, options) {
     console.log(chalk.bold.cyan('═'.repeat(60)));
     console.log(chalk.bold.cyan('🚀 Starting SST dev server...\n'));
     // Build command string (all args are static, safe for shell)
-    let command = 'npx sst dev';
+    // Use --mode=mono for single-stream output with progress indicators
+    // (better than --mode=basic which is too bare-bones, more stable than full TUI)
+    let command = 'npx sst dev --mode=mono';
     if (selectedPort !== 3000) {
         command += ` --port=${selectedPort}`;
     }
