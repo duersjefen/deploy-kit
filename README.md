@@ -160,104 +160,6 @@ deploy-kit dev --interactive
 
 ---
 
-## 🔍 Pre-Deployment Checks
-
-Automatically validate your application before deploying - catch issues early with zero configuration.
-
-### Quick Start (Zero Config)
-
-```bash
-# Just deploy - checks run automatically
-npx @duersjefen/deploy-kit deploy staging
-```
-
-Deploy-Kit auto-detects checks from your `package.json`:
-- ✅ `typecheck` → Type checking (30s timeout)
-- ✅ `test` → Unit tests (1m timeout)
-- ✅ `build` → Build verification (2m timeout)
-- ✅ `test:e2e` → E2E tests (3m timeout, staging/production only)
-- ✅ `lint` → Linting (30s timeout)
-
-### Custom Configuration
-
-Add to `.deploy-config.json`:
-
-```json
-{
-  "preDeploymentChecks": {
-    "typecheck": true,
-    "test": true,
-    "build": true,
-    "e2e": {
-      "enabled": true,
-      "command": "npm run test:e2e -- --headless",
-      "stages": ["production"],
-      "timeout": 300000
-    },
-    "custom": [
-      {
-        "name": "Security Audit",
-        "command": "npm audit --audit-level=high",
-        "timeout": 30000
-      }
-    ]
-  }
-}
-```
-
-### Configuration Options
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Enable/disable check (default: true) |
-| `command` | string | Command to run |
-| `timeout` | number | Timeout in ms (default: varies by check) |
-| `stages` | string[] | Which stages to run on (default: all) |
-
-### Skip Checks (Emergency Only)
-
-```bash
-# ⚠️ Use only for emergency hotfixes
-npx @duersjefen/deploy-kit deploy production --skip-checks
-```
-
-### Example Output
-
-```
-🔍 Running Pre-Deployment Checks
-   Stage: staging
-   Checks: 3
-
-▶ Running: Type Check
-  Command: npm run typecheck
-✅ Type Check passed (2.3s)
-
-▶ Running: Unit Tests
-  Command: npm test
-✅ Unit Tests passed (4.1s)
-
-▶ Running: Build
-  Command: npm run build
-✅ Build passed (8.7s)
-
-═══════════════════════════════════════════════
-✅ All Pre-Deployment Checks Passed
-═══════════════════════════════════════════════
-
-Passed: 3/3
-Total Duration: 15.1s
-```
-
-### Benefits
-
-- 🛡️ **Fail Fast** - Catch errors in seconds, not after 5min of deployment
-- 🎯 **Stage-Specific** - Run expensive E2E tests only on production
-- 📊 **Real-Time Output** - See test results as they happen
-- ⚙️ **Zero Config** - Works out of the box with standard npm scripts
-- 🚀 **No CI Dependency** - Same checks locally and in CI
-
----
-
 ## 📚 Documentation
 
 ### For New Users
@@ -268,6 +170,7 @@ Total Duration: 15.1s
 ### For Daily Development
 
 - **[Dev Command Guide](./docs/dev-command.md)** - Pre-flight checks, auto-fixes, output filtering
+- **[Pre-Deployment Checks Guide](./docs/pre-deployment-checks.md)** - Auto-run tests before deploying
 - **[CLI Reference](./docs/cli-reference.md)** - All commands and flags
 
 ### For Production Deployments
@@ -322,6 +225,18 @@ npx @duersjefen/deploy-kit validate
 # Run comprehensive diagnostics
 npx @duersjefen/deploy-kit doctor
 ```
+
+### Run Pre-Deployment Checks
+
+```bash
+# Checks run automatically on deploy (zero config)
+npx @duersjefen/deploy-kit deploy staging
+
+# Or skip for emergency hotfixes
+npx @duersjefen/deploy-kit deploy production --skip-checks
+```
+
+> 💡 Auto-detects tests, typecheck, build from `package.json`. See [Pre-Deployment Checks Guide](./docs/pre-deployment-checks.md) for custom configuration.
 
 ### Debug Deployment Issues
 
