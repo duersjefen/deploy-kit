@@ -89,6 +89,9 @@ export declare class DeploymentKit {
             increment: number;
             interval: number;
         };
+        maintenance?: {
+            customPagePath?: string;
+        };
     }): Promise<DeploymentResult>;
     /**
      * Get deployment status without deploying

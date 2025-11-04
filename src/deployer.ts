@@ -18,6 +18,8 @@ import { createDiff } from './lib/diff-utils.js';
 import { formatDiffForTerminal } from './lib/diff-formatter.js';
 import { PerformanceAnalyzer } from './lib/performance-analyzer.js';
 import { DeploymentDiffCollector, formatDeploymentDiff } from './deployment/diff-collector.js';
+import { uploadMaintenancePage, deleteMaintenancePage } from './lib/maintenance-s3.js';
+import { enableMaintenanceMode, disableMaintenanceMode, type OriginalOriginConfig } from './lib/maintenance-cloudfront.js';
 
 /**
  * DeploymentKit - Main facade for deployment operations
@@ -130,7 +132,7 @@ export class DeploymentKit {
    * console.log(result.durationSeconds); // 127
    * ```
    */
-  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; canary?: { initial: number; increment: number; interval: number } }): Promise<DeploymentResult> {
+  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; canary?: { initial: number; increment: number; interval: number }; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
     const isDryRun = options?.isDryRun || false;
     const startTimeDate = new Date();
     const startTime = startTimeDate.getTime();
@@ -159,14 +161,20 @@ export class DeploymentKit {
       },
     };
 
+    // Track maintenance mode state for cleanup
+    let maintenanceS3Url: string | null = null;
+    let maintenanceOriginalConfig: OriginalOriginConfig | null = null;
+
     try {
       // Log deployment start
       const isCanary = !!options?.canary;
+      const withMaintenance = !!options?.maintenance;
       this.logger.info('Deployment started', {
         stage,
         isDryRun,
         isCanary,
         canaryConfig: options?.canary,
+        withMaintenance,
         projectName: this.config.projectName,
       });
 
@@ -178,15 +186,23 @@ export class DeploymentKit {
       if (isCanary) {
         headerMode += ' (CANARY)';
       }
+      if (withMaintenance) {
+        headerMode += ' (MAINTENANCE)';
+      }
       console.log(chalk.bold.cyan(`${headerMode}: ${stage.toUpperCase()}`));
       console.log(chalk.bold.cyan('═'.repeat(60)) + '\n');
-      
+
       if (isCanary) {
         console.log(chalk.yellow('🐤 Canary Deployment Mode:'));
         console.log(chalk.gray(`   Initial traffic: ${options?.canary?.initial}%`));
         console.log(chalk.gray(`   Traffic increment: ${options?.canary?.increment}%`));
-        console.log(chalk.gray(`   Interval: ${options?.canary?.interval}s
-`));
+        console.log(chalk.gray(`   Interval: ${options?.canary?.interval}s\n`));
+      }
+
+      if (withMaintenance) {
+        console.log(chalk.yellow('🔧 Maintenance Mode:'));
+        console.log(chalk.gray('   Maintenance page will be shown during deployment'));
+        console.log(chalk.gray('   Expected downtime: 30-60 seconds\n'));
       }
 
       // Show configuration diff if requested
@@ -253,6 +269,50 @@ export class DeploymentKit {
         console.log(chalk.yellow('ℹ️  Dry-run mode: skipping lock acquisition\n'));
       }
 
+      // Enable maintenance mode (if requested, and not dry-run)
+      if (withMaintenance && !isDryRun) {
+        console.log(chalk.bold.white('\n▸ Enabling Maintenance Mode'));
+        console.log(chalk.gray('  Uploading maintenance page and switching CloudFront origin\n'));
+
+        try {
+          const awsRegion = this.config.stageConfig[stage].awsRegion || 'us-east-1';
+
+          // Find CloudFront distribution ID
+          const maintenanceDistId = await this.cloudFrontOps.findDistributionId(stage);
+          if (!maintenanceDistId) {
+            console.log(chalk.yellow('  ⚠️  Warning: CloudFront distribution not found, skipping maintenance mode'));
+            console.log(chalk.gray('  Continuing with deployment...\n'));
+          } else {
+            // Upload maintenance page to S3
+            maintenanceS3Url = await uploadMaintenancePage({
+              region: awsRegion,
+              customPagePath: options?.maintenance?.customPagePath,
+            });
+
+            console.log(chalk.green(`  ✓ Maintenance page uploaded: ${maintenanceS3Url}`));
+
+            // Switch CloudFront to maintenance page
+            maintenanceOriginalConfig = await enableMaintenanceMode({
+              distributionId: maintenanceDistId,
+              maintenanceS3Url,
+              region: awsRegion,
+            });
+
+            console.log(chalk.green('  ✓ CloudFront switched to maintenance page\n'));
+
+            this.logger.info('Maintenance mode enabled', {
+              stage,
+              s3Url: maintenanceS3Url,
+              distributionId: maintenanceDistId,
+            });
+          }
+        } catch (error) {
+          console.log(chalk.yellow(`  ⚠️  Warning: Could not enable maintenance mode: ${(error as Error).message}`));
+          console.log(chalk.gray('  Continuing with deployment...\n'));
+          this.logger.warn('Maintenance mode setup failed', { stage, error: (error as Error).message });
+        }
+      }
+
       // Stage 2: Build & Deploy (delegated to orchestrator)
       let stage2Start = Date.now();
       this.logger.debug('Starting build and deploy', { stage });
@@ -298,6 +358,38 @@ export class DeploymentKit {
       if (perfAnalyzer) perfAnalyzer.end('stage.health-checks');
       this.logger.info('Health checks passed', { stage, durationMs: stage3Duration });
       stageTimings.push({ name: 'Health Checks', duration: stage3Duration });
+
+      // Disable maintenance mode (if it was enabled)
+      if (maintenanceOriginalConfig && !isDryRun) {
+        console.log(chalk.bold.white('\n▸ Disabling Maintenance Mode'));
+        console.log(chalk.gray('  Restoring original CloudFront configuration\n'));
+
+        try {
+          const awsRegion = this.config.stageConfig[stage].awsRegion || 'us-east-1';
+
+          // Restore original CloudFront configuration
+          await disableMaintenanceMode(maintenanceOriginalConfig, awsRegion);
+
+          console.log(chalk.green('  ✓ CloudFront restored to original configuration'));
+
+          // Delete maintenance page from S3
+          if (maintenanceS3Url) {
+            await deleteMaintenancePage({
+              region: awsRegion,
+            });
+            console.log(chalk.green('  ✓ Maintenance page cleaned up\n'));
+          }
+
+          this.logger.info('Maintenance mode disabled', {
+            stage,
+            distributionId: maintenanceOriginalConfig.distributionId,
+          });
+        } catch (error) {
+          console.log(chalk.yellow(`  ⚠️  Warning: Could not disable maintenance mode: ${(error as Error).message}`));
+          console.log(chalk.gray('  Site should still be accessible via original configuration\n'));
+          this.logger.warn('Maintenance mode cleanup failed', { stage, error: (error as Error).message });
+        }
+      }
 
       // Stage 4: Cache invalidation (background, delegated to CloudFront operations, skip in dry-run)
       let stage4Start = Date.now();
@@ -389,6 +481,37 @@ export class DeploymentKit {
         }
       } catch (lockErr) {
         // Silently ignore if lock doesn't exist or can't be released
+      }
+
+      // Disable maintenance mode if it was enabled (emergency cleanup)
+      if (maintenanceOriginalConfig && !isDryRun) {
+        console.log(chalk.yellow('\n⚠️  Attempting to restore site from maintenance mode...\n'));
+
+        try {
+          const awsRegion = this.config.stageConfig[stage].awsRegion || 'us-east-1';
+
+          // Restore original CloudFront configuration
+          await disableMaintenanceMode(maintenanceOriginalConfig, awsRegion);
+          console.log(chalk.green('✓ CloudFront restored to original configuration'));
+
+          // Delete maintenance page from S3
+          if (maintenanceS3Url) {
+            await deleteMaintenancePage({
+              region: awsRegion,
+            });
+            console.log(chalk.green('✓ Maintenance page cleaned up\n'));
+          }
+
+          this.logger.info('Maintenance mode disabled after deployment failure', {
+            stage,
+            distributionId: maintenanceOriginalConfig.distributionId,
+          });
+        } catch (maintenanceErr) {
+          console.log(chalk.red(`✗ Could not restore from maintenance mode: ${(maintenanceErr as Error).message}`));
+          console.log(chalk.yellow('⚠️  Site may still be showing maintenance page!'));
+          console.log(chalk.gray('   You may need to manually restore CloudFront configuration\n'));
+          this.logger.error('Maintenance mode cleanup failed after deployment failure', maintenanceErr as Error, { stage });
+        }
       }
     }
 

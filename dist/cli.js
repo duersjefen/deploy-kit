@@ -206,13 +206,19 @@ async function cli() {
                     increment: incrementArg ? parseInt(incrementArg) : 10,
                     interval: intervalArg ? parseInt(intervalArg) : 300,
                 } : undefined;
+                // Parse maintenance mode flags
+                const withMaintenanceMode = args.includes('--with-maintenance-mode');
+                const maintenancePagePath = args.find(a => a.startsWith('--maintenance-page='))?.split('=')[1];
+                const maintenanceOptions = withMaintenanceMode ? {
+                    customPagePath: maintenancePagePath,
+                } : undefined;
                 // Initialize kit with observability options
                 const kit = new DeploymentKit(config, projectRoot, {
                     logLevel: logLevelArg || (verbose ? 'debug' : 'info'),
                     metricsBackend: metricsBackendArg || 'memory',
                     verbose,
                 });
-                const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, canary: canaryOptions });
+                const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, canary: canaryOptions, maintenance: maintenanceOptions });
                 // Deployment result is now printed by the deployer itself
                 // Exit with appropriate code
                 process.exit(result.success ? 0 : 1);
@@ -416,14 +422,17 @@ function printHelpMessage() {
     console.log(chalk.gray('      --initial=<percentage>   Initial canary traffic percentage (default: 10)'));
     console.log(chalk.gray('      --increment=<percentage> Traffic increment per interval (default: 10)'));
     console.log(chalk.gray('      --interval=<seconds>     Seconds between traffic shifts (default: 300)'));
+    console.log(chalk.gray('      --with-maintenance-mode  Show maintenance page during deployment (30-60s downtime)'));
+    console.log(chalk.gray('      --maintenance-page=<path> Custom HTML maintenance page (optional)'));
     console.log(chalk.gray('    Examples:'));
     console.log(chalk.gray('      deploy-kit deploy staging'));
     console.log(chalk.gray('      deploy-kit deploy staging --dry-run'));
     console.log(chalk.gray('      deploy-kit deploy staging --dry-run --show-diff'));
     console.log(chalk.gray('      deploy-kit deploy staging --verbose'));
     console.log(chalk.gray('      deploy-kit deploy staging --benchmark'));
-    console.log(chalk.gray('      deploy-kit deploy staging --log-level=debug --metrics-backend=datadog\n'));
-    console.log(chalk.gray('      deploy-kit deploy staging --canary --initial=10 --increment=10 --interval=300\n'));
+    console.log(chalk.gray('      deploy-kit deploy staging --log-level=debug --metrics-backend=datadog'));
+    console.log(chalk.gray('      deploy-kit deploy staging --canary --initial=10 --increment=10 --interval=300'));
+    console.log(chalk.gray('      deploy-kit deploy production --with-maintenance-mode\n'));
     console.log(chalk.green('  canary <subcommand> <deployment-id>'));
     console.log(chalk.gray('    Manage canary deployments with gradual traffic shifting'));
     console.log(chalk.gray('    Subcommands:'));
