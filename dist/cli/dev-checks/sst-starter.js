@@ -6,7 +6,6 @@ import chalk from 'chalk';
 import { spawn } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 import { handleSstDevError } from './error-handler.js';
-import { EnhancedOutputHandler } from './enhanced-output-handler.js';
 /**
  * Start SST dev server with proper environment and error handling
  */
@@ -17,68 +16,29 @@ export async function startSstDev(projectRoot, config, options) {
         || 3000;
     console.log(chalk.bold.cyan('═'.repeat(60)));
     console.log(chalk.bold.cyan('🚀 Starting SST dev server...\n'));
+    // Build command string (all args are static, safe for shell)
+    // Use --mode=mono for single-stream output with progress indicators
+    // (better than --mode=basic which is too bare-bones, more stable than full TUI)
+    let command = 'npx sst dev --mode=mono';
     if (selectedPort !== 3000) {
-        console.log(chalk.cyan(`   Frontend: http://localhost:${selectedPort}`));
-        console.log(chalk.gray(`   SST Console: http://localhost:13561\n`));
-    }
-    const args = ['sst', 'dev'];
-    // Determine if we should use output handler
-    // Use output handler when: NOT quiet AND NOT native
-    // (quiet is deprecated but still supported for backwards compatibility)
-    const useOutputHandler = !options.quiet && !options.native;
-    // Determine output profile
-    let outputProfile = 'normal';
-    if (options.quiet) {
-        outputProfile = 'silent'; // Backwards compatibility
-    }
-    else if (options.profile) {
-        outputProfile = options.profile;
-    }
-    // When using output handler, add --mode=basic to disable TUI multiplexer
-    // (allows us to capture and format plain text output)
-    if (useOutputHandler) {
-        args.push('--mode=basic');
-    }
-    if (selectedPort !== 3000) {
-        args.push(`--port=${selectedPort}`);
+        command += ` --port=${selectedPort}`;
     }
     const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
     try {
-        // Use 'inherit' for quiet/native mode, otherwise capture for processing
-        const stdio = useOutputHandler
-            ? ['inherit', 'pipe', 'pipe']
-            : 'inherit';
-        const child = spawn('npx', args, {
-            stdio,
+        // Use inherit stdio for direct SST output (simple, reliable)
+        // Future: Web dashboard will provide enhanced visualization (DEP-XX)
+        const child = spawn(command, {
+            stdio: 'inherit',
+            shell: true,
             cwd: projectRoot,
             env: {
                 ...process.env,
                 ...(profile && { AWS_PROFILE: profile }),
             },
         });
-        // Set up output handler if not in quiet/native mode
-        let outputHandler = null;
-        if (useOutputHandler && child.stdout && child.stderr) {
-            outputHandler = new EnhancedOutputHandler({
-                projectRoot,
-                profile: outputProfile,
-                verbose: options.verbose,
-                hideInfo: options.hideInfo,
-                noGroup: options.noGroup,
-            });
-            child.stdout.on('data', (data) => {
-                outputHandler.processStdout(data);
-            });
-            child.stderr.on('data', (data) => {
-                outputHandler.processStderr(data);
-            });
-        }
         // Handle graceful shutdown
         const cleanup = () => {
             console.log(chalk.yellow('\n\n🛑 Stopping SST dev server...'));
-            if (outputHandler) {
-                outputHandler.flush();
-            }
             if (child.pid) {
                 try {
                     process.kill(child.pid, 'SIGINT');
@@ -93,9 +53,6 @@ export async function startSstDev(projectRoot, config, options) {
         process.on('SIGTERM', cleanup);
         await new Promise((resolve, reject) => {
             child.on('exit', (code) => {
-                if (outputHandler) {
-                    outputHandler.flush();
-                }
                 if (code === 0 || code === null) {
                     resolve();
                 }

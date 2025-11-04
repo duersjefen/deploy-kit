@@ -126,16 +126,9 @@ async function cli() {
     if (command === 'dev') {
         // Parse dev flags
         const portArg = args.find(a => a.startsWith('--port='))?.split('=')[1];
-        const profileArg = args.find(a => a.startsWith('--profile='))?.split('=')[1];
         const options = {
             skipChecks: args.includes('--skip-checks'),
             port: portArg ? parseInt(portArg, 10) : undefined,
-            verbose: args.includes('--verbose'),
-            quiet: args.includes('--quiet'),
-            native: args.includes('--native'),
-            profile: profileArg,
-            hideInfo: args.includes('--hide-info'),
-            noGroup: args.includes('--no-group'),
             interactive: args.includes('--interactive'),
         };
         try {
