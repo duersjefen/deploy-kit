@@ -74,7 +74,6 @@ npx @duersjefen/deploy-kit init
 
 This creates:
 - ✅ `.deploy-config.json` - Deployment configuration
-- ✅ `Makefile` - User-friendly deploy targets
 - ✅ `package.json` scripts - Convenient npm commands
 
 ### 2. Configure Deployment
@@ -111,8 +110,8 @@ Edit `.deploy-config.json`:
 # Deploy to staging
 npx @duersjefen/deploy-kit deploy staging
 
-# Or use Makefile
-make deploy-staging
+# Or use the dk alias (shorter)
+dk deploy staging
 ```
 
 **That's it!** Deploy-Kit handles:
