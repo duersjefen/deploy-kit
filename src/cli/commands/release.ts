@@ -106,10 +106,10 @@ export async function handleReleaseCommand(options: ReleaseOptions): Promise<voi
     console.log(chalk.green('✅ Pushed to GitHub\n'));
 
     // Step 8: Build and publish
-    console.log(chalk.blue('Step 8/9:'), 'Building and publishing to GitHub Packages...');
+    console.log(chalk.blue('Step 8/9:'), 'Building and publishing to npm...');
     currentStep = 8;
     await buildAndPublish(mainWorktree, dryRun);
-    console.log(chalk.green('✅ Published to GitHub Packages\n'));
+    console.log(chalk.green('✅ Published to npm\n'));
 
     // Step 9: Create GitHub release
     console.log(chalk.blue('Step 9/9:'), 'Creating GitHub release...');
@@ -126,7 +126,7 @@ export async function handleReleaseCommand(options: ReleaseOptions): Promise<voi
     if (!dryRun) {
       console.log(chalk.yellow('📦 Next steps:'));
       console.log(`1. Verify the release: https://github.com/duersjefen/deploy-kit/releases/tag/${versionTag}`);
-      console.log(`2. Verify the package on GitHub Packages`);
+      console.log(`2. Verify the package: https://www.npmjs.com/package/@duersjefen/deploy-kit`);
       console.log(`3. Update dependent projects to use @duersjefen/deploy-kit@${newVersion}`);
       console.log(chalk.gray(`\nCompleted in ${duration}s\n`));
     } else {
@@ -175,6 +175,13 @@ async function preFlightChecks(): Promise<void> {
     await execa('gh', ['auth', 'status'], { stdout: 'ignore', stderr: 'ignore' });
   } catch (error) {
     throw new Error('Not authenticated with GitHub CLI. Run: gh auth login');
+  }
+
+  // Check npm authentication
+  try {
+    await execa('npm', ['whoami'], { stdout: 'ignore', stderr: 'ignore' });
+  } catch (error) {
+    throw new Error('Not authenticated with npm. Run: npm login');
   }
 }
 
@@ -346,7 +353,7 @@ async function pushToGitHub(worktree: string, tag: string, dryRun: boolean): Pro
  */
 async function buildAndPublish(worktree: string, dryRun: boolean): Promise<void> {
   if (dryRun) {
-    console.log(chalk.yellow('  [DRY RUN] Would publish to GitHub Packages'));
+    console.log(chalk.yellow('  [DRY RUN] Would publish to npm registry'));
     return;
   }
 
@@ -362,11 +369,7 @@ async function buildAndPublish(worktree: string, dryRun: boolean): Promise<void>
 
   console.log('  → Publishing package...');
 
-  // Get GitHub token
-  const { stdout: token } = await execa('gh', ['auth', 'token']);
-
   await execa('pnpm', ['--dir', worktree, 'publish', '--no-git-checks'], {
-    env: { ...process.env, GITHUB_TOKEN: token },
     stdout: 'pipe',
     stderr: 'pipe'
   });
@@ -402,21 +405,14 @@ ${commitMsg}
 ## Installation
 
 \`\`\`bash
-# npm
-npm install @duersjefen/deploy-kit@${version}
+# Install globally (recommended)
+npm install -g @duersjefen/deploy-kit@${version}
 
-# pnpm
-pnpm add @duersjefen/deploy-kit@${version}
+# Or install as dev dependency
+npm install --save-dev @duersjefen/deploy-kit@${version}
 
-# yarn
-yarn add @duersjefen/deploy-kit@${version}
-\`\`\`
-
-Configure your project to use GitHub Packages:
-
-\`\`\`bash
-echo "@duersjefen:registry=https://npm.pkg.github.com" >> .npmrc
-export GITHUB_TOKEN=$(gh auth token)
+# Or use directly with npx
+npx @duersjefen/deploy-kit@${version} --version
 \`\`\`
 
 ---
