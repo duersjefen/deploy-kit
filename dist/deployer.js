@@ -12,6 +12,7 @@ import { PerformanceAnalyzer } from './lib/performance-analyzer.js';
 import { DeploymentDiffCollector, formatDeploymentDiff } from './deployment/diff-collector.js';
 import { uploadMaintenancePage, deleteMaintenancePage } from './lib/maintenance-s3.js';
 import { enableMaintenanceMode, disableMaintenanceMode } from './lib/maintenance-cloudfront.js';
+import { runLifecycleHook } from './lib/lifecycle-hooks.js';
 /**
  * DeploymentKit - Main facade for deployment operations
  *
@@ -167,6 +168,13 @@ export class DeploymentKit {
                 console.log(chalk.gray('   Maintenance page will be shown during deployment'));
                 console.log(chalk.gray('   Expected downtime: 30-60 seconds\n'));
             }
+            // Run pre-deploy lifecycle hook
+            await runLifecycleHook('pre-deploy', {
+                stage,
+                isDryRun,
+                startTime: startTimeDate,
+                projectRoot: this.projectRoot,
+            });
             // Show configuration diff if requested
             if (options?.showDiff) {
                 console.log(chalk.gray('\nFetching current AWS state for comparison...\n'));
@@ -332,6 +340,13 @@ export class DeploymentKit {
                     this.logger.warn('Maintenance mode cleanup failed', { stage, error: error.message });
                 }
             }
+            // Run post-deploy lifecycle hook
+            await runLifecycleHook('post-deploy', {
+                stage,
+                isDryRun,
+                startTime: startTimeDate,
+                projectRoot: this.projectRoot,
+            });
             // Stage 4: Cache invalidation (background, delegated to CloudFront operations, skip in dry-run)
             let stage4Start = Date.now();
             if (!isDryRun && !this.config.stageConfig[stage].skipCacheInvalidation) {
@@ -438,6 +453,13 @@ export class DeploymentKit {
                     this.logger.error('Maintenance mode cleanup failed after deployment failure', maintenanceErr, { stage });
                 }
             }
+            // Run on-failure lifecycle hook
+            await runLifecycleHook('on-failure', {
+                stage,
+                isDryRun,
+                startTime: startTimeDate,
+                projectRoot: this.projectRoot,
+            });
         }
         result.endTime = new Date();
         result.durationSeconds = Math.round((result.endTime.getTime() - result.startTime.getTime()) / 1000);
