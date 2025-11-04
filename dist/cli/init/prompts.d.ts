@@ -12,7 +12,6 @@ export interface InitAnswers {
 }
 export interface OptionalFiles {
     createScripts?: boolean;
-    createMakefile?: boolean;
     createQualityTools?: boolean;
 }
 /**
