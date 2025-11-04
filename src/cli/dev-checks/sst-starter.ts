@@ -43,8 +43,6 @@ export async function startSstDev(
     console.log(chalk.gray(`   SST Console: http://localhost:13561\n`));
   }
 
-  const args = ['sst', 'dev'];
-
   // Determine if we should use output handler
   // Use output handler when: NOT quiet AND NOT native
   // (quiet is deprecated but still supported for backwards compatibility)
@@ -58,14 +56,17 @@ export async function startSstDev(
     outputProfile = options.profile;
   }
 
+  // Build command string (all args are static, safe for shell)
+  let command = 'npx sst dev';
+
   // When using output handler, add --mode=basic to disable TUI multiplexer
   // (allows us to capture and format plain text output)
   if (useOutputHandler) {
-    args.push('--mode=basic');
+    command += ' --mode=basic';
   }
 
   if (selectedPort !== 3000) {
-    args.push(`--port=${selectedPort}`);
+    command += ` --port=${selectedPort}`;
   }
 
   const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
@@ -76,8 +77,11 @@ export async function startSstDev(
       ? ['inherit', 'pipe', 'pipe']
       : 'inherit';
 
-    const child: ChildProcess = spawn('npx', args, {
+    // Use shell with command string (safe - all args are static)
+    // This allows SST to detect TTY properly even with piped stdio
+    const child: ChildProcess = spawn(command, {
       stdio,
+      shell: true,
       cwd: projectRoot,
       env: {
         ...process.env,
