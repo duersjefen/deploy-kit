@@ -34,7 +34,6 @@ async function cli() {
     const flags: InitFlags = {
       configOnly: args.includes('--config-only'),
       scriptsOnly: args.includes('--scripts-only'),
-      makefileOnly: args.includes('--makefile-only'),
       nonInteractive: args.includes('--non-interactive'),
       withQualityTools: args.includes('--with-quality-tools'),
       projectName: args.find(a => a.startsWith('--project-name='))?.split('=')[1],
@@ -397,11 +396,10 @@ function printHelpMessage(): void {
   console.log(chalk.bold('COMMANDS'));
   console.log(chalk.green('  init [flags]'));
   console.log(chalk.gray('    Interactive setup wizard for new projects'));
-  console.log(chalk.gray('    Creates .deploy-config.json, Makefile, and npm scripts'));
+  console.log(chalk.gray('    Creates .deploy-config.json and npm scripts'));
   console.log(chalk.gray('    Flags:'));
   console.log(chalk.gray('      --config-only           Only create .deploy-config.json'));
   console.log(chalk.gray('      --scripts-only          Only update npm scripts (requires existing config)'));
-  console.log(chalk.gray('      --makefile-only         Only create Makefile (requires existing config)'));
   console.log(chalk.gray('      --non-interactive       Non-interactive mode (for automation/Claude Code)'));
   console.log(chalk.gray('      --with-quality-tools    Setup Husky + lint-staged + tsc-files'));
   console.log(chalk.gray('      --project-name=<name>   Project name (kebab-case, overrides auto-detect)'));

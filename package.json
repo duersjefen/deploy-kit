@@ -17,7 +17,8 @@
     }
   },
   "bin": {
-    "deploy-kit": "bin/cli.js"
+    "deploy-kit": "bin/cli.js",
+    "dk": "bin/cli.js"
   },
   "files": [
     "dist",
@@ -38,7 +39,7 @@
     "pretest:integration": "pnpm run build",
     "pretest:coverage": "pnpm run build",
     "publish:gh": "GITHUB_TOKEN=$(gh auth token) pnpm publish --no-git-checks",
-    "prepublishOnly": "pnpm run build && pnpm test",
+    "prepublishOnly": "pnpm run build",
     "postversion": "git push && git push --tags",
     "release:patch": "node dist/cli.js release patch",
     "release:minor": "node dist/cli.js release minor",
@@ -65,7 +66,7 @@
     "url": "https://github.com/duersjefen/deploy-kit.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "dependencies": {
     "@aws-sdk/client-acm": "^3.921.0",

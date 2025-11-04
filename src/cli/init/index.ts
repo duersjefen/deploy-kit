@@ -11,7 +11,7 @@ import type { UnvalidatedConfig, DeployConfig } from '../utils/config-validator.
 
 // Import sub-modules
 import { askQuestions, printBanner, printSummary, type InitAnswers } from './prompts.js';
-import { createDeployConfig, updatePackageJson, createMakefile, generateDeployConfig } from './templates.js';
+import { createDeployConfig, updatePackageJson, generateDeployConfig } from './templates.js';
 import {
   createLintStagedConfig,
   createHuskyPreCommitHook,
@@ -23,7 +23,6 @@ import {
 export interface InitFlags {
   configOnly?: boolean;
   scriptsOnly?: boolean;
-  makefileOnly?: boolean;
   nonInteractive?: boolean;
   withQualityTools?: boolean;
   projectName?: string;
@@ -89,9 +88,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       // Update package.json with scripts
       updatePackageJson(answers, projectRoot);
 
-      // Create Makefile
-      createMakefile(answers, projectRoot);
-
       // Setup quality tools if requested
       if (flags.withQualityTools) {
         console.log();
@@ -108,7 +104,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       console.log(chalk.bold.green('═'.repeat(60)));
       console.log(chalk.green('\n✅ Created .deploy-config.json'));
       console.log(chalk.green('✅ Updated package.json'));
-      console.log(chalk.green('✅ Created Makefile'));
       if (flags.withQualityTools) {
         console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
         console.log(chalk.green('✅ Configured pre-commit hooks'));
@@ -120,8 +115,8 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       return;
     }
 
-    // If only updating scripts or Makefile, load existing config
-    if (flags.scriptsOnly || flags.makefileOnly) {
+    // If only updating scripts, load existing config
+    if (flags.scriptsOnly) {
       const configPath = join(projectRoot, '.deploy-config.json');
       if (!existsSync(configPath)) {
         console.error(chalk.red('❌ Error: .deploy-config.json not found'));
@@ -131,23 +126,14 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
 
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
 
-      if (flags.scriptsOnly) {
-        console.log(chalk.cyan('\n📝 Updating npm scripts in package.json...\n'));
-        updatePackageJson(config, projectRoot);
-        console.log(chalk.green('✅ npm scripts updated\n'));
-        return;
-      }
-
-      if (flags.makefileOnly) {
-        console.log(chalk.cyan('\n📝 Creating/updating Makefile...\n'));
-        createMakefile(config, projectRoot);
-        console.log(chalk.green('✅ Makefile created/updated\n'));
-        return;
-      }
+      console.log(chalk.cyan('\n📝 Updating npm scripts in package.json...\n'));
+      updatePackageJson(config, projectRoot);
+      console.log(chalk.green('✅ npm scripts updated\n'));
+      return;
     }
 
     // For config-only or full init, show banner
-    if (!flags.scriptsOnly && !flags.makefileOnly) {
+    if (!flags.scriptsOnly) {
       printBanner();
     }
 
@@ -206,12 +192,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
             },
             {
               type: 'confirm',
-              name: 'updateMakefile',
-              message: 'Create/update Makefile?',
-              initial: false,
-            },
-            {
-              type: 'confirm',
               name: 'updateQualityTools',
               message: 'Setup pre-commit validation (Husky + lint-staged)?',
               initial: false,
@@ -220,9 +200,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
 
           if (updateScripts.updateScripts) {
             updatePackageJson(existingConfig, projectRoot);
-          }
-          if (updateScripts.updateMakefile) {
-            createMakefile(existingConfig, projectRoot);
           }
           if ((updateScripts as any).updateQualityTools) {
             console.log();
@@ -239,9 +216,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           console.log(chalk.green('\n✅ Existing configuration preserved'));
           if (updateScripts.updateScripts) {
             console.log(chalk.green('✅ npm scripts updated'));
-          }
-          if (updateScripts.updateMakefile) {
-            console.log(chalk.green('✅ Makefile created/updated'));
           }
           if ((updateScripts as any).updateQualityTools) {
             console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
@@ -286,9 +260,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       console.log(chalk.bold.green('═'.repeat(60)));
       console.log(chalk.green('\n✅ .deploy-config.json created successfully'));
       console.log(chalk.gray('\n💡 To add npm scripts:'));
-      console.log(chalk.gray('   npx deploy-kit init --scripts-only'));
-      console.log(chalk.gray('\n💡 To create Makefile:'));
-      console.log(chalk.gray('   npx deploy-kit init --makefile-only\n'));
+      console.log(chalk.gray('   npx deploy-kit init --scripts-only\n'));
       return;
     }
 
@@ -302,12 +274,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       },
       {
         type: 'confirm',
-        name: 'createMakefile',
-        message: 'Create a Makefile? (optional, adds convenience)',
-        initial: false,
-      },
-      {
-        type: 'confirm',
         name: 'createQualityTools',
         message: 'Setup pre-commit validation (Husky + lint-staged)?',
         initial: false,
@@ -316,9 +282,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
 
     if (optionalFiles.createScripts) {
       updatePackageJson(answers, projectRoot);
-    }
-    if (optionalFiles.createMakefile) {
-      createMakefile(answers, projectRoot);
     }
     if (optionalFiles.createQualityTools) {
       console.log();

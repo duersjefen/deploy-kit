@@ -114,9 +114,6 @@ export function printSummary(answers, optionalFiles) {
     if (optionalFiles?.createScripts !== false) {
         console.log('  ✅ Updated package.json - Added deploy scripts');
     }
-    if (optionalFiles?.createMakefile) {
-        console.log('  ✅ Makefile - User-friendly deployment targets');
-    }
     if (optionalFiles?.createQualityTools) {
         console.log('  ✅ Installed quality tools (Husky, lint-staged, tsc-files)');
         console.log('  ✅ Configured pre-commit hooks');
@@ -142,17 +139,6 @@ export function printSummary(answers, optionalFiles) {
         console.log(chalk.cyan(`  ${pm.run('deployment-status').padEnd(32)}`) + 'Check status of all deployments');
         console.log(chalk.cyan(`  ${pm.run('recover:staging').padEnd(32)}`) + 'Recover from failed staging deployment');
         console.log(chalk.cyan(`  ${pm.run('recover:prod').padEnd(32)}`) + 'Recover from failed production deployment');
-    }
-    if (optionalFiles?.createMakefile) {
-        console.log('\n📚 Deployment Commands (make targets):\n');
-        console.log(chalk.cyan('  make help                 ') + 'Show all available make targets');
-        console.log(chalk.cyan('  make validate             ') + 'Validate configuration');
-        console.log(chalk.cyan('  make doctor               ') + 'Pre-deployment health check');
-        console.log(chalk.cyan('  make deploy-staging       ') + `Deploy to staging (${answers.stagingDomain})`);
-        console.log(chalk.cyan('  make deploy-prod          ') + `Deploy to production (${answers.productionDomain})`);
-        console.log(chalk.cyan('  make deployment-status    ') + 'Check status of all deployments');
-        console.log(chalk.cyan('  make recover-staging      ') + 'Recover from failed staging deployment');
-        console.log(chalk.cyan('  make recover-prod         ') + 'Recover from failed production deployment');
     }
     console.log('\n💡 Tips:\n');
     console.log(chalk.gray('  • Ensure your AWS credentials are configured before deploying'));

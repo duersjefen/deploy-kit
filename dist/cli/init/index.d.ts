@@ -4,7 +4,6 @@
 export interface InitFlags {
     configOnly?: boolean;
     scriptsOnly?: boolean;
-    makefileOnly?: boolean;
     nonInteractive?: boolean;
     withQualityTools?: boolean;
     projectName?: string;

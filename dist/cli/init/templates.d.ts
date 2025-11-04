@@ -23,8 +23,4 @@ export declare function createDeployConfig(answers: InitAnswers, projectRoot: st
  * Update package.json with deploy scripts
  */
 export declare function updatePackageJson(answers: InitAnswers | any, projectRoot: string): void;
-/**
- * Create Makefile with deploy targets
- */
-export declare function createMakefile(answers: InitAnswers | any, projectRoot: string): void;
 //# sourceMappingURL=templates.d.ts.map

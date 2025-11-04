@@ -5,7 +5,6 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { getPackageManagerExamples } from '../../utils/package-manager.js';
 /**
  * Generate .deploy-config.json content
  */
@@ -103,47 +102,4 @@ export function updatePackageJson(answers, projectRoot) {
         throw error;
     }
 }
-/**
- * Create Makefile with deploy targets
- */
-export function createMakefile(answers, projectRoot) {
-    const spinner = ora('Creating Makefile...').start();
-    try {
-        const pm = getPackageManagerExamples(projectRoot);
-        const makefilePath = join(projectRoot, 'Makefile');
-        const content = `.PHONY: deploy-staging deploy-prod deployment-status recover-staging recover-prod validate doctor help
-
-help: ## Show this help message
-\t@echo 'Deploy-Kit Makefile Targets'
-\t@echo ''
-\t@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-25s %s\\\\n", $$1, $$2}' $(MAKEFILE_LIST)
-
-validate: ## Validate deploy-kit configuration
-\t${pm.run('validate:config')}
-
-doctor: ## Run pre-deployment health checks
-\t${pm.run('doctor')}
-
-deploy-staging: ## Deploy to staging (${answers.stagingDomain})
-\t${pm.run('deploy:staging')}
-
-deploy-prod: ## Deploy to production (${answers.productionDomain})
-\t${pm.run('deploy:prod')}
-
-deployment-status: ## Check deployment status for all stages
-\t${pm.run('deployment-status')}
-
-recover-staging: ## Recover from failed staging deployment
-\t${pm.run('recover:staging')}
-
-recover-prod: ## Recover from failed production deployment
-\t${pm.run('recover:prod')}
-`;
-        writeFileSync(makefilePath, content, 'utf-8');
-        spinner.succeed(chalk.green('✅ Created Makefile with deploy targets'));
-    }
-    catch (error) {
-        spinner.fail('Failed to create Makefile');
-        throw error;
-    }
-}
+// Makefile generation removed - users should use `dk` commands directly
