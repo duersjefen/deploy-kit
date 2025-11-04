@@ -13,6 +13,7 @@ import { handleValidateCommand } from './cli/commands/validate.js';
 import { handleDoctorCommand } from './cli/commands/doctor.js';
 import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
 import { recover } from './cli/commands/recover.js';
+import { handleReleaseCommand, type ReleaseType } from './cli/commands/release.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
@@ -69,6 +70,41 @@ async function cli() {
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('\n❌ Doctor error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'release') {
+    const releaseType = args[1] as ReleaseType;
+    const validTypes: ReleaseType[] = ['patch', 'minor', 'major'];
+
+    if (!releaseType || !validTypes.includes(releaseType)) {
+      console.log(chalk.red('\n❌ Invalid or missing release type'));
+      console.log(chalk.gray('\nUsage: deploy-kit release <type> [flags]'));
+      console.log(chalk.gray('\nRelease types:'));
+      console.log(chalk.cyan('  patch  ') + '- Bug fixes (2.8.0 → 2.8.1)');
+      console.log(chalk.cyan('  minor  ') + '- New features (2.8.0 → 2.9.0)');
+      console.log(chalk.cyan('  major  ') + '- Breaking changes (2.8.0 → 3.0.0)');
+      console.log(chalk.gray('\nFlags:'));
+      console.log(chalk.cyan('  --dry-run     ') + '- Preview release without making changes');
+      console.log(chalk.cyan('  --skip-tests  ') + '- Skip test validation (use with caution)');
+      console.log(chalk.gray('\nExamples:'));
+      console.log(chalk.gray('  deploy-kit release minor --dry-run'));
+      console.log(chalk.gray('  deploy-kit release patch\n'));
+      process.exit(1);
+    }
+
+    try {
+      await handleReleaseCommand({
+        type: releaseType,
+        dryRun: args.includes('--dry-run'),
+        skipTests: args.includes('--skip-tests'),
+        cwd: process.cwd()
+      });
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Release error:'));
       console.error(chalk.red((error as Error).message));
       process.exit(1);
     }
@@ -457,6 +493,16 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Manage and audit CloudFront distributions'));
   console.log(chalk.gray('    Subcommands: audit, cleanup, report'));
   console.log(chalk.gray('    Example: deploy-kit cloudfront audit\n'));
+
+  console.log(chalk.green('  release <type> [flags]'));
+  console.log(chalk.gray('    Version, test, and publish the package'));
+  console.log(chalk.gray('    Types: patch (bug fixes), minor (features), major (breaking)'));
+  console.log(chalk.gray('    Flags:'));
+  console.log(chalk.gray('      --dry-run      Preview release without making changes'));
+  console.log(chalk.gray('      --skip-tests   Skip test validation (use with caution)'));
+  console.log(chalk.gray('    Examples:'));
+  console.log(chalk.gray('      deploy-kit release minor --dry-run'));
+  console.log(chalk.gray('      deploy-kit release patch\n'));
 
   console.log(chalk.green('  --help, -h'));
   console.log(chalk.gray('    Show this help message\n'));
