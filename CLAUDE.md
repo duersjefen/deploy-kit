@@ -18,35 +18,44 @@ pnpm test           # Run tests
 
 ## Release Workflow
 
-**TypeScript release command:**
+**Two ways to release:**
+
+### A) /ship-pr (Recommended for regular development)
+
+Claude Code command that handles complete workflow: Commit → PR → Merge → Publish
 
 ```bash
-# Using npm scripts
+# From your feature branch in Conductor worktree:
+/ship-pr
+```
+
+**Automatically:**
+1. Commits changes with descriptive message
+2. Creates and merges PR
+3. Updates local main worktree
+4. Prompts for version bump (MAJOR/MINOR/PATCH/SKIP)
+5. Runs build and tests
+6. Publishes to npm
+7. Creates GitHub release
+
+**When to use:** Regular feature development with PR workflow
+
+### B) pnpm release:* (For direct releases)
+
+TypeScript release command for hotfixes or CI/CD:
+
+```bash
 pnpm run release:patch  # Bug fixes (2.8.0 → 2.8.1)
 pnpm run release:minor  # New features (2.8.0 → 2.9.0)
 pnpm run release:major  # Breaking changes (2.8.0 → 3.0.0)
 
-# Or directly
-node dist/cli.js release patch
-node dist/cli.js release minor --dry-run  # Preview changes
+# Or directly with dry-run
+node dist/cli.js release patch --dry-run
 ```
 
-**The release command automatically:**
-1. Finds or creates main worktree (works from Conductor!)
-2. Verifies clean git state
-3. Runs build and tests
-4. Bumps version in package.json
-5. Commits and creates git tag
-6. Pushes to GitHub (main + tag)
-7. Publishes to public npm registry
-8. Creates GitHub release with notes
-9. Auto-rollback on failure
+**When to use:** Hotfixes, republishing, or automated CI/CD pipelines
 
-**Flags:**
-- `--dry-run` - Preview all steps without making changes
-- `--skip-tests` - Skip test validation (use with caution)
-
-**Note:** Uses `git -C` flag to operate on main worktree from anywhere, including Conductor worktrees.
+**Note:** Both use `git -C` flag to operate on main worktree from anywhere, including Conductor worktrees.
 
 ---
 

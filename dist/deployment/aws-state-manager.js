@@ -119,7 +119,7 @@ export function extractInfrastructureDetails(output) {
     const cloudFrontUrlMatch = output.match(/https:\/\/d[a-z0-9]+\.cloudfront\.net/i);
     const cloudFrontUrl = cloudFrontUrlMatch ? cloudFrontUrlMatch[0] : null;
     // Extract API endpoint if present
-    const apiMatch = output.match(/https:\/\/[a-z0-9-]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com/i);
+    const apiMatch = output.match(/https:\/\/[a-z0-9.-]+\.execute-api\.[a-z0-9-]+\.amazonaws\.com\/[a-z0-9-_\/]+/i);
     const apiEndpoint = apiMatch ? apiMatch[0] : null;
     return {
         cloudFrontId,

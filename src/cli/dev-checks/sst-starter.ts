@@ -78,7 +78,6 @@ export async function startSstDev(
 
     const child: ChildProcess = spawn('npx', args, {
       stdio,
-      shell: true,
       cwd: projectRoot,
       env: {
         ...process.env,
