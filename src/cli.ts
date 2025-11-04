@@ -19,6 +19,7 @@ import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
 import { getFormattedVersion } from './cli/utils/version.js';
 import { runPreDeploymentChecks } from './pre-deployment/index.js';
+import { runSstEnvironmentChecks } from './shared/sst-checks/index.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -209,8 +210,20 @@ async function cli() {
 
       // Parse pre-deployment flags
       const skipChecks = args.includes('--skip-checks');
+      const verbose = args.includes('--verbose');
 
-      // Run pre-deployment checks unless skipped
+      // STAGE 1: Run SST environment checks (BEFORE quality checks for fast feedback)
+      if (!skipChecks) {
+        const sstChecksSummary = await runSstEnvironmentChecks(projectRoot, config as any, stage, verbose);
+        if (!sstChecksSummary.allPassed) {
+          console.log(chalk.red('❌ Deployment blocked by failed SST environment checks'));
+          console.log(chalk.gray('   Fix the SST environment issues above and try again'));
+          console.log(chalk.gray('   Or use --skip-checks to bypass (not recommended)\n'));
+          process.exit(1);
+        }
+      }
+
+      // STAGE 2: Run quality checks (TypeCheck, Tests, Build, Lint, E2E)
       if (!skipChecks) {
         const checksSummary = await runPreDeploymentChecks(projectRoot, stage);
         if (!checksSummary.allPassed) {
@@ -220,7 +233,7 @@ async function cli() {
           process.exit(1);
         }
       } else {
-        console.log(chalk.yellow('\n⚠️  WARNING: Skipping pre-deployment checks!'));
+        console.log(chalk.yellow('\n⚠️  WARNING: Skipping all deployment checks!'));
         console.log(chalk.yellow('   This should only be used for emergency hotfixes.'));
         console.log(chalk.yellow('   Deploy at your own risk.\n'));
       }
@@ -229,7 +242,6 @@ async function cli() {
       const isDryRun = args.includes('--dry-run');
       const showDiff = args.includes('--show-diff');
       const benchmark = args.includes('--benchmark');
-      const verbose = args.includes('--verbose');
       const logLevelArg = args.find(a => a.startsWith('--log-level='))?.split('=')[1] as 'debug' | 'info' | 'warn' | 'error' | undefined;
       const metricsBackendArg = args.find(a => a.startsWith('--metrics-backend='))?.split('=')[1] as 'memory' | 'datadog' | 'cloudwatch' | 'prometheus' | undefined;
 

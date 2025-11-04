@@ -52,6 +52,12 @@ export function getDevChecks(
  *
  * - Safe fixes: Auto-apply without prompting
  * - Risky fixes: Show issue but require manual intervention
+ *
+ * Enhanced Output (v2.9.0):
+ * - Progress indicators (▶)
+ * - Individual check timing
+ * - Summary box with results
+ * - Total duration
  */
 export async function runDevChecks(
   projectRoot: string,
@@ -59,16 +65,32 @@ export async function runDevChecks(
   requestedPort: number = 3000,
   verbose: boolean = false
 ): Promise<{ allPassed: boolean; results: CheckResult[] }> {
-  if (verbose) {
-    console.log(chalk.gray('[DEBUG] Running in verbose mode\n'));
-  }
-
   const checks = getDevChecks(projectRoot, config, requestedPort, verbose);
+
+  // Print header
+  console.log(chalk.bold.cyan('\n🔍 Running Development Pre-Flight Checks'));
+  console.log(chalk.gray(`   Checks: ${checks.length}`));
+  if (verbose) {
+    console.log(chalk.gray('   Mode: Verbose'));
+  }
+  console.log(''); // Empty line
+
+  const startTime = Date.now();
   const results: CheckResult[] = [];
+  let passed = 0;
+  let failed = 0;
+  let autoFixed = 0;
 
   for (const check of checks) {
+    const checkStartTime = Date.now();
+
+    console.log(chalk.cyan(`▶ Running: ${check.name}`));
+    console.log(chalk.gray('  Validating development environment\n'));
+
     try {
       const result = await check.check();
+      const checkDuration = Date.now() - checkStartTime;
+      const durationSecs = (checkDuration / 1000).toFixed(1);
 
       if (!result.passed && result.canAutoFix && result.autoFix) {
         const isSafe = result.errorType && SAFE_FIX_TYPES.includes(result.errorType);
@@ -84,35 +106,73 @@ export async function runDevChecks(
           const reCheckResult = await check.check();
           results.push(reCheckResult);
 
-          if (!reCheckResult.passed) {
-            console.log(chalk.red(`   ⚠️  Fix verification failed\n`));
+          if (reCheckResult.passed) {
+            passed++;
+            autoFixed++;
+            console.log(chalk.green(`✅ ${check.name} passed after auto-fix (${durationSecs}s)\n`));
+          } else {
+            failed++;
+            console.log(chalk.red(`❌ ${check.name} failed - fix verification failed (${durationSecs}s)\n`));
           }
         } else {
           // Risky fixes: Show issue but don't auto-fix (manual intervention required)
-          console.log(chalk.red(`❌ ${result.issue}`));
+          failed++;
+          console.log(chalk.red(`❌ ${check.name} failed (${durationSecs}s)`));
+          console.log(chalk.red(`   Error: ${result.issue}`));
           if (result.manualFix) {
-            console.log(chalk.gray(`   Fix: ${result.manualFix}\n`));
+            console.log(chalk.gray(`   Fix: ${result.manualFix}`));
           }
+          console.log(''); // Empty line
           results.push(result);
         }
       } else {
         // Check passed or no auto-fix available
-        if (!result.passed) {
-          console.log(chalk.red(`❌ ${result.issue}`));
+        if (result.passed) {
+          passed++;
+          console.log(chalk.green(`✅ ${check.name} passed (${durationSecs}s)\n`));
+        } else {
+          failed++;
+          console.log(chalk.red(`❌ ${check.name} failed (${durationSecs}s)`));
+          console.log(chalk.red(`   Error: ${result.issue}`));
           if (result.manualFix) {
-            console.log(chalk.gray(`   Fix: ${result.manualFix}\n`));
+            console.log(chalk.gray(`   Fix: ${result.manualFix}`));
           }
+          console.log(''); // Empty line
         }
         results.push(result);
       }
     } catch (error) {
-      console.log(chalk.yellow(`⚠️  ${check.name}: Could not verify (skipping)\n`));
+      const checkDuration = Date.now() - checkStartTime;
+      const durationSecs = (checkDuration / 1000).toFixed(1);
+      console.log(chalk.yellow(`⚠️  ${check.name}: Could not verify - skipping (${durationSecs}s)\n`));
       results.push({ passed: true }); // Skip check on error
+      passed++; // Count as passed (skipped)
     }
   }
 
+  const totalDuration = Date.now() - startTime;
+  const allPassed = failed === 0;
+
+  // Print summary
+  console.log(chalk.bold('═'.repeat(60)));
+  if (allPassed) {
+    console.log(chalk.bold.green('✅ All Development Pre-Flight Checks Passed'));
+  } else {
+    console.log(chalk.bold.red('❌ Development Pre-Flight Checks Failed'));
+  }
+  console.log(chalk.bold('═'.repeat(60)));
+
+  console.log(chalk.gray(`\nPassed: ${passed}/${checks.length}`));
+  if (autoFixed > 0) {
+    console.log(chalk.gray(`Auto-Fixed: ${autoFixed}`));
+  }
+  if (failed > 0) {
+    console.log(chalk.gray(`Failed: ${failed}`));
+  }
+  console.log(chalk.gray(`Total Duration: ${(totalDuration / 1000).toFixed(1)}s\n`));
+
   return {
-    allPassed: results.every(r => r.passed),
+    allPassed,
     results,
   };
 }

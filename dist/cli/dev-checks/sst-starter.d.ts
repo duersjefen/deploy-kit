@@ -7,6 +7,7 @@ export interface DevOptions {
     skipChecks?: boolean;
     port?: number;
     interactive?: boolean;
+    verbose?: boolean;
 }
 /**
  * Start SST dev server with proper environment and error handling

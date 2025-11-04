@@ -13,6 +13,7 @@ export interface DevOptions {
   skipChecks?: boolean;   // Skip pre-flight checks (for advanced users)
   port?: number;          // Custom port (default: 3000)
   interactive?: boolean;  // Run interactive wizard
+  verbose?: boolean;      // Enable verbose output for checks
 }
 
 /**
