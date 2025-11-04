@@ -13,6 +13,7 @@ import type { ProjectConfig } from '../../types.js';
 import { runDevChecks } from '../dev-checks/registry.js';
 import { startSstDev, type DevOptions } from '../dev-checks/sst-starter.js';
 import { InteractiveWizard } from '../dev-checks/interactive-wizard.js';
+import { getFormattedVersion } from '../utils/version.js';
 
 // Re-export types for backward compatibility
 export type { DevOptions } from '../dev-checks/sst-starter.js';
@@ -90,13 +91,15 @@ export async function handleDevCommand(
 
 /**
  * Print ASCII art banner for development environment
-   * 
+   *
    * Displays a visual header showing the SST dev environment is starting.
    * Improves user experience with clear visual feedback.
    */
 function printHeader(): void {
+  const version = getFormattedVersion();
   console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
   console.log(chalk.bold.cyan('║       🚀 SST Development Environment                       ║'));
+  console.log(chalk.bold.cyan(`║       Deploy-Kit ${version.padEnd(43)} ║`));
   console.log(chalk.bold.cyan('╚════════════════════════════════════════════════════════════╝\n'));
 }
 

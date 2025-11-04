@@ -26,6 +26,7 @@ npx @duersjefen/deploy-kit dev
 ### 🛡️ Safety-First Design
 - **5-stage deployment pipeline** with automatic rollback guidance
 - **Dual-lock system** prevents concurrent deployments
+- **Pre-deployment checks** - Auto-run tests, typecheck, build before deploying
 - **9 pre-flight checks** for dev server (AWS, locks, ports, config, etc.)
 - **Health checks** with automatic validation after deployment
 
@@ -169,6 +170,7 @@ deploy-kit dev --interactive
 ### For Daily Development
 
 - **[Dev Command Guide](./docs/dev-command.md)** - Pre-flight checks, auto-fixes, output filtering
+- **[Pre-Deployment Checks Guide](./docs/pre-deployment-checks.md)** - Auto-run tests before deploying
 - **[CLI Reference](./docs/cli-reference.md)** - All commands and flags
 
 ### For Production Deployments
@@ -223,6 +225,18 @@ npx @duersjefen/deploy-kit validate
 # Run comprehensive diagnostics
 npx @duersjefen/deploy-kit doctor
 ```
+
+### Run Pre-Deployment Checks
+
+```bash
+# Checks run automatically on deploy (zero config)
+npx @duersjefen/deploy-kit deploy staging
+
+# Or skip for emergency hotfixes
+npx @duersjefen/deploy-kit deploy production --skip-checks
+```
+
+> 💡 Auto-detects tests, typecheck, build from `package.json`. See [Pre-Deployment Checks Guide](./docs/pre-deployment-checks.md) for custom configuration.
 
 ### Debug Deployment Issues
 

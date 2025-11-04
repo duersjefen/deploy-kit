@@ -1,6 +1,7 @@
 /**
  * Configuration types for deployment kit
  */
+import type { PreDeploymentChecksConfig } from './pre-deployment/types.js';
 export type DeploymentStage = 'staging' | 'production';
 export type InfrastructureType = 'sst-serverless' | 'ec2-docker' | 'custom';
 export type DatabaseType = 'dynamodb' | 'postgresql' | 'mysql';
@@ -68,6 +69,8 @@ export interface ProjectConfig {
     healthChecks?: HealthCheck[];
     /** Lifecycle hooks */
     hooks?: DeploymentHooks;
+    /** Pre-deployment checks configuration */
+    preDeploymentChecks?: PreDeploymentChecksConfig;
     /** AWS profile to use (optional) */
     awsProfile?: string;
     /** Main domain (used in defaults) */
