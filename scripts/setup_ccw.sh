@@ -16,15 +16,15 @@ echo "🔧 Setting up Claude Code for the Web environment..."
 # Install jq if needed (JSON processor)
 if ! command -v jq &> /dev/null; then
   echo "📦 Installing jq..."
-  apt-get update && apt-get install -y jq
+  apt-get update 2>/dev/null && apt-get install -y jq 2>/dev/null || true
 fi
 
 # Install GitHub CLI if needed
 if ! command -v gh &> /dev/null; then
   echo "📦 Installing GitHub CLI..."
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg 2>/dev/null | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  apt-get update && apt-get install -y gh
+  apt-get update 2>/dev/null && apt-get install -y gh 2>/dev/null || true
 fi
 
 # Authenticate GitHub CLI if token available
