@@ -20,30 +20,26 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
 
   const claudeDir = path.join(projectRoot, '.claude');
   const scriptsDir = path.join(projectRoot, 'scripts');
-  const workflowsDir = path.join(claudeDir, 'workflows');
 
   // 1. Copy global CLAUDE.md to .claude/
   await copyGlobalClaudeMd(claudeDir);
 
-  // 2. Copy Claude commands to .claude/workflows/
-  await copyClaudeCommands(workflowsDir);
-
-  // 3. Create SessionStart hook script
+  // 2. Create SessionStart hook script
   await createSessionStartScript(scriptsDir);
 
-  // 4. Create GitHub helper script
+  // 3. Create GitHub helper script
   await createGitHubHelper(scriptsDir);
 
-  // 5. Create .claude/settings.json with hooks
+  // 4. Create .claude/settings.json with hooks
   await createSettingsJson(claudeDir, scriptsDir);
 
-  // 6. Create .mcp.json for MCP server configuration
+  // 5. Create .mcp.json for MCP server configuration
   await createMcpJson(projectRoot);
 
-  // 7. Update project CLAUDE.md with @ sourcing
+  // 6. Update project CLAUDE.md with @ sourcing
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
-  // 8. Detect and output required tokens
+  // 7. Detect and output required tokens
   const requiredTokens = await detectRequiredTokens(projectRoot);
   outputTokenList(requiredTokens);
 
@@ -69,34 +65,6 @@ async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
   await fs.ensureDir(claudeDir);
   await fs.copy(globalClaudePath, targetPath);
   console.log(chalk.green('✅ Copied ~/.claude/CLAUDE.md → .claude/global_claude.md'));
-}
-
-/**
- * Copy all files from ~/.claude/commands/ to .claude/workflows/
- */
-async function copyClaudeCommands(workflowsDir: string): Promise<void> {
-  const commandsPath = path.join(os.homedir(), '.claude', 'commands');
-
-  if (!await fs.pathExists(commandsPath)) {
-    console.log(chalk.yellow('⚠️  ~/.claude/commands/ not found - skipping command workflows'));
-    return;
-  }
-
-  await fs.ensureDir(workflowsDir);
-
-  const files = await fs.readdir(commandsPath);
-  let copiedCount = 0;
-
-  for (const file of files) {
-    if (file.endsWith('.md')) {
-      const sourcePath = path.join(commandsPath, file);
-      const targetPath = path.join(workflowsDir, file);
-      await fs.copy(sourcePath, targetPath);
-      copiedCount++;
-    }
-  }
-
-  console.log(chalk.green(`✅ Copied ${copiedCount} Claude commands → .claude/workflows/`));
 }
 
 /**
