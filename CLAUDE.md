@@ -29,4 +29,10 @@
 
 ---
 
+## Claude Code for the Web (Remote)
+
+When running in Claude Code for the Web (detected by `CLAUDE_CODE_REMOTE=true`), see [@.claude/ccw.md](./.claude/ccw.md) for environment-specific instructions on using APIs with curl instead of CLI tools.
+
+---
+
 That's it! Everything else should be self-explanatory from the code.
