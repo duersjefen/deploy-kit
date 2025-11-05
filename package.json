@@ -98,7 +98,7 @@
     "lint-staged": "^16.2.6"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0"
   },
   "c8": {
     "all": true,
