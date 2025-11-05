@@ -516,174 +516,76 @@ function printDeploymentHeader(stage: string): void {
 
 function printHelpMessage(): void {
   console.log(chalk.bold.cyan('\n╔════════════════════════════════════════════════════════════╗'));
-  console.log(chalk.bold.cyan('║       🚀 Deploy-Kit: Sophisticated Deployment Toolkit     ║'));
+  console.log(chalk.bold.cyan('║       🚀 Deploy-Kit: Production Deployment Toolkit        ║'));
   console.log(chalk.bold.cyan('╚════════════════════════════════════════════════════════════╝\n'));
 
   console.log(chalk.bold('USAGE'));
-  console.log(chalk.gray('  deploy-kit <command> [stage]\n'));
+  console.log('  dk <command> [options]\n');
 
-  console.log(chalk.bold('COMMANDS'));
-  console.log(chalk.green('  init [flags]'));
-  console.log(chalk.gray('    Interactive setup wizard for new projects'));
-  console.log(chalk.gray('    Creates .deploy-config.json and npm scripts'));
-  console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --config-only           Only create .deploy-config.json'));
-  console.log(chalk.gray('      --scripts-only          Only update npm scripts (requires existing config)'));
-  console.log(chalk.gray('      --non-interactive       Non-interactive mode (for automation/Claude Code)'));
-  console.log(chalk.gray('      --with-quality-tools    Setup Husky + lint-staged + tsc-files'));
-  console.log(chalk.gray('      --project-name=<name>   Project name (kebab-case, overrides auto-detect)'));
-  console.log(chalk.gray('      --domain=<domain>       Main domain (overrides default)'));
-  console.log(chalk.gray('      --aws-profile=<name>    AWS profile name (overrides default)'));
-  console.log(chalk.gray('      --aws-region=<region>   AWS region (default: eu-north-1)'));
-  console.log(chalk.gray('    Examples:'));
-  console.log(chalk.gray('      deploy-kit init'));
-  console.log(chalk.gray('      deploy-kit init --config-only'));
-  console.log(chalk.gray('      deploy-kit init --non-interactive --with-quality-tools'));
-  console.log(chalk.gray('      deploy-kit init --non-interactive --project-name=my-app --domain=myapp.com\n'));
+  console.log(chalk.bold('SETUP COMMANDS'));
+  console.log(chalk.green('  init') + '            Initialize new project');
+  console.log('                  --non-interactive    Run without prompts');
+  console.log('                  --with-quality-tools Setup Husky + lint-staged');
+  console.log('                  --project-name=NAME  Override project name');
+  console.log('                  --domain=DOMAIN      Set main domain');
+  console.log('                  --aws-profile=NAME   Set AWS profile');
+  console.log('                  --aws-region=REGION  Set AWS region (default: eu-north-1)');
+  console.log(chalk.green('  validate') + '        Validate .deploy-config.json');
+  console.log(chalk.green('  doctor') + '          Run comprehensive health checks');
+  console.log(chalk.green('  ccw') + '             Setup Claude Code for the Web');
+  console.log(chalk.green('  remote-deploy') + '   Setup GitHub Actions workflow\n');
 
-  console.log(chalk.green('  validate'));
-  console.log(chalk.gray('    Validate .deploy-config.json configuration'));
-  console.log(chalk.gray('    Checks: syntax, required fields, domains, health checks'));
-  console.log(chalk.gray('    Example: deploy-kit validate\n'));
+  console.log(chalk.bold('DEVELOPMENT'));
+  console.log(chalk.green('  dev') + '             Start SST dev server with enhanced output');
+  console.log('                  --skip-checks        Skip pre-flight checks');
+  console.log('                  --port=PORT          Custom port (default: 3000)');
+  console.log('                  --interactive        Run setup wizard');
+  console.log('                  --profile=PROFILE    Output: silent, normal, verbose, debug');
+  console.log('                  --hide-info          Suppress info logs');
+  console.log('                  --no-group           Disable message grouping');
+  console.log('                  --native             Use raw SST output\n');
 
-  console.log(chalk.green('  doctor'));
-  console.log(chalk.gray('    Comprehensive pre-deployment health check'));
-  console.log(chalk.gray('    Checks: config, git, AWS, SST, Node.js, tests'));
-  console.log(chalk.gray('    Example: deploy-kit doctor\n'));
+  console.log(chalk.bold('DEPLOYMENT'));
+  console.log(chalk.green('  deploy <stage>') + '  Deploy to staging/production');
+  console.log('                  --skip-checks        Skip quality checks');
+  console.log('                  --dry-run            Preview without deploying');
+  console.log('                  --show-diff          Show AWS resource changes');
+  console.log('                  --verbose            Detailed logging');
+  console.log('                  --benchmark          Show performance report');
+  console.log('                  --log-level=LEVEL    debug, info, warn, error');
+  console.log('                  --canary             Gradual traffic shifting');
+  console.log('                  --initial=N          Initial canary traffic % (default: 10)');
+  console.log('                  --increment=N        Traffic increase % (default: 10)');
+  console.log('                  --interval=N         Seconds between shifts (default: 300)');
+  console.log('                  --with-maintenance-mode  Show maintenance page during deploy\n');
 
-  console.log(chalk.green('  dev [flags]'));
-  console.log(chalk.gray('    Start SST development server with enhanced output and pre-flight checks'));
-  console.log(chalk.gray('    Checks: AWS credentials, locks, ports, Pulumi Output misuse'));
-  console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --skip-checks          Skip all pre-flight checks'));
-  console.log(chalk.gray('      --port=<number>        Custom port (default: 3000)'));
-  console.log(chalk.gray('      --interactive          Run interactive setup wizard'));
-  console.log(chalk.gray('      --profile=<profile>    Output profile: silent, normal, verbose, debug'));
-  console.log(chalk.gray('      --hide-info            Suppress info/debug logs'));
-  console.log(chalk.gray('      --no-group             Disable message grouping'));
-  console.log(chalk.gray('      --verbose              Verbose output (alias for --profile=verbose)'));
-  console.log(chalk.gray('      --quiet                Minimal output (DEPRECATED, use --profile=silent)'));
-  console.log(chalk.gray('      --native               Use native SST output (bypass all filtering)'));
-  console.log(chalk.gray('    Output Profiles:'));
-  console.log(chalk.gray('      • silent:  Errors and ready state only'));
-  console.log(chalk.gray('      • normal:  Balanced with smart grouping (default)'));
-  console.log(chalk.gray('      • verbose: All messages with grouping'));
-  console.log(chalk.gray('      • debug:   Include debug logs and traces'));
-  console.log(chalk.gray('    Examples:'));
-  console.log(chalk.gray('      deploy-kit dev                        # Normal mode with grouping'));
-  console.log(chalk.gray('      deploy-kit dev --interactive          # Interactive wizard'));
-  console.log(chalk.gray('      deploy-kit dev --profile=silent       # Minimal output'));
-  console.log(chalk.gray('      deploy-kit dev --profile=verbose      # Detailed output'));
-  console.log(chalk.gray('      deploy-kit dev --hide-info            # Suppress info logs'));
-  console.log(chalk.gray('      deploy-kit dev --no-group             # Disable grouping'));
-  console.log(chalk.gray('      deploy-kit dev --port=4000 --verbose  # Custom port + verbose\n'));
+  console.log(chalk.bold('MANAGEMENT'));
+  console.log(chalk.green('  status [stage]') + '  Check deployment status');
+  console.log(chalk.green('  health <stage>') + '  Run health checks');
+  console.log(chalk.green('  recover <target>') + ' Recover from failures');
+  console.log('                  Targets: cloudfront, state, dev');
+  console.log(chalk.green('  canary <cmd> <id>') + '  Manage canary deployments');
+  console.log('                  Commands: status, rollback, complete');
+  console.log(chalk.green('  cloudfront <cmd>') + '  Manage CloudFront distributions');
+  console.log('                  Commands: audit, cleanup, report\n');
 
-  console.log(chalk.green('  deploy <stage> [flags]'));
-  console.log(chalk.gray('    Deploy to specified stage with full safety checks'));
-  console.log(chalk.gray('    Stages: staging, production'));
-  console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --skip-checks            Skip pre-deployment checks (tests, build, typecheck)'));
-  console.log(chalk.gray('      --dry-run                Preview deployment configuration without executing (no AWS changes)'));
-  console.log(chalk.gray('      --show-diff              Show AWS resource diffs (CloudFront, SSL, DNS) before deployment'));
-  console.log(chalk.gray('      --benchmark              Display detailed performance report after deployment'));
-  console.log(chalk.gray('      --verbose                Enable detailed logging and debug output'));
-  console.log(chalk.gray('      --log-level=<level>      Set log level: debug, info, warn, error (default: info)'));
-  console.log(chalk.gray('      --metrics-backend=<type> Metrics backend: memory, datadog, cloudwatch, prometheus'));
-  console.log(chalk.gray('      --canary                 Enable canary deployment with gradual traffic shifting'));
-  console.log(chalk.gray('      --initial=<percentage>   Initial canary traffic percentage (default: 10)'));
-  console.log(chalk.gray('      --increment=<percentage> Traffic increment per interval (default: 10)'));
-  console.log(chalk.gray('      --interval=<seconds>     Seconds between traffic shifts (default: 300)'));
-  console.log(chalk.gray('      --with-maintenance-mode  Show maintenance page during deployment (30-60s downtime)'));
-  console.log(chalk.gray('      --maintenance-page=<path> Custom HTML maintenance page (optional)'));
-  console.log(chalk.gray('    Examples:'));
-  console.log(chalk.gray('      deploy-kit deploy staging'));
-  console.log(chalk.gray('      deploy-kit deploy staging --dry-run'));
-  console.log(chalk.gray('      deploy-kit deploy staging --dry-run --show-diff'));
-  console.log(chalk.gray('      deploy-kit deploy staging --verbose'));
-  console.log(chalk.gray('      deploy-kit deploy staging --benchmark'));
-  console.log(chalk.gray('      deploy-kit deploy staging --log-level=debug --metrics-backend=datadog'));
-  console.log(chalk.gray('      deploy-kit deploy staging --canary --initial=10 --increment=10 --interval=300'));
-  console.log(chalk.gray('      deploy-kit deploy production --with-maintenance-mode\n'));
+  console.log(chalk.bold('PACKAGE MANAGEMENT'));
+  console.log(chalk.green('  release <type>') + '  Version, test, and publish');
+  console.log('                  Types: patch, minor, major');
+  console.log('                  --dry-run            Preview without publishing');
+  console.log('                  --skip-tests         Skip test validation\n');
 
-  console.log(chalk.green('  canary <subcommand> <deployment-id>'));
-  console.log(chalk.gray('    Manage canary deployments with gradual traffic shifting'));
-  console.log(chalk.gray('    Subcommands:'));
-  console.log(chalk.gray('      status <id>     Check canary deployment status and traffic distribution'));
-  console.log(chalk.gray('      rollback <id>   Rollback canary and restore 100% traffic to old version'));
-  console.log(chalk.gray('      complete <id>   Complete canary and finalize 100% traffic to new version'));
-  console.log(chalk.gray('    Example: deploy-kit canary status my-deployment-123\n'));
+  console.log(chalk.bold('COMMON WORKFLOWS'));
+  console.log(chalk.cyan('  dk init && dk dev') + '              Quick start new project');
+  console.log(chalk.cyan('  dk doctor && dk deploy staging') + ' Deploy with checks');
+  console.log(chalk.cyan('  dk deploy staging --dry-run') + '    Preview deployment');
+  console.log(chalk.cyan('  dk status && dk health staging') + ' Check deployment health');
+  console.log(chalk.cyan('  dk recover dev') + '                  Fix dev environment\n');
 
-  console.log(chalk.green('  status [stage]'));
-  console.log(chalk.gray('    Check deployment status for all stages or specific stage'));
-  console.log(chalk.gray('    Detects: active locks, Pulumi state, previous failures'));
-  console.log(chalk.gray('    Example: deploy-kit status\n'));
-
-  console.log(chalk.green('  recover <stage>'));
-  console.log(chalk.gray('    Recover from failed deployment'));
-  console.log(chalk.gray('    Clears locks and prepares for retry'));
-  console.log(chalk.gray('    Example: deploy-kit recover staging\n'));
-
-  console.log(chalk.green('  health <stage>'));
-  console.log(chalk.gray('    Run health checks for deployed application'));
-  console.log(chalk.gray('    Tests: connectivity, database, API endpoints'));
-  console.log(chalk.gray('    Example: deploy-kit health production\n'));
-
-  console.log(chalk.green('  cloudfront <subcommand>'));
-  console.log(chalk.gray('    Manage and audit CloudFront distributions'));
-  console.log(chalk.gray('    Subcommands: audit, cleanup, report'));
-  console.log(chalk.gray('    Example: deploy-kit cloudfront audit\n'));
-
-  console.log(chalk.green('  release <type> [flags]'));
-  console.log(chalk.gray('    Version, test, and publish the package'));
-  console.log(chalk.gray('    Types: patch (bug fixes), minor (features), major (breaking)'));
-  console.log(chalk.gray('    Flags:'));
-  console.log(chalk.gray('      --dry-run      Preview release without making changes'));
-  console.log(chalk.gray('      --skip-tests   Skip test validation (use with caution)'));
-  console.log(chalk.gray('    Examples:'));
-  console.log(chalk.gray('      deploy-kit release minor --dry-run'));
-  console.log(chalk.gray('      deploy-kit release patch\n'));
-
-  console.log(chalk.green('  --help, -h'));
-  console.log(chalk.gray('    Show this help message\n'));
-
-  console.log(chalk.green('  --version, -v'));
-  console.log(chalk.gray('    Show version\n'));
-
-  console.log(chalk.bold('FEATURES'));
-  console.log(chalk.gray('  ✅ 5-stage automated deployment pipeline'));
-  console.log(chalk.gray('  ✅ Integrated SSL certificate management'));
-  console.log(chalk.gray('  ✅ Pre-deployment safety checks (git, tests, AWS)'));
-  console.log(chalk.gray('  ✅ Post-deployment health validation'));
-  console.log(chalk.gray('  ✅ Dual-lock deployment safety system'));
-  console.log(chalk.gray('  ✅ CloudFront cache invalidation'));
-  console.log(chalk.gray('  ✅ Comprehensive error recovery\n'));
-
-  console.log(chalk.bold('EXAMPLES'));
-  console.log(chalk.cyan('  # Initialize a new project'));
-  console.log(chalk.gray('  $ deploy-kit init\n'));
-
-  console.log(chalk.cyan('  # Validate configuration'));
-  console.log(chalk.gray('  $ deploy-kit validate\n'));
-
-  console.log(chalk.cyan('  # Run pre-deployment checks'));
-  console.log(chalk.gray('  $ deploy-kit doctor\n'));
-
-  console.log(chalk.cyan('  # Start SST development server'));
-  console.log(chalk.gray('  $ deploy-kit dev\n'));
-
-  console.log(chalk.cyan('  # Deploy to staging with full checks'));
-  console.log(chalk.gray('  $ deploy-kit deploy staging\n'));
-
-  console.log(chalk.cyan('  # Check deployment status'));
-  console.log(chalk.gray('  $ deploy-kit status\n'));
-
-  console.log(chalk.cyan('  # Recover from failure'));
-  console.log(chalk.gray('  $ deploy-kit recover staging\n'));
-
-  console.log(chalk.cyan('  # Validate health'));
-  console.log(chalk.gray('  $ deploy-kit health production\n'));
+  console.log(chalk.bold('QUICK REFERENCE'));
+  console.log(chalk.gray('  -h, --help        Show this help'));
+  console.log(chalk.gray('  -v, --version     Show version\n'));
 
   console.log(chalk.bold('DOCUMENTATION'));
-  console.log(chalk.gray('  GitHub: https://github.com/duersjefen/deploy-kit'));
-  console.log(chalk.gray('  Issues: https://github.com/duersjefen/deploy-kit/issues\n'));
+  console.log('  https://github.com/duersjefen/deploy-kit\n');
 }
