@@ -21,8 +21,9 @@ git add -A && git commit -m "[descriptive conventional commit message]"
 # Analyze git diff to understand WHAT changed, then write WHY it changed
 git push -u origin $(git branch --show-current)
 
-# Use gh_helper for compatibility (auto-detects gh CLI or uses curl)
-"$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr create --title "[title from commits]" --body "$(cat <<'EOF'
+# Create PR - use gh_helper in CCW (gh CLI blocked), gh locally (better UX)
+if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
+  "$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr create --title "[title from commits]" --body "$(cat <<'EOF'
 ## Summary
 [Detailed summary of what changed and why]
 
@@ -37,12 +38,33 @@ git push -u origin $(git branch --show-current)
 🤖 Generated with Claude Code
 EOF
 )"
+else
+  gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
+## Summary
+[Detailed summary of what changed and why]
+
+## Changes
+- [Key changes as bullet points]
+
+## Test Plan
+[How to test/verify the changes]
+
+[Linear: ISSUE-ID (if detected in commits)]
+
+🤖 Generated with Claude Code
+EOF
+)"
+fi
 ```
 
 **2. Merge PR**
 ```bash
-# Use gh_helper for compatibility (auto-detects gh CLI or uses curl)
-"$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr merge --squash --delete-branch
+# Merge PR - use gh_helper in CCW (gh CLI blocked), gh locally (better UX)
+if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
+  "$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr merge --squash --delete-branch
+else
+  gh pr merge $(gh pr view --json number -q .number) --squash --delete-branch 2>&1 | grep -v "already used by worktree" || true
+fi
 ```
 
 If merge fails due to conflicts:
