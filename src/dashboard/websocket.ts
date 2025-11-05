@@ -42,6 +42,15 @@ export class DashboardWebSocketServer {
   constructor(httpServer: HttpServer, getState?: () => DashboardState) {
     this.wss = new WebSocketServer({ server: httpServer, path: '/ws' });
     this.getState = getState || null;
+
+    // Handle WebSocketServer errors (e.g., port conflicts)
+    // This prevents unhandled error events from crashing the process
+    this.wss.on('error', (error: Error) => {
+      // Error will be handled by the HTTP server error handler
+      // This just prevents the unhandled error event
+      console.error(chalk.red('WebSocket server error:'), error.message);
+    });
+
     this.setupEventBroadcasting();
     this.setupWebSocketHandlers();
   }
