@@ -14,6 +14,8 @@ import {
   ensureRoute53Zone,
   validateRoute53ZoneExistence,
   validateRoute53ZoneReadiness,
+  parseSSTDomainConfig,
+  checkACMCertificate,
 } from '../lib/sst-deployment-validator.js';
 
 const execAsync = promisify(exec);
@@ -237,6 +239,83 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Check ACM certificate before deployment (DEP-22 Phase 3)
+   *
+   * Informational check - warns if certificate doesn't exist.
+   * SST will create cert automatically, but first deploy will be slower.
+   */
+  async function checkACMCertificatePreDeploy(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  ACM certificate check skipped (non-SST infrastructure)'));
+      checks.push({ name: 'ACM Certificate (Pre)', status: 'warning', message: 'Skipped (non-SST)' });
+      return;
+    }
+
+    try {
+      // Parse SST config to get domain
+      const sstConfig = parseSSTDomainConfig(projectRoot, stage);
+
+      if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
+        console.log(chalk.gray('ℹ️  ACM certificate check skipped (no domain configured)'));
+        checks.push({ name: 'ACM Certificate (Pre)', status: 'warning', message: 'Skipped (no domain)' });
+        return;
+      }
+
+      const spinner = ora(`Checking ACM certificate for ${sstConfig.domainName}...`).start();
+      const startTime = Date.now();
+
+      try {
+        const cert = await checkACMCertificate(sstConfig.domainName, config.awsProfile);
+
+        if (!cert) {
+          spinner.warn(`⚠️  No ACM certificate found for ${sstConfig.domainName}`);
+          console.log(chalk.yellow('   SST will create one during deployment (takes 5-15 minutes)'));
+          console.log(chalk.yellow('   First deployment will be slower than usual\n'));
+          checks.push({
+            name: 'ACM Certificate (Pre)',
+            status: 'warning',
+            message: 'Will be created by SST'
+          });
+          return;
+        }
+
+        if (cert.status !== 'ISSUED') {
+          spinner.warn(`⚠️  ACM certificate status: ${cert.status}`);
+          console.log(chalk.yellow(`   Certificate exists but not yet issued (${cert.status})`));
+          console.log(chalk.yellow('   Deployment may wait for certificate validation\n'));
+          checks.push({
+            name: 'ACM Certificate (Pre)',
+            status: 'warning',
+            message: `Status: ${cert.status}`
+          });
+          return;
+        }
+
+        spinner.succeed(`✅ ACM certificate ready (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+        checks.push({
+          name: 'ACM Certificate (Pre)',
+          status: 'success',
+          message: 'Certificate issued and ready'
+        });
+      } catch (certError) {
+        spinner.warn('⚠️  Could not check ACM certificate');
+        checks.push({
+          name: 'ACM Certificate (Pre)',
+          status: 'warning',
+          message: 'Check failed (non-blocking)'
+        });
+      }
+    } catch (error) {
+      console.log(chalk.gray(`ℹ️  ACM certificate check skipped: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      checks.push({
+        name: 'ACM Certificate (Pre)',
+        status: 'warning',
+        message: 'Check failed (non-blocking)'
+      });
+    }
+  }
+
+  /**
    * Check and ensure Route53 hosted zone exists (DEP-19 Phase 1, DEP-20)
    *
    * This prevents deployment failures when SST requires Route53 zones.
@@ -361,6 +440,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
 
       await checkSslCertificate(stage);
       await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
+      await checkACMCertificatePreDeploy(stage); // DEP-22 Phase 3
 
       printSummary();
       console.log(chalk.green(`✨ All pre-deployment checks passed!\n`));
@@ -371,5 +451,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, checkACMCertificatePreDeploy, run };
 }
