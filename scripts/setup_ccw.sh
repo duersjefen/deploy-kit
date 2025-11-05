@@ -27,6 +27,21 @@ else
   echo "⚠️  No .claude/global_claude.md found (run 'dk ccw' locally to create)"
 fi
 
+# Append CCW-specific instructions to project CLAUDE.md
+# This keeps CLAUDE.md clean in git for local/Desktop users
+# while CCW users get environment-specific instructions at runtime
+if [ -f "$PROJECT_DIR/.claude/ccw.md" ] && [ -f "$PROJECT_DIR/CLAUDE.md" ]; then
+  echo "" >> "$PROJECT_DIR/CLAUDE.md"
+  echo "---" >> "$PROJECT_DIR/CLAUDE.md"
+  echo "" >> "$PROJECT_DIR/CLAUDE.md"
+  cat "$PROJECT_DIR/.claude/ccw.md" >> "$PROJECT_DIR/CLAUDE.md"
+  echo "✅ CCW instructions appended to CLAUDE.md (runtime only)"
+else
+  if [ ! -f "$PROJECT_DIR/.claude/ccw.md" ]; then
+    echo "⚠️  .claude/ccw.md not found - CCW instructions not available"
+  fi
+fi
+
 # Check for jq (JSON processor)
 if ! command -v jq &> /dev/null; then
   echo "⚠️  jq not available (requires root to install)"

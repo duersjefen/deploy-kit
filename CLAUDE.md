@@ -9,18 +9,9 @@
 
 ---
 
-## Environment-Specific Instructions
-
-**If you are in CCW (Claude Code for Web):**
-@.claude/ccw.md
-
----
-
 ## Workflow
 
 We use `/ship-pr` for everything - it's all you need!
-
-**NOTE:** `/ship-pr` is only available in Desktop Claude Code. If in CCW, see `.claude/ccw.md` for manual workflow.
 
 ### Regular Development (No Publishing)
 
