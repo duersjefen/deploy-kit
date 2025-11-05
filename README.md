@@ -28,6 +28,8 @@ npx @duersjefen/deploy-kit dev
 - **Dual-lock system** prevents concurrent deployments
 - **Pre-deployment checks** - Auto-run tests, typecheck, build before deploying
 - **9 pre-flight checks** for dev server (AWS, locks, ports, config, etc.)
+- **SST Config Pattern Detection** - Catches 7 categories of silent failure patterns (NEW)
+- **Auto-fix system** - High-confidence fixes applied automatically
 - **Health checks** with automatic validation after deployment
 
 ### 🤖 Intelligent Error Recovery

@@ -1,6 +1,13 @@
 /**
  * SST Config Validation Check
  * Ensures sst.config.ts exists, has valid syntax, and detects common configuration issues
+ *
+ * Includes:
+ * - DEP-22: Basic syntax and structure validation
+ * - DEP-25: Link+permissions conflicts detection
+ * - DEP-26: Pulumi Output misuse patterns
+ * - DEP-27: Value validation (CORS, Lambda, DynamoDB)
+ * - DEP-30: Pattern detection (stage variables, domain config, etc.)
  */
 
 import chalk from 'chalk';
@@ -9,6 +16,7 @@ import { join } from 'path';
 import type { CheckResult } from './types.js';
 import { validateSSTConfig, formatValidationErrors } from '../../lib/sst-link-permissions.js';
 import { SSTConfigValidator, formatValidationErrors as formatConfigErrors } from '../../lib/sst-config-validator.js';
+import { createPatternDetector, formatPatternViolations } from '../../lib/pattern-detection/index.js';
 
 export function createSstConfigCheck(projectRoot: string): () => Promise<CheckResult> {
   return async () => {
@@ -43,22 +51,31 @@ export function createSstConfigCheck(projectRoot: string): () => Promise<CheckRe
       const validator = new SSTConfigValidator();
       const configIssues = validator.validate(sstConfigPath);
 
-      const allIssues = [...violations, ...configIssues];
+      // Run DEP-30 pattern detection (stage variables, domain config, etc.)
+      const patternDetector = createPatternDetector();
+      const patternResult = patternDetector.detect(sstConfigPath, projectRoot);
 
-      if (allIssues.length > 0) {
+      const allIssues = [...violations, ...configIssues];
+      const hasPatternIssues = patternResult.violations.length > 0;
+
+      if (allIssues.length > 0 || hasPatternIssues) {
         const linkPermErrors = formatValidationErrors(violations);
         const configErrors = formatConfigErrors(configIssues);
-        const errorMessage = [linkPermErrors, configErrors].filter(Boolean).join('\n\n');
+        const patternErrors = formatPatternViolations(patternResult.violations);
+        const errorMessage = [linkPermErrors, configErrors, patternErrors].filter(Boolean).join('\n\n');
 
         const hasErrors = violations.some(v => v.severity === 'error') ||
-                         configIssues.some(i => i.severity === 'error');
+                         configIssues.some(i => i.severity === 'error') ||
+                         patternResult.errorCount > 0;
+
+        const hasAutoFixable = patternResult.autoFixableCount > 0;
 
         if (hasErrors) {
           return {
             passed: false,
             issue: 'SST config has errors that will cause deployment failures',
-            manualFix: errorMessage,
-            canAutoFix: false,
+            manualFix: errorMessage + (hasAutoFixable ? '\n\n💡 Tip: Run with --fix flag to auto-fix some issues' : ''),
+            canAutoFix: hasAutoFixable,
           };
         } else {
           // Warnings only - show but don't fail
