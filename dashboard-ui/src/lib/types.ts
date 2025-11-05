@@ -149,4 +149,9 @@ export interface WsConnectionMessage {
   timestamp: number;
 }
 
-export type WsMessage = WsEventMessage | WsConnectionMessage;
+export interface WsStateMessage {
+  type: 'state';
+  state: DashboardState;
+}
+
+export type WsMessage = WsEventMessage | WsConnectionMessage | WsStateMessage;

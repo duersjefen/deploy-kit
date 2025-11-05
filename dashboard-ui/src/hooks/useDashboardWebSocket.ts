@@ -181,6 +181,10 @@ export function useDashboardWebSocket(url: string = 'ws://localhost:5173/ws'): U
 
           if (message.type === 'event') {
             setState((prevState) => applyEvent(prevState, message.event));
+          } else if (message.type === 'state') {
+            // Replace entire state with the one from server (on reconnection)
+            console.log('Received state from server:', message.state);
+            setState(message.state);
           } else if (message.type === 'connection') {
             console.log('Connection acknowledged:', message.status);
           }

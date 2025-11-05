@@ -19,32 +19,7 @@ interface ResourceExplorerProps {
   resources?: Resource[];
 }
 
-// Mock resources for demonstration (will be populated from actual SST output in future)
-const DEMO_RESOURCES: Resource[] = [
-  {
-    type: 'Lambda',
-    name: 'MyAppFunction',
-    region: 'us-east-1',
-    consoleUrl: 'https://us-east-1.console.aws.amazon.com/lambda/home?region=us-east-1#/functions/MyAppFunction',
-    status: 'active',
-  },
-  {
-    type: 'S3',
-    name: 'my-app-assets-bucket',
-    region: 'us-east-1',
-    consoleUrl: 'https://s3.console.aws.amazon.com/s3/buckets/my-app-assets-bucket',
-    status: 'active',
-  },
-  {
-    type: 'DynamoDB',
-    name: 'MyAppTable',
-    region: 'us-east-1',
-    consoleUrl: 'https://us-east-1.console.aws.amazon.com/dynamodbv2/home?region=us-east-1#table?name=MyAppTable',
-    status: 'active',
-  },
-];
-
-export function ResourceExplorer({ resources = DEMO_RESOURCES }: ResourceExplorerProps) {
+export function ResourceExplorer({ resources = [] }: ResourceExplorerProps) {
   // Get icon for resource type
   const getResourceIcon = (type: Resource['type']) => {
     switch (type) {

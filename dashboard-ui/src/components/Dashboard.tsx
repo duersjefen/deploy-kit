@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react';
-import { Wifi, WifiOff, LayoutDashboard, FileText, Clock, Boxes } from 'lucide-react';
+import { Wifi, WifiOff, LayoutDashboard, FileText, Clock, Boxes, ExternalLink } from 'lucide-react';
 import { useDashboardWebSocket } from '../hooks/useDashboardWebSocket';
 import { ChecksView } from './ChecksView';
 import { SstStatusView } from './SstStatusView';
@@ -92,6 +92,19 @@ export function Dashboard() {
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* Big CTA button for dev server */}
+            {state.sst.status === 'ready' && state.sst.urls.frontend && (
+              <a
+                href={state.sst.urls.frontend}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center space-x-3 p-6 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground rounded-lg shadow-lg transition-all hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <span className="text-xl font-bold">Open Your Application</span>
+                <ExternalLink className="h-6 w-6" />
+              </a>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Pre-Flight Checks */}
               <div>

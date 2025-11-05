@@ -86,8 +86,8 @@ export class DashboardServer {
       this.handleHttpRequest(req, res);
     });
 
-    // Set up WebSocket server
-    this.wsServer = new DashboardWebSocketServer(this.httpServer);
+    // Set up WebSocket server with state getter
+    this.wsServer = new DashboardWebSocketServer(this.httpServer, () => this.state);
 
     // Subscribe to events and update state
     this.setupStateManagement();
