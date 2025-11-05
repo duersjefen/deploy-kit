@@ -19,9 +19,7 @@ export async function setupCCW(projectRoot = process.cwd()) {
     await createMCPSetupScript(mcpHelpersDir);
     // 4. Update project CLAUDE.md with link
     await updateProjectClaudeMd(projectRoot);
-    // 5. Update .gitignore
-    await updateGitignore(projectRoot);
-    // 6. Detect and output required tokens
+    // 5. Detect and output required tokens
     const requiredTokens = await detectRequiredTokens(projectRoot);
     outputTokenList(requiredTokens);
     // 7. Output first CCW prompt
@@ -167,32 +165,12 @@ async function updateProjectClaudeMd(projectRoot) {
 }
 /**
  * Update .gitignore
+ * No longer needed - we don't create token files
  */
 async function updateGitignore(projectRoot) {
-    const gitignorePath = path.join(projectRoot, '.gitignore');
-    if (!await fs.pathExists(gitignorePath)) {
-        console.log(chalk.yellow('⚠️  .gitignore not found - skipping update'));
-        return;
-    }
-    let content = await fs.readFile(gitignorePath, 'utf-8');
-    const rules = [
-        '.claude-code/*_TOKENS*',
-        '.claude-code/.env*'
-    ];
-    let added = false;
-    for (const rule of rules) {
-        if (!content.includes(rule)) {
-            content += `\n${rule}`;
-            added = true;
-        }
-    }
-    if (added) {
-        await fs.writeFile(gitignorePath, content);
-        console.log(chalk.green('✅ Added .gitignore rules'));
-    }
-    else {
-        console.log(chalk.gray('   .gitignore already has CCW rules'));
-    }
+    // No-op - keeping for backward compatibility
+    // All files in .claude-code/ are safe to commit
+    console.log(chalk.gray('   .gitignore update not needed (no token files created)'));
 }
 /**
  * Detect which tokens are required
