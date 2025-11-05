@@ -31,17 +31,20 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   // 3. Create SessionStart hook script
   await createSessionStartScript(scriptsDir);
 
-  // 4. Create .claude/settings.json with hooks
+  // 4. Create GitHub helper script
+  await createGitHubHelper(scriptsDir);
+
+  // 5. Create .claude/settings.json with hooks
   await createSettingsJson(claudeDir, scriptsDir);
 
-  // 5. Update project CLAUDE.md with @ sourcing
+  // 6. Update project CLAUDE.md with @ sourcing
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
-  // 6. Detect and output required tokens
+  // 7. Detect and output required tokens
   const requiredTokens = await detectRequiredTokens(projectRoot);
   outputTokenList(requiredTokens);
 
-  // 7. Output CCW usage instructions
+  // 8. Output CCW usage instructions
   outputUsageInstructions();
 
   console.log(chalk.green('\n✅ CCW setup complete!\n'));
@@ -232,6 +235,22 @@ exit 0
   await fs.chmod(setupPath, 0o755);
 
   console.log(chalk.green('✅ Created scripts/setup_ccw.sh (SessionStart hook)'));
+}
+
+/**
+ * Create scripts/gh_helper.sh - GitHub CLI wrapper with curl fallback
+ * Auto-detects gh CLI availability and falls back to GitHub API
+ */
+async function createGitHubHelper(scriptsDir: string): Promise<void> {
+  await fs.ensureDir(scriptsDir);
+
+  const helperScript = await fs.readFile(path.join(__dirname, '../../../scripts/gh_helper.sh'), 'utf-8');
+
+  const helperPath = path.join(scriptsDir, 'gh_helper.sh');
+  await fs.writeFile(helperPath, helperScript);
+  await fs.chmod(helperPath, 0o755);
+
+  console.log(chalk.green('✅ Created scripts/gh_helper.sh (GitHub CLI wrapper)'));
 }
 
 /**
