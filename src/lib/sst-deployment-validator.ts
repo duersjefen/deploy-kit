@@ -15,6 +15,7 @@
 import { execSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { resolve as resolveNS } from 'dns/promises';
 import chalk from 'chalk';
 import ora from 'ora';
 import prompts from 'prompts';
@@ -42,6 +43,8 @@ import {
   ListFunctionsCommand,
 } from '@aws-sdk/client-lambda';
 import type { ProjectConfig, DeploymentStage } from '../types.js';
+import { retryAWSCommand } from './aws-retry.js';
+import { trackZoneCreation, isZoneRecent, getZoneAgeMinutes } from './zone-tracker.js';
 
 /**
  * SST domain configuration extracted from sst.config.ts
@@ -77,6 +80,12 @@ export interface ValidationResult {
 /**
  * Parse SST config to extract domain configuration
  *
+ * Supports multiple SST config patterns including:
+ * - Simple ternary: stage !== "dev" ? "example.com" : undefined
+ * - Stage-specific: stage === "staging" ? "staging.example.com" : "example.com"
+ * - Template literals: `${stage}.example.com`
+ * - Multiple conditions: stage !== "dev" && stage !== "development"
+ *
  * @param projectRoot - Project root directory
  * @param stage - Deployment stage
  * @returns Domain configuration or null if no SST config found
@@ -93,8 +102,24 @@ export function parseSSTDomainConfig(
 
   const content = readFileSync(sstConfigPath, 'utf-8');
 
-  // Check if domain is configured
-  const domainConfigured = /domain:\s*stage\s*!==\s*['"]dev['"]\s*\?/.test(content);
+  // Remove comments to avoid false positives
+  const contentWithoutComments = content
+    .replace(/\/\/.*$/gm, '') // Remove single-line comments
+    .replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
+
+  // Check if domain is configured (multiple patterns)
+  const domainPatterns = [
+    /domain:\s*stage\s*!==\s*['"]dev['"]/,
+    /domain:\s*stage\s*!==\s*['"]development['"]/,
+    /domain:\s*\w+\s*\?\s*['"`]/,
+    /domain:\s*\{/,
+    /domain:\s*getDomain\(/,
+    /domain:\s*process\.env\./,
+  ];
+
+  const domainConfigured = domainPatterns.some((pattern) =>
+    pattern.test(contentWithoutComments)
+  );
 
   if (!domainConfigured) {
     return {
@@ -104,24 +129,55 @@ export function parseSSTDomainConfig(
   }
 
   // Check if using sst.aws.dns()
-  const usesSstDns = content.includes('dns: sst.aws.dns()');
+  const usesSstDns = contentWithoutComments.includes('dns: sst.aws.dns()');
 
-  // Extract domain name for this stage
+  // Extract domain name for this stage (try multiple patterns)
   let domainName: string | undefined;
 
-  // Look for stage-specific domain patterns like:
-  // stage === 'staging' ? 'staging.example.com' : 'example.com'
-  const stageDomainMatch = content.match(
-    new RegExp(`stage\\s*===\\s*['"]${stage}['"]\\s*\\?\\s*['"]([^'"]+)['"]`, 'i')
+  // Pattern 1: stage === 'staging' ? 'staging.example.com' : ...
+  const stageEqualPattern = new RegExp(
+    `stage\\s*===\\s*['"]${stage}['"]\\s*\\?\\s*['"\`]([^'"\`]+)['"\`]`,
+    'i'
   );
+  const stageEqualMatch = contentWithoutComments.match(stageEqualPattern);
+  if (stageEqualMatch) {
+    domainName = stageEqualMatch[1];
+  }
 
-  if (stageDomainMatch) {
-    domainName = stageDomainMatch[1];
-  } else {
-    // Fallback: look for domain string after stage check
-    const domainMatch = content.match(/domain:\s*stage\s*!==\s*['"]dev['"]\s*\?\s*['"]([^'"]+)['"]/);
-    if (domainMatch) {
-      domainName = domainMatch[1];
+  // Pattern 2: stage !== 'dev' ? 'example.com' : undefined
+  if (!domainName) {
+    const notDevPattern = /domain:\s*stage\s*!==\s*['"](?:dev|development)['"]\s*\?\s*['"`]([^'"`]+)['"`]/;
+    const notDevMatch = contentWithoutComments.match(notDevPattern);
+    if (notDevMatch) {
+      domainName = notDevMatch[1];
+    }
+  }
+
+  // Pattern 3: Template literal `${stage}.example.com`
+  if (!domainName) {
+    const templatePattern = /domain:\s*['"`]\$\{[^}]*\}\.([a-z0-9-]+\.[a-z]{2,})['"`]/i;
+    const templateMatch = contentWithoutComments.match(templatePattern);
+    if (templateMatch) {
+      // Reconstruct domain with current stage
+      domainName = `${stage}.${templateMatch[1]}`;
+    }
+  }
+
+  // Pattern 4: Look for any domain-like string in domain configuration
+  if (!domainName) {
+    const anyDomainPattern = /domain:.*?['"`]([a-z0-9-]+\.(?:[a-z0-9-]+\.)?[a-z]{2,})['"`]/i;
+    const anyDomainMatch = contentWithoutComments.match(anyDomainPattern);
+    if (anyDomainMatch) {
+      domainName = anyDomainMatch[1];
+    }
+  }
+
+  // Pattern 5: Multi-part domain object { name: "example.com", dns: ... }
+  if (!domainName) {
+    const objectDomainPattern = /domain:\s*\{[^}]*name:\s*['"`]([a-z0-9-.]+)['"`]/i;
+    const objectDomainMatch = contentWithoutComments.match(objectDomainPattern);
+    if (objectDomainMatch) {
+      domainName = objectDomainMatch[1];
     }
   }
 
@@ -160,15 +216,15 @@ export async function checkRoute53Zone(
   baseDomain: string,
   awsProfile?: string
 ): Promise<Route53ZoneInfo | null> {
-  const client = new Route53Client({
-    region: 'us-east-1',
-    ...(awsProfile && { credentials: { accessKeyId: '', secretAccessKey: '' } }), // Let SDK load from profile
-  });
-
-  // Set AWS profile for SDK to use
+  // Set AWS profile BEFORE creating client so SDK can load credentials
   if (awsProfile) {
     process.env.AWS_PROFILE = awsProfile;
   }
+
+  const client = new Route53Client({
+    region: 'us-east-1',
+    // Don't pass credentials - let SDK use AWS_PROFILE from environment
+  });
 
   try {
     const command = new ListHostedZonesByNameCommand({
@@ -176,10 +232,15 @@ export async function checkRoute53Zone(
       MaxItems: 10,
     });
 
-    const response = await client.send(command);
+    const response = await retryAWSCommand(client, command, {
+      maxAttempts: 3,
+      onRetry: (error, attempt, delay) => {
+        console.log(chalk.gray(`  Retrying Route53 query (attempt ${attempt}/3) after ${delay}ms...`));
+      },
+    });
 
     const matchingZone = response.HostedZones?.find(
-      (z) => z.Name === `${baseDomain}.` || z.Name === baseDomain
+      (z: any) => z.Name === `${baseDomain}.` || z.Name === baseDomain
     );
 
     if (!matchingZone) {
@@ -190,7 +251,7 @@ export async function checkRoute53Zone(
     const getZoneCommand = new GetHostedZoneCommand({
       Id: matchingZone.Id,
     });
-    const zoneDetails = await client.send(getZoneCommand);
+    const zoneDetails = await retryAWSCommand(client, getZoneCommand, { maxAttempts: 3 });
 
     // Note: AWS Route53 doesn't return creation date in the API response
     // We approximate it by assuming recently created zones if they're unfamiliar
@@ -226,13 +287,14 @@ export async function createRoute53Zone(
   projectName: string,
   awsProfile?: string
 ): Promise<Route53ZoneInfo> {
-  const client = new Route53Client({
-    region: 'us-east-1',
-  });
-
+  // Set AWS profile BEFORE creating client
   if (awsProfile) {
     process.env.AWS_PROFILE = awsProfile;
   }
+
+  const client = new Route53Client({
+    region: 'us-east-1',
+  });
 
   try {
     const command = new CreateHostedZoneCommand({
@@ -244,7 +306,12 @@ export async function createRoute53Zone(
       },
     });
 
-    const response = await client.send(command);
+    const response = await retryAWSCommand(client, command, {
+      maxAttempts: 3,
+      onRetry: (error, attempt, delay) => {
+        console.log(chalk.gray(`  Retrying zone creation (attempt ${attempt}/3) after ${delay}ms...`));
+      },
+    });
 
     if (!response.HostedZone || !response.DelegationSet) {
       throw new Error('Failed to create hosted zone - no zone returned');
@@ -252,13 +319,15 @@ export async function createRoute53Zone(
 
     const createdAt = new Date();
 
-    return {
+    const zoneInfo: Route53ZoneInfo = {
       zone: response.HostedZone,
       baseDomain,
       nameServers: response.DelegationSet.NameServers || [],
       createdAt,
       ageMinutes: 0,
     };
+
+    return zoneInfo;
   } catch (error) {
     throw new Error(
       `Failed to create Route53 zone for ${baseDomain}: ${error instanceof Error ? error.message : String(error)}`
@@ -267,7 +336,37 @@ export async function createRoute53Zone(
 }
 
 /**
+ * Query DNS nameservers using Node.js dns module
+ *
+ * @param domain - Domain to query
+ * @param resolver - DNS server IP (e.g., '8.8.8.8')
+ * @returns Array of nameservers or empty array on error
+ */
+async function queryNameservers(domain: string, resolver: string): Promise<string[]> {
+  try {
+    // Use Node.js DNS resolver with custom nameserver
+    const { Resolver } = await import('dns');
+    const customResolver = new Resolver();
+    customResolver.setServers([resolver]);
+
+    return new Promise((resolve, reject) => {
+      customResolver.resolveNs(domain, (err, addresses) => {
+        if (err) {
+          resolve([]); // Return empty on error, don't fail
+        } else {
+          resolve(addresses || []);
+        }
+      });
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Wait for DNS propagation to specified nameservers
+ *
+ * Uses Node.js dns module for cross-platform compatibility (no dig required).
  *
  * @param domain - Domain name to check
  * @param expectedNameservers - Expected nameservers
@@ -284,37 +383,22 @@ export async function waitForDNSPropagation(
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // Check Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1)
-      let googleNS: string[] = [];
-      let cloudflareNS: string[] = [];
+      const [googleNS, cloudflareNS] = await Promise.all([
+        queryNameservers(domain, '8.8.8.8'),
+        queryNameservers(domain, '1.1.1.1'),
+      ]);
 
-      try {
-        const googleResult = execSync(`dig @8.8.8.8 ${domain} NS +short`, {
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'ignore'],
-          timeout: 5000,
-        });
-        googleNS = googleResult.trim().split('\n').filter(Boolean);
-      } catch {
-        // Ignore dig errors
-      }
+      // Normalize nameservers for comparison (remove trailing dots)
+      const normalizeNS = (ns: string) => ns.toLowerCase().replace(/\.$/, '');
 
-      try {
-        const cloudflareResult = execSync(`dig @1.1.1.1 ${domain} NS +short`, {
-          encoding: 'utf-8',
-          stdio: ['pipe', 'pipe', 'ignore'],
-          timeout: 5000,
-        });
-        cloudflareNS = cloudflareResult.trim().split('\n').filter(Boolean);
-      } catch {
-        // Ignore dig errors
-      }
+      const expectedNormalized = expectedNameservers.map(normalizeNS);
 
-      const googleMatches = expectedNameservers.every((ns) =>
-        googleNS.some((gns) => gns.includes(ns.replace(/\.$/, '')))
+      const googleMatches = expectedNormalized.every((ns) =>
+        googleNS.some((gns) => normalizeNS(gns) === ns || normalizeNS(gns).includes(ns))
       );
 
-      const cloudflareMatches = expectedNameservers.every((ns) =>
-        cloudflareNS.some((cns) => cns.includes(ns.replace(/\.$/, '')))
+      const cloudflareMatches = expectedNormalized.every((ns) =>
+        cloudflareNS.some((cns) => normalizeNS(cns) === ns || normalizeNS(cns).includes(ns))
       );
 
       process.stdout.write(
@@ -350,22 +434,23 @@ export async function checkACMCertificate(
   domain: string,
   awsProfile?: string
 ): Promise<{ arn: string; status: string; domainName: string } | null> {
-  const client = new ACMClient({
-    region: 'us-east-1', // ACM for CloudFront must be in us-east-1
-  });
-
+  // Set AWS profile BEFORE creating client
   if (awsProfile) {
     process.env.AWS_PROFILE = awsProfile;
   }
 
+  const client = new ACMClient({
+    region: 'us-east-1', // ACM for CloudFront must be in us-east-1
+  });
+
   try {
     const listCommand = new ListCertificatesCommand({});
-    const listResponse = await client.send(listCommand);
+    const listResponse = await retryAWSCommand(client, listCommand, { maxAttempts: 3 });
 
     const baseDomain = getBaseDomain(domain);
 
     const matchingCert = listResponse.CertificateSummaryList?.find(
-      (cert) =>
+      (cert: any) =>
         cert.DomainName === domain ||
         cert.DomainName === `*.${baseDomain}` ||
         cert.DomainName === baseDomain
@@ -379,7 +464,7 @@ export async function checkACMCertificate(
     const describeCommand = new DescribeCertificateCommand({
       CertificateArn: matchingCert.CertificateArn,
     });
-    const describeResponse = await client.send(describeCommand);
+    const describeResponse = await retryAWSCommand(client, describeCommand, { maxAttempts: 3 });
 
     return {
       arn: matchingCert.CertificateArn || '',
@@ -412,19 +497,20 @@ export async function findCloudFrontDistribution(
   aliases: string[];
   status: string;
 } | null> {
-  const client = new CloudFrontClient({
-    region: 'us-east-1',
-  });
-
+  // Set AWS profile BEFORE creating client
   if (awsProfile) {
     process.env.AWS_PROFILE = awsProfile;
   }
 
+  const client = new CloudFrontClient({
+    region: 'us-east-1',
+  });
+
   try {
     const command = new ListDistributionsCommand({});
-    const response = await client.send(command);
+    const response = await retryAWSCommand(client, command, { maxAttempts: 3 });
 
-    const matchingDist = response.DistributionList?.Items?.find((d) =>
+    const matchingDist = response.DistributionList?.Items?.find((d: any) =>
       d.Comment?.includes(projectName) && d.Comment?.includes(stage)
     );
 
@@ -436,7 +522,7 @@ export async function findCloudFrontDistribution(
     const getCommand = new GetDistributionCommand({
       Id: matchingDist.Id,
     });
-    const getResponse = await client.send(getCommand);
+    const getResponse = await retryAWSCommand(client, getCommand, { maxAttempts: 3 });
 
     const config = getResponse.Distribution?.DistributionConfig;
 
@@ -469,22 +555,23 @@ export async function checkRoute53DNSRecords(
   zoneId: string,
   awsProfile?: string
 ): Promise<boolean> {
-  const client = new Route53Client({
-    region: 'us-east-1',
-  });
-
+  // Set AWS profile BEFORE creating client
   if (awsProfile) {
     process.env.AWS_PROFILE = awsProfile;
   }
+
+  const client = new Route53Client({
+    region: 'us-east-1',
+  });
 
   try {
     const command = new ListResourceRecordSetsCommand({
       HostedZoneId: zoneId,
     });
-    const response = await client.send(command);
+    const response = await retryAWSCommand(client, command, { maxAttempts: 3 });
 
     const domainRecord = response.ResourceRecordSets?.find(
-      (r) =>
+      (r: any) =>
         r.Name === `${domain}.` &&
         (r.Type === 'A' || r.Type === 'CNAME' || r.Type === 'AAAA')
     );
@@ -514,20 +601,21 @@ export async function checkNextjsServerLambda(
   awsRegion: string,
   awsProfile?: string
 ): Promise<string | null> {
-  const client = new LambdaClient({
-    region: awsRegion,
-  });
-
+  // Set AWS profile BEFORE creating client
   if (awsProfile) {
     process.env.AWS_PROFILE = awsProfile;
   }
 
+  const client = new LambdaClient({
+    region: awsRegion,
+  });
+
   try {
     const command = new ListFunctionsCommand({});
-    const response = await client.send(command);
+    const response = await retryAWSCommand(client, command, { maxAttempts: 3 });
 
     const serverFunction = response.Functions?.find(
-      (f) =>
+      (f: any) =>
         f.FunctionName?.includes(`${projectName}-${stage}`) &&
         f.FunctionName?.includes('Server') &&
         !f.FunctionName?.includes('DevServer')
@@ -630,28 +718,30 @@ export async function validateRoute53ZoneReadiness(
       return { passed: true }; // Already checked in existence validation
     }
 
-    // Check zone age (< 5 minutes is risky)
-    // Note: Skip this check since AWS API doesn't provide creation date
-    // if (localZoneInfo.ageMinutes < 5) {
-    //   console.log(chalk.yellow(`\n⚠️  Route53 zone created ${Math.floor(localZoneInfo.ageMinutes)} minutes ago`));
-    //   console.log(chalk.yellow('   SST may not detect it yet (caching/timing issue)'));
-    //   console.log(chalk.yellow('   Recommendation: Wait 5 minutes after zone creation before first deploy\n'));
-    //
-    //   const response = await prompts({
-    //     type: 'confirm',
-    //     name: 'continue',
-    //     message: 'Continue deployment anyway? Risk of incomplete domain config',
-    //     initial: false,
-    //   });
-    //
-    //   if (!response.continue) {
-    //     return {
-    //       passed: false,
-    //       issue: 'Zone created too recently - waiting for propagation',
-    //       actionRequired: 'Wait 5 minutes after Route53 zone creation',
-    //     };
-    //   }
-    // }
+    // Check zone age using our tracking system
+    const ageMinutes = getZoneAgeMinutes(projectRoot, sstConfig.baseDomain);
+    const isRecent = isZoneRecent(projectRoot, sstConfig.baseDomain, 5);
+
+    if (isRecent && ageMinutes !== null) {
+      console.log(chalk.yellow(`\n⚠️  Route53 zone created ${Math.floor(ageMinutes)} minutes ago`));
+      console.log(chalk.yellow('   SST may not detect it yet (caching/timing issue)'));
+      console.log(chalk.yellow('   Recommendation: Wait 5 minutes after zone creation before first deploy\n'));
+
+      const response = await prompts({
+        type: 'confirm',
+        name: 'continue',
+        message: 'Continue deployment anyway? Risk of incomplete domain config',
+        initial: false,
+      });
+
+      if (!response.continue) {
+        return {
+          passed: false,
+          issue: 'Zone created too recently - waiting for propagation',
+          actionRequired: 'Wait 5 minutes after Route53 zone creation',
+        };
+      }
+    }
 
     // Check for stale Pulumi state (previous dev mode deployment)
     const sstOutputPath = join(projectRoot, '.sst', 'outputs.json');
@@ -731,6 +821,9 @@ export async function ensureRoute53Zone(
     config.projectName,
     config.awsProfile
   );
+
+  // Track zone creation for age checks
+  trackZoneCreation(projectRoot, sstConfig.baseDomain, zoneInfo.zone.Id || '', config.projectName);
 
   console.log(chalk.green(`✅ Route53 hosted zone created: ${zoneInfo.zone.Id}`));
   console.log(chalk.cyan('\nAWS Nameservers:'));
