@@ -18,7 +18,12 @@ import { validateSSTConfig, formatValidationErrors } from '../../lib/sst-link-pe
 import { SSTConfigValidator, formatValidationErrors as formatConfigErrors } from '../../lib/sst-config-validator.js';
 import { createPatternDetector, formatPatternViolations } from '../../lib/pattern-detection/index.js';
 
-export function createSstConfigCheck(projectRoot: string): () => Promise<CheckResult> {
+export type SstConfigCheckMode = 'dev' | 'deploy';
+
+export function createSstConfigCheck(
+  projectRoot: string,
+  mode: SstConfigCheckMode = 'dev'
+): () => Promise<CheckResult> {
   return async () => {
     console.log(chalk.gray('🔍 Checking sst.config.ts...'));
 
@@ -64,16 +69,31 @@ export function createSstConfigCheck(projectRoot: string): () => Promise<CheckRe
         const patternErrors = formatPatternViolations(patternResult.violations);
         const errorMessage = [linkPermErrors, configErrors, patternErrors].filter(Boolean).join('\n\n');
 
+        // In dev mode, treat deployment-specific pattern errors as warnings
+        // Deployment-specific patterns: SST-VAL-001 (input.stage), SST-VAL-011 (stage !== "dev")
+        const deploymentOnlyPatternCodes = ['SST-VAL-001', 'SST-VAL-011'];
+
+        let patternErrorCount = patternResult.errorCount;
+        if (mode === 'dev') {
+          // Count only non-deployment-specific pattern errors
+          const blockingPatternErrors = patternResult.violations.filter(
+            v => v.severity === 'error' && !deploymentOnlyPatternCodes.includes(v.code)
+          ).length;
+          patternErrorCount = blockingPatternErrors;
+        }
+
         const hasErrors = violations.some(v => v.severity === 'error') ||
                          configIssues.some(i => i.severity === 'error') ||
-                         patternResult.errorCount > 0;
+                         patternErrorCount > 0;
 
         const hasAutoFixable = patternResult.autoFixableCount > 0;
 
         if (hasErrors) {
           return {
             passed: false,
-            issue: 'SST config has errors that will cause deployment failures',
+            issue: mode === 'deploy'
+              ? 'SST config has errors that will cause deployment failures'
+              : 'SST config has errors that will prevent development',
             manualFix: errorMessage + (hasAutoFixable ? '\n\n💡 Tip: Run with --fix flag to auto-fix some issues' : ''),
             canAutoFix: hasAutoFixable,
           };
@@ -81,7 +101,10 @@ export function createSstConfigCheck(projectRoot: string): () => Promise<CheckRe
           // Warnings only - show but don't fail
           console.log(chalk.yellow('\n⚠️  SST config warnings detected:\n'));
           console.log(errorMessage);
-          console.log(chalk.green('\n✅ sst.config.ts found (with warnings)\n'));
+          if (mode === 'dev') {
+            console.log(chalk.yellow('💡 These issues won\'t block local development but should be fixed before deploying\n'));
+          }
+          console.log(chalk.green('✅ sst.config.ts found (with warnings)\n'));
           return { passed: true };
         }
       }
