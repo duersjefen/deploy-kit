@@ -5,15 +5,6 @@
 
 ---
 
-## Workflow
-
-Use `/ship-pr` for everything - it's all you need!
-
-- `/ship-pr` - Regular development (commits, PR, merge, update main)
-- `/ship-pr patch|minor|major` - Publishing releases (includes version bump + npm publish)
-
----
-
 ## Key Architecture
 
 **Package Manager Detection:**

@@ -436,7 +436,9 @@ npm run release:minor
 npm run release:major
 ```
 
-**See [CLAUDE.md](./CLAUDE.md) for development workflow.**
+**See [CLAUDE.md](./CLAUDE.md) for development workflow and [@.claude/ccw.md](./.claude/ccw.md) for Claude Code for the Web (remote) setup.**
+
+> **Note:** `.claude/ccw.md` is only used when running in remote CCW environments (detected via `CLAUDE_CODE_REMOTE=true`). It contains instructions for using APIs (GitHub, Linear) instead of CLI tools.
 
 ---
 
