@@ -1,16 +1,10 @@
 ---
-description: Ship PR - commit, push, merge, sync, publish (optional)
-argument-hint: [major|minor|patch]
+description: Ship PR - commit, push, merge, sync, update Linear
 ---
 
 # Ship PR
 
-Fast workflow: Commit → PR → Merge → Sync → Publish (if version arg provided)
-
-## Argument
-
-- **No argument** - Skip package publishing entirely
-- **major/minor/patch** - Bump version and publish to npm
+Fast workflow: Commit → PR → Merge → Sync → Update Linear
 
 ## Workflow
 
@@ -21,9 +15,7 @@ git add -A && git commit -m "[descriptive conventional commit message]"
 # Analyze git diff to understand WHAT changed, then write WHY it changed
 git push -u origin $(git branch --show-current)
 
-# Create PR - use gh_helper in CCW (gh CLI blocked), gh locally (better UX)
-if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
-  "$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr create --title "[title from commits]" --body "$(cat <<'EOF'
+gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
 ## Summary
 [Detailed summary of what changed and why]
 
@@ -38,33 +30,11 @@ if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
 🤖 Generated with Claude Code
 EOF
 )"
-else
-  gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
-## Summary
-[Detailed summary of what changed and why]
-
-## Changes
-- [Key changes as bullet points]
-
-## Test Plan
-[How to test/verify the changes]
-
-[Linear: ISSUE-ID (if detected in commits)]
-
-🤖 Generated with Claude Code
-EOF
-)"
-fi
 ```
 
 **2. Merge PR**
 ```bash
-# Merge PR - use gh_helper in CCW (gh CLI blocked), gh locally (better UX)
-if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
-  "$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr merge --squash --delete-branch
-else
-  gh pr merge $(gh pr view --json number -q .number) --squash --delete-branch 2>&1 | grep -v "already used by worktree" || true
-fi
+gh pr merge $(gh pr view --json number -q .number) --squash --delete-branch 2>&1 | grep -v "already used by worktree" || true
 ```
 
 If merge fails due to conflicts:
@@ -78,16 +48,12 @@ git push
 
 **3. Sync main worktree**
 
-Detect environment and sync appropriately:
 ```bash
-if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
-  # CCW: No sync needed, user will open new session
-  echo "✅ PR merged to main! Close this session to work on main."
-elif [[ $(git rev-parse --show-toplevel) == */.conductor/* ]]; then
+if [[ $(git rev-parse --show-toplevel) == */.conductor/* ]]; then
   # Conductor: Update parent main
   git -C $(git rev-parse --show-toplevel | sed 's|/.conductor/[^/]*$||') pull origin main
 else
-  # Regular local: Switch to main
+  # Regular: Switch to main
   git checkout main && git pull origin main
 fi
 ```
@@ -96,22 +62,9 @@ fi
 
 Extract issue ID from commits (e.g., DEP-18, PROJ-42), update to "Done" via Linear MCP.
 
-**5. Publish (ONLY if version argument provided)**
-
-If user provided `major|minor|patch` argument:
-
-```bash
-cd $(git rev-parse --show-toplevel | sed 's|/.conductor/[^/]*$||')  # Go to parent if Conductor
-pnpm install  # Ensure dependencies installed
-pnpm version [major|minor|patch] --no-git-tag-version
-git add package.json && git commit -m "chore: Bump version to $(jq -r .version package.json)"
-git push
-pnpm publish --no-git-checks
-```
-
 ## Tips
 
 - **Descriptive commits**: Analyze `git diff` to write meaningful commit messages (conventional format)
 - **Quality PRs**: Include Summary (why), Changes (what), Test Plan (how to verify)
-- **Fast workflow**: Skip all package logic when no version arg provided
+- **Publishing**: Use `/publish-package` for npm releases
 - **Auto-fix conflicts**: Rebuild `dist/` to regenerate TypeScript output
