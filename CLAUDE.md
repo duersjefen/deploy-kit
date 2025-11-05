@@ -1,5 +1,8 @@
 # Deploy-Kit - Project Context
 
+**IMPORTANT:** See `.claude-code/GLOBAL_CLAUDE.md` for universal rules that apply to ALL projects.
+
+
 **Package Manager:** pnpm (required for development)
 **Last Updated:** 2025-11-04
 

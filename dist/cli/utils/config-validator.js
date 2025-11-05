@@ -90,6 +90,35 @@ export function validateConfig(config) {
             }
         }
     }
+    // E2E test strategy
+    if (config.e2eTestStrategy) {
+        if (typeof config.e2eTestStrategy !== 'object') {
+            errors.push('e2eTestStrategy must be an object');
+        }
+        else {
+            if (typeof config.e2eTestStrategy.enabled !== 'boolean') {
+                errors.push('e2eTestStrategy.enabled must be a boolean');
+            }
+            if (config.e2eTestStrategy.stages) {
+                if (!Array.isArray(config.e2eTestStrategy.stages)) {
+                    errors.push('e2eTestStrategy.stages must be an array');
+                }
+                else if (config.stages) {
+                    // Validate that stages exist in config.stages
+                    const invalidStages = config.e2eTestStrategy.stages.filter((s) => !config.stages.includes(s));
+                    if (invalidStages.length > 0) {
+                        errors.push(`e2eTestStrategy.stages contains unknown stages: ${invalidStages.join(', ')}`);
+                    }
+                }
+            }
+            if (config.e2eTestStrategy.script && typeof config.e2eTestStrategy.script !== 'string') {
+                errors.push('e2eTestStrategy.script must be a string');
+            }
+            if (config.e2eTestStrategy.timeout && typeof config.e2eTestStrategy.timeout !== 'number') {
+                errors.push('e2eTestStrategy.timeout must be a number');
+            }
+        }
+    }
     // NOTE: AWS profile validation moved to validateConfigAsync() for better performance.
     // This synchronous version skips AWS CLI checks. Use validateConfigAsync() before
     // deployment if you need to verify AWS profile availability.

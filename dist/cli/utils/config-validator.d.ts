@@ -10,6 +10,19 @@ import type { HealthCheck } from '../../types.js';
  */
 export type UnvalidatedConfig = Record<string, any>;
 /**
+ * E2E test execution strategy configuration
+ */
+export interface E2ETestStrategy {
+    /** Whether E2E tests are enabled */
+    enabled: boolean;
+    /** Stages that should run E2E tests (e.g., ["production"]) */
+    stages?: string[];
+    /** Optional custom test script (default: "npm run test:e2e") */
+    script?: string;
+    /** Optional timeout in milliseconds (default: 180000 = 3 minutes) */
+    timeout?: number;
+}
+/**
  * Validated deployment configuration structure
  *
  * Represents the complete configuration for a deploy-kit project after validation.
@@ -25,6 +38,7 @@ export interface DeployConfig {
     awsProfile?: string;
     requireCleanGit?: boolean;
     runTestsBeforeDeploy?: boolean;
+    e2eTestStrategy?: E2ETestStrategy;
     stageConfig: Record<string, any>;
     healthChecks?: HealthCheck[];
     hooks?: Record<string, string>;
