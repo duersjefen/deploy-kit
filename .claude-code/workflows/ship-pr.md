@@ -21,7 +21,15 @@ git push -u origin $(git branch --show-current)
 
 gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
 ## Summary
-[1-3 bullet points of key changes]
+[Detailed summary of what changed and why]
+
+## Changes
+- [Key changes as bullet points]
+
+## Test Plan
+[How to test/verify the changes]
+
+[Linear: ISSUE-ID (if detected)]
 
 🤖 Generated with Claude Code
 EOF
@@ -75,6 +83,6 @@ pnpm publish --no-git-checks
 ## Tips
 
 - **Speed**: Commit message generated from `git diff`, not manual
-- **Concise**: PR body is 1-3 bullets, not detailed
+- **Quality**: PR body includes Summary, Changes, Test Plan for good code review
 - **Parallel**: Skip all package logic if no version arg
 - **Auto-fix**: Merge conflicts resolved by rebuilding dist/
