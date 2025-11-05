@@ -23,6 +23,57 @@ export type { DevOptions } from '../dev-checks/sst-starter.js';
 export type { CheckResult } from '../dev-checks/types.js';
 
 /**
+ * Start dashboard server with auto-increment on port conflict
+ *
+ * Tries to start the dashboard on ports startPort through startPort + maxAttempts - 1.
+ * If a port is already in use, automatically tries the next port.
+ *
+ * @param startPort - Starting port to try (default: 5173)
+ * @param maxAttempts - Maximum number of ports to try (default: 10)
+ * @returns Dashboard server instance and connection info
+ * @throws {Error} If all ports in range are occupied
+ */
+async function startDashboardWithAutoIncrement(
+  startPort: number = 5173,
+  maxAttempts: number = 10
+): Promise<{ server: DashboardServer; url: string; port: number }> {
+  let lastError: Error | null = null;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = startPort + i;
+    const server = new DashboardServer({ port });
+
+    try {
+      const { url, port: actualPort } = await server.start();
+
+      // Show warning if we had to increment
+      if (i > 0) {
+        console.log(chalk.yellow(`⚠️  Port ${startPort} was in use, using port ${actualPort} instead\n`));
+      }
+
+      return { server, url, port: actualPort };
+    } catch (error) {
+      lastError = error as Error;
+
+      // Only retry if it's a port conflict
+      if (lastError.message.includes('already in use')) {
+        await server.stop().catch(() => {}); // Clean up
+        continue;
+      }
+
+      // For other errors, throw immediately
+      throw error;
+    }
+  }
+
+  // All ports exhausted
+  throw new Error(
+    `Dashboard ports ${startPort}-${startPort + maxAttempts - 1} are all in use. ` +
+    `Try killing processes or use a different port range.`
+  );
+}
+
+/**
  * Main dev command entry point
  * 
  * Orchestrates the development environment startup with automatic error detection:
@@ -57,9 +108,10 @@ export async function handleDevCommand(
     // Load config
     const config = loadProjectConfig(projectRoot);
 
-    // Start dashboard server
-    dashboardServer = new DashboardServer({ port: 5173 });
-    const { url, port } = await dashboardServer.start();
+    // Start dashboard server with auto-increment (5173-5182)
+    const dashboardPort = await startDashboardWithAutoIncrement(5173, 10);
+    dashboardServer = dashboardPort.server;
+    const { url, port } = dashboardPort;
 
     // Emit dashboard ready event
     const emitter = getEventEmitter();
