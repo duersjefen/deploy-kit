@@ -104,6 +104,33 @@ async function checkPulumiState(projectRoot: string): Promise<StateIssue[]> {
 }
 
 /**
+ * Get current SST stage from environment or .sst directory
+ */
+function getCurrentSstStage(projectRoot: string): string | null {
+  // Try environment variable first (SST_STAGE)
+  if (process.env.SST_STAGE) {
+    return process.env.SST_STAGE;
+  }
+
+  // Try reading from .sst/stage file
+  const stagePath = join(projectRoot, '.sst', 'stage');
+  if (existsSync(stagePath)) {
+    try {
+      const stage = readFileSync(stagePath, 'utf-8').trim();
+      if (stage) {
+        return stage;
+      }
+    } catch (error) {
+      // Can't read stage file, continue
+    }
+  }
+
+  // Default to checking environment for hints
+  // In dev mode, it's often the username or "dev"
+  return null;
+}
+
+/**
  * Check CloudFront distributions for stuck "Deploying" or "InProgress" states
  * This is the EXACT issue you hit - CloudFront stuck, SST continues, IAM role never updates
  */
@@ -123,17 +150,35 @@ async function checkCloudFrontState(
     const client = new CloudFrontAPIClient(awsRegion, awsProfile);
     const distributions = await client.listDistributions();
 
-    // Filter distributions that might belong to this project
-    // (SST typically includes project name in comments)
+    // Get current SST stage to filter distributions
+    const currentStage = getCurrentSstStage(projectRoot);
+
+    // Filter distributions that belong to this project AND stage
+    // SST typically includes both project name and stage in the comment
     const projectDistributions = distributions.filter(dist => {
       const comment = dist.Comment?.toLowerCase() || '';
       const projectName = config.projectName?.toLowerCase() || '';
-      return comment.includes(projectName) || comment.includes('sst');
+
+      // Must include project name or 'sst'
+      const hasProjectName = comment.includes(projectName) || comment.includes('sst');
+
+      // If we know the current stage, filter by it to avoid checking other stages
+      if (currentStage && hasProjectName) {
+        return comment.includes(currentStage.toLowerCase());
+      }
+
+      return hasProjectName;
     });
 
     for (const dist of projectDistributions) {
-      // Check for "InProgress" or "Deploying" status
-      if (dist.Status === 'InProgress' || dist.Status.includes('Deploy')) {
+      // Check for transitional states (InProgress, Deploying, Pending)
+      // NOTE: "Deployed" is the healthy/success state and should NOT be flagged
+      const isTransitionalState =
+        dist.Status === 'InProgress' ||
+        dist.Status === 'Deploying' ||
+        dist.Status === 'Pending';
+
+      if (isTransitionalState) {
         issues.push({
           type: 'error',
           message: `CloudFront distribution ${dist.Id} stuck in "${dist.Status}" state`,
@@ -141,18 +186,9 @@ async function checkCloudFrontState(
         });
       }
 
-      // Check if distribution was recently modified (< 20 min) but not InProgress
-      // This might indicate a failed update
-      if (dist.LastModifiedTime) {
-        const ageMinutes = (Date.now() - dist.LastModifiedTime.getTime()) / 1000 / 60;
-        if (ageMinutes < 20 && dist.Status !== 'InProgress' && dist.Status === 'Deployed') {
-          issues.push({
-            type: 'warning',
-            message: `CloudFront ${dist.Id} was recently modified (${Math.round(ageMinutes)}min ago)`,
-            fix: 'Recent changes might not be fully propagated yet. Wait 5-15 min for safety.',
-          });
-        }
-      }
+      // Note: Removed the "recently modified Deployed distribution" warning
+      // as "Deployed" is the healthy/success state and should not trigger warnings.
+      // If a distribution was recently modified and is now "Deployed", that's normal and expected.
     }
 
     // Check for too many distributions (might indicate cleanup needed)
