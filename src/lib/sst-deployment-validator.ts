@@ -31,7 +31,9 @@ import {
   CreateHostedZoneCommand,
   ListResourceRecordSetsCommand,
   GetHostedZoneCommand,
+  ChangeResourceRecordSetsCommand,
   type HostedZone,
+  type ResourceRecordSet,
 } from '@aws-sdk/client-route-53';
 import {
   CloudFrontClient,
@@ -630,6 +632,95 @@ export async function checkNextjsServerLambda(
 }
 
 /**
+ * Check for conflicting DNS records (DEP-22 Gap 1)
+ *
+ * Detects old CNAME/A/AAAA records that may conflict with SST's domain configuration.
+ * These records can cause SST to silently skip domain setup.
+ *
+ * @param domain - Full domain name to check (e.g., 'staging.example.com')
+ * @param zoneId - Route53 hosted zone ID
+ * @param awsProfile - AWS profile name
+ * @returns Conflicting record if found, null otherwise
+ */
+export async function checkConflictingDNSRecords(
+  domain: string,
+  zoneId: string,
+  awsProfile?: string
+): Promise<ResourceRecordSet | null> {
+  if (awsProfile) {
+    process.env.AWS_PROFILE = awsProfile;
+  }
+
+  const client = new Route53Client({
+    region: 'us-east-1',
+  });
+
+  try {
+    const command = new ListResourceRecordSetsCommand({
+      HostedZoneId: zoneId,
+    });
+    const response = await retryAWSCommand(client, command, { maxAttempts: 3 });
+
+    // Look for existing A, AAAA, or CNAME records for this domain
+    // These could conflict with SST's automatic domain configuration
+    const conflictingRecord = response.ResourceRecordSets?.find(
+      (r: any) =>
+        r.Name === `${domain}.` &&
+        (r.Type === 'A' || r.Type === 'AAAA' || r.Type === 'CNAME') &&
+        // Ignore alias records (SST creates these)
+        !r.AliasTarget
+    );
+
+    return conflictingRecord || null;
+  } catch (error) {
+    throw new Error(
+      `Failed to check DNS records for ${domain}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
+ * Delete a DNS record from Route53 (DEP-22 Gap 1)
+ *
+ * @param zoneId - Route53 hosted zone ID
+ * @param record - Resource record set to delete
+ * @param awsProfile - AWS profile name
+ */
+export async function deleteDNSRecord(
+  zoneId: string,
+  record: ResourceRecordSet,
+  awsProfile?: string
+): Promise<void> {
+  if (awsProfile) {
+    process.env.AWS_PROFILE = awsProfile;
+  }
+
+  const client = new Route53Client({
+    region: 'us-east-1',
+  });
+
+  try {
+    const command = new ChangeResourceRecordSetsCommand({
+      HostedZoneId: zoneId,
+      ChangeBatch: {
+        Changes: [
+          {
+            Action: 'DELETE',
+            ResourceRecordSet: record,
+          },
+        ],
+      },
+    });
+
+    await retryAWSCommand(client, command, { maxAttempts: 3 });
+  } catch (error) {
+    throw new Error(
+      `Failed to delete DNS record: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
  * Validate Route53 zone existence (Pre-deployment, DEP-19 Phase 1, Check 1A)
  *
  * Blocks deployment if Route53 zone is missing when using sst.aws.dns()
@@ -716,6 +807,64 @@ export async function validateRoute53ZoneReadiness(
 
     if (!localZoneInfo) {
       return { passed: true }; // Already checked in existence validation
+    }
+
+    // DEP-22 Gap 1: Check for conflicting DNS records
+    // Old CNAME/A records can cause SST to silently skip domain configuration
+    if (sstConfig.domainName) {
+      try {
+        const conflictingRecord = await checkConflictingDNSRecords(
+          sstConfig.domainName,
+          localZoneInfo.zone.Id || '',
+          config.awsProfile
+        );
+
+        if (conflictingRecord) {
+          console.log(chalk.yellow(`\n⚠️  Existing DNS record found for ${sstConfig.domainName}`));
+          console.log(chalk.yellow(`   Type: ${conflictingRecord.Type}`));
+
+          if (conflictingRecord.ResourceRecords && conflictingRecord.ResourceRecords.length > 0) {
+            console.log(chalk.yellow(`   Points to: ${conflictingRecord.ResourceRecords[0].Value}`));
+          }
+
+          console.log(chalk.yellow(`\n   This may block SST's automatic domain configuration!`));
+          console.log(chalk.yellow(`   SST will silently skip domain setup if it detects conflicting records.\n`));
+
+          const response = await prompts({
+            type: 'confirm',
+            name: 'delete',
+            message: 'Delete old DNS record? (SST will recreate it correctly)',
+            initial: true,
+          });
+
+          if (response.delete) {
+            console.log(chalk.cyan('\n🔧 Deleting old DNS record...\n'));
+            await deleteDNSRecord(localZoneInfo.zone.Id || '', conflictingRecord, config.awsProfile);
+            console.log(chalk.green('✅ Old DNS record deleted - SST can now configure domain properly\n'));
+          } else {
+            console.log(chalk.yellow('\n⚠️  Keeping old DNS record - deployment may fail or have incomplete domain config\n'));
+
+            const continueResponse = await prompts({
+              type: 'confirm',
+              name: 'continue',
+              message: 'Continue deployment anyway?',
+              initial: false,
+            });
+
+            if (!continueResponse.continue) {
+              return {
+                passed: false,
+                issue: 'Conflicting DNS record found',
+                details: `${conflictingRecord.Type} record exists for ${sstConfig.domainName}`,
+                actionRequired: 'Delete conflicting DNS record or update sst.config.ts',
+              };
+            }
+          }
+        }
+      } catch (error) {
+        // Don't block on DNS conflict check failures - log warning and continue
+        console.log(chalk.yellow(`⚠️  Could not check for conflicting DNS records: ${error instanceof Error ? error.message : String(error)}`));
+      }
     }
 
     // Check zone age using our tracking system
@@ -950,9 +1099,12 @@ export async function validateACMCertificate(
       spinner.fail(`❌ ACM certificate not created for ${sstConfig.domainName}`);
       return {
         passed: false,
-        issue: 'ACM certificate not created',
-        details: 'SST ignored domain configuration - certificate missing',
-        actionRequired: `Destroy and redeploy: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
+        issue: 'SST silently ignored domain configuration',
+        details: `Domain configured in sst.config.ts but ACM certificate missing. This usually means:
+   1. Conflicting DNS records existed (old CNAME/A records)
+   2. Route53 zone was missing or not ready
+   3. SST encountered an error but continued deployment`,
+        actionRequired: `Check Route53 for conflicts, then: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
       };
     }
 
@@ -1013,9 +1165,16 @@ export async function validateCloudFrontDomainAlias(
       spinner.fail('❌ CloudFront deployed in dev mode (placeholder origin)');
       return {
         passed: false,
-        issue: 'SST deployed in dev mode',
-        details: 'Origin is placeholder.sst.dev - Route53 zone was missing during deployment',
-        actionRequired: `Create Route53 zone, then: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
+        issue: 'SST deployed in dev mode - domain configuration completely ignored',
+        details: `Origin is placeholder.sst.dev instead of real domain.
+
+   This critical failure means:
+   1. Route53 zone was missing during deployment, OR
+   2. Conflicting DNS records blocked SST from configuring domain, OR
+   3. SST encountered errors and fell back to dev mode
+
+   Your application is NOT accessible via the configured domain.`,
+        actionRequired: `Fix Route53/DNS issues, then: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
       };
     }
 
@@ -1024,9 +1183,14 @@ export async function validateCloudFrontDomainAlias(
       spinner.fail(`❌ CloudFront domain alias not configured for ${sstConfig.domainName}`);
       return {
         passed: false,
-        issue: 'CloudFront has no domain alias',
-        details: `Expected: ${sstConfig.domainName}, Got: ${dist.aliases.join(', ') || 'None'}`,
-        actionRequired: `Redeploy: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
+        issue: 'SST silently ignored domain configuration - CloudFront has no alias',
+        details: `Expected: ${sstConfig.domainName}, Got: ${dist.aliases.join(', ') || 'None'}
+
+   This usually means SST skipped domain setup due to:
+   1. Conflicting DNS records (old CNAME/A pointing to wrong CloudFront)
+   2. Missing ACM certificate
+   3. Route53 zone issues`,
+        actionRequired: `Check and fix DNS conflicts, then: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
       };
     }
 
@@ -1082,9 +1246,14 @@ export async function validateRoute53DNSRecords(
       spinner.fail(`❌ Route53 DNS records not created for ${sstConfig.domainName}`);
       return {
         passed: false,
-        issue: 'Route53 DNS records not created',
-        details: 'SST ignored domain configuration - DNS records missing',
-        actionRequired: `Redeploy: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
+        issue: 'SST silently ignored domain configuration - DNS records missing',
+        details: `Domain configured in sst.config.ts but Route53 records not created.
+
+   This usually means SST skipped domain setup due to:
+   1. Conflicting DNS records existed before deployment
+   2. ACM certificate was not created
+   3. CloudFront deployment failed to configure custom domain`,
+        actionRequired: `Check pre-deployment validation logs for DNS conflicts, then: npx sst remove --stage ${stage} && deploy-kit deploy ${stage}`,
       };
     }
 
