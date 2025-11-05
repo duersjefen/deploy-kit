@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import type { CheckResult } from './types.js';
 import { validateSSTConfig, formatValidationErrors } from '../../lib/sst-link-permissions.js';
+import { SSTConfigValidator, formatValidationErrors as formatConfigErrors } from '../../lib/sst-config-validator.js';
 
 export function createSstConfigCheck(projectRoot: string): () => Promise<CheckResult> {
   return async () => {
@@ -38,9 +39,19 @@ export function createSstConfigCheck(projectRoot: string): () => Promise<CheckRe
       // Run advanced validations (link+permissions conflicts, GSI permissions, Pulumi Output misuse)
       const violations = validateSSTConfig(content);
 
-      if (violations.length > 0) {
-        const errorMessage = formatValidationErrors(violations);
-        const hasErrors = violations.some(v => v.severity === 'error');
+      // Run DEP-27 validations (CORS, Lambda timeout/memory, DynamoDB TTL, etc.)
+      const validator = new SSTConfigValidator();
+      const configIssues = validator.validate(sstConfigPath);
+
+      const allIssues = [...violations, ...configIssues];
+
+      if (allIssues.length > 0) {
+        const linkPermErrors = formatValidationErrors(violations);
+        const configErrors = formatConfigErrors(configIssues);
+        const errorMessage = [linkPermErrors, configErrors].filter(Boolean).join('\n\n');
+
+        const hasErrors = violations.some(v => v.severity === 'error') ||
+                         configIssues.some(i => i.severity === 'error');
 
         if (hasErrors) {
           return {
