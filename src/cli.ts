@@ -583,7 +583,7 @@ function printHelpMessage(): void {
   console.log(chalk.gray('    Stages: staging, production'));
   console.log(chalk.gray('    Flags:'));
   console.log(chalk.gray('      --skip-checks            Skip pre-deployment checks (tests, build, typecheck)'));
-  console.log(chalk.gray('      --dry-run                Preview deployment without executing'));
+  console.log(chalk.gray('      --dry-run                Preview deployment configuration without executing (no AWS changes)'));
   console.log(chalk.gray('      --show-diff              Show AWS resource diffs (CloudFront, SSL, DNS) before deployment'));
   console.log(chalk.gray('      --benchmark              Display detailed performance report after deployment'));
   console.log(chalk.gray('      --verbose                Enable detailed logging and debug output'));

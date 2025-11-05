@@ -109,7 +109,50 @@ export async function executeDeploy(
   options?: { isDryRun?: boolean }
 ): Promise<string | null> {
   const isDryRun = options?.isDryRun || false;
-  const spinnerText = isDryRun ? `Previewing deployment to ${stage}...` : `Deploying to ${stage}...`;
+
+  // If dry-run mode, show preview and return early WITHOUT deploying
+  if (isDryRun) {
+    console.log(chalk.bold.cyan('\n🔍 DRY-RUN MODE: Preview Only'));
+    console.log(chalk.gray('═'.repeat(60)));
+    console.log(chalk.yellow('\n⚠️  No AWS resources will be created or modified\n'));
+
+    console.log(chalk.bold('Deployment Configuration:'));
+    console.log(chalk.gray('  Stage: ') + chalk.cyan(stage));
+    console.log(chalk.gray('  Infrastructure: ') + chalk.cyan(config.infrastructure));
+
+    const stageConfig = config.stageConfig[stage];
+    if (stageConfig) {
+      if ('domain' in stageConfig && stageConfig.domain) {
+        console.log(chalk.gray('  Domain: ') + chalk.cyan(stageConfig.domain));
+      }
+      if ('awsRegion' in stageConfig && stageConfig.awsRegion) {
+        console.log(chalk.gray('  AWS Region: ') + chalk.cyan(stageConfig.awsRegion));
+      }
+      if ('sstStageName' in stageConfig && stageConfig.sstStageName) {
+        console.log(chalk.gray('  SST Stage: ') + chalk.cyan(stageConfig.sstStageName));
+      }
+    }
+
+    if (config.awsProfile) {
+      console.log(chalk.gray('  AWS Profile: ') + chalk.cyan(config.awsProfile));
+    }
+
+    if (config.database) {
+      console.log(chalk.gray('  Database: ') + chalk.cyan(config.database));
+    }
+
+    if (config.healthChecks && config.healthChecks.length > 0) {
+      console.log(chalk.gray('  Health Checks: ') + chalk.cyan(`${config.healthChecks.length} configured`));
+    }
+
+    console.log(chalk.bold('\n✅ Dry-run complete'));
+    console.log(chalk.gray('To execute this deployment, run without --dry-run flag'));
+    console.log(chalk.gray('═'.repeat(60) + '\n'));
+
+    return null;
+  }
+
+  const spinnerText = `Deploying to ${stage}...`;
   const spinner = ora(spinnerText).start();
 
   try {
@@ -127,9 +170,8 @@ export async function executeDeploy(
       spinner.succeed(`✅ Deployed to ${stage}`);
     } else {
       // Default: SST deploy with streaming output
-      deployOutput = await runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner, isDryRun);
-      const successMsg = isDryRun ? `✅ Dry-run preview for ${stage} completed` : `✅ Deployed to ${stage}`;
-      spinner.succeed(successMsg);
+      deployOutput = await runSSTDeployWithStreaming(stage, sstStage, projectRoot, config, spinner);
+      spinner.succeed(`✅ Deployed to ${stage}`);
     }
 
     // Extract CloudFront distribution ID from deployment output
@@ -171,8 +213,7 @@ async function runSSTDeployWithStreaming(
   sstStage: string,
   projectRoot: string,
   config: ProjectConfig,
-  spinner: ReturnType<typeof ora>,
-  isDryRun?: boolean
+  spinner: ReturnType<typeof ora>
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const env = {
@@ -182,11 +223,8 @@ async function runSSTDeployWithStreaming(
       }),
     };
 
-    // Build SST args with optional --dry-run flag
+    // Build SST deploy command
     const args = ['sst', 'deploy', '--stage', sstStage];
-    if (isDryRun) {
-      args.push('--dry-run');
-    }
 
     const child = spawn('npx', args, {
       cwd: projectRoot,
