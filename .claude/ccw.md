@@ -24,8 +24,8 @@ You are currently in **Claude Code for Web (CCW)** environment. This is detected
   git add -A
   git commit -m "message"
   git push -u origin branch-name
-  bash .claude/gh_helper.sh pr create --title "..." --body "..."
-  bash .claude/gh_helper.sh pr merge PR_NUMBER --squash
+  bash .claude/scripts/gh_helper.sh pr create --title "..." --body "..."
+  bash .claude/scripts/gh_helper.sh pr merge PR_NUMBER --squash
   ```
 
 **DO NOT attempt to publish to npm:**
@@ -38,13 +38,25 @@ You are currently in **Claude Code for Web (CCW)** environment. This is detected
 **GitHub Operations (via gh_helper.sh):**
 ```bash
 # Create PR
-bash .claude/gh_helper.sh pr create --title "..." --body "..."
+bash .claude/scripts/gh_helper.sh pr create --title "..." --body "..."
 
 # Merge PR
-bash .claude/gh_helper.sh pr merge PR_NUMBER --squash
+bash .claude/scripts/gh_helper.sh pr merge PR_NUMBER --squash
 
 # Get PR status
-bash .claude/gh_helper.sh pr view PR_NUMBER
+bash .claude/scripts/gh_helper.sh pr view PR_NUMBER
+```
+
+**Linear Operations (via linear_helper.sh):**
+```bash
+# Get issue details
+bash .claude/scripts/linear_helper.sh get-issue DEP-21
+
+# List recent issues
+bash .claude/scripts/linear_helper.sh list-issues DEP 10
+
+# Update issue state
+bash .claude/scripts/linear_helper.sh update-state 011CUpqCxQnHnpkdk2UzQKi1 Done
 ```
 
 **Git Operations:**
@@ -80,7 +92,7 @@ git commit -m "feat: Description"
 git push -u origin branch-name
 
 # 6. Create PR
-bash .claude/gh_helper.sh pr create \
+bash .claude/scripts/gh_helper.sh pr create \
   --title "feat: Description (DEP-X)" \
   --body "## Summary
 Changes made...
@@ -88,7 +100,7 @@ Changes made...
 Linear: DEP-X"
 
 # 7. Merge PR
-bash .claude/gh_helper.sh pr merge PR_NUMBER --squash
+bash .claude/scripts/gh_helper.sh pr merge PR_NUMBER --squash
 
 # 8. Fetch updated main
 git fetch origin main:main
@@ -111,31 +123,25 @@ I can prepare the version bump and PR, but publishing must be done elsewhere.
 
 ---
 
-## MCP Servers in CCW
+## CLI Tools in .claude/scripts/
 
-Available MCP servers (configured in ~/.claude.json):
-- ✅ Playwright - Browser automation
-- ✅ Context7 - Library documentation
-- ✅ Linear - Issue tracking
-- ✅ Serena - Semantic code retrieval and editing (IDE-like capabilities)
+Deploy-Kit provides CLI wrappers for common operations:
 
-**IMPORTANT: MCP Servers Load at Session Start Only**
-- MCP servers are loaded when a CCW session **starts**
-- There is **NO way to reload MCP servers** during an active session
-- If you add a new MCP server mid-session, it won't be available until your **next task**
-- This is a CCW limitation, not a Deploy-Kit issue
+### gh_helper.sh
+- GitHub operations without MCP
+- Automatic fallback from gh CLI to curl
+- Requires: `GITHUB_TOKEN` environment variable
 
-**If MCP tools are missing:**
-1. Check if you added them mid-session (they'll work in next task)
-2. Verify environment variables are set (LINEAR_API_KEY, etc.)
-3. Use Desktop Claude Code for immediate MCP reload capability
+### linear_helper.sh
+- Linear operations without MCP
+- Direct GraphQL API access
+- Requires: `LINEAR_API_KEY` environment variable
 
-**Alternative: Manual CLI Usage**
-If you need Serena now (before next session):
-```bash
-# Search code semantically
-uvx --from git+https://github.com/oraios/serena serena --help
-```
+**Why CLI tools instead of MCP?**
+- MCP servers load at container start, before SessionStart hook runs
+- No way to configure them automatically in CCW
+- CLI tools work immediately, no container restart needed
+- Simpler, more predictable behavior
 
 ---
 
@@ -147,11 +153,13 @@ uvx --from git+https://github.com/oraios/serena serena --help
 - Access to 1Password CLI (not installed)
 - Docker operations (no Docker daemon)
 - Some file system operations (limited permissions)
+- MCP server integration (timing issue with SessionStart hooks)
 
 **Can do:**
 - All git operations
 - Build and test
 - Create and merge PRs via gh_helper.sh
+- Linear operations via linear_helper.sh
 - Read/write files in project directory
 - Run Node.js/pnpm/npm commands
 
@@ -159,13 +167,14 @@ uvx --from git+https://github.com/oraios/serena serena --help
 
 ## Tips for CCW Development
 
-1. **Focus on feature development, not deployment**
+1. **Use CLI tools for GitHub and Linear**
+   - `.claude/scripts/gh_helper.sh` for GitHub operations
+   - `.claude/scripts/linear_helper.sh` for Linear operations
+   - Both work immediately, no setup needed
+
+2. **Focus on feature development, not deployment**
    - CCW is perfect for writing code, tests, documentation
    - Leave deployment/publishing for Desktop or CI/CD
-
-2. **Use gh_helper.sh for all GitHub operations**
-   - It automatically falls back to curl if gh CLI unavailable
-   - Handles authentication via GITHUB_TOKEN env var
 
 3. **Check environment before operations**
    - Don't assume Desktop capabilities
