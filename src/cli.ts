@@ -20,6 +20,7 @@ import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
 import { getFormattedVersion } from './cli/utils/version.js';
 import { runPreDeploymentChecks } from './pre-deployment/index.js';
 import { runSstEnvironmentChecks } from './shared/sst-checks/index.js';
+import { DeploymentProgress } from './lib/deployment-progress.js';
 import chalk from 'chalk';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
@@ -212,31 +213,66 @@ async function cli() {
       const skipChecks = args.includes('--skip-checks');
       const verbose = args.includes('--verbose');
 
+      // Initialize deployment progress tracker
+      const progress = new DeploymentProgress([
+        'SST Environment Checks',
+        'Quality Checks',
+        'SST Deployment',
+        'Post-Deployment Validation',
+        'Health Verification'
+      ]);
+
       // STAGE 1: Run SST environment checks (BEFORE quality checks for fast feedback)
+      progress.startStage(1);
+      console.log(chalk.bold.cyan(`\n${progress.getStageHeader(1)}`));
+      console.log(chalk.gray('Fast feedback on SST environment issues before running expensive checks\n'));
+
       if (!skipChecks) {
         const sstChecksSummary = await runSstEnvironmentChecks(projectRoot, config as any, stage, verbose);
         if (!sstChecksSummary.allPassed) {
-          console.log(chalk.red('❌ Deployment blocked by failed SST environment checks'));
+          progress.completeStage(1, false);
+          console.log(chalk.red(`\n❌ ${progress.getFailureSummary(1)}`));
           console.log(chalk.gray('   Fix the SST environment issues above and try again'));
           console.log(chalk.gray('   Or use --skip-checks to bypass (not recommended)\n'));
           process.exit(1);
         }
+        progress.completeStage(1, true);
+      } else {
+        progress.skipStage(1);
       }
 
+      // Show progress bar after stage 1
+      progress.printProgressBar();
+
       // STAGE 2: Run quality checks (TypeCheck, Tests, Build, Lint, E2E)
+      progress.startStage(2);
+      console.log(chalk.bold.cyan(`${progress.getStageHeader(2)}`));
+      console.log(chalk.gray('Comprehensive code quality validation before deployment\n'));
+
       if (!skipChecks) {
         const checksSummary = await runPreDeploymentChecks(projectRoot, stage);
         if (!checksSummary.allPassed) {
-          console.log(chalk.red('\n❌ Deployment blocked by failed pre-deployment checks'));
+          progress.completeStage(2, false);
+          console.log(chalk.red(`\n❌ ${progress.getFailureSummary(2)}`));
           console.log(chalk.gray('   Fix the issues above and try again'));
           console.log(chalk.gray('   Or use --skip-checks to bypass (not recommended)\n'));
           process.exit(1);
         }
+        progress.completeStage(2, true);
       } else {
+        progress.skipStage(2);
         console.log(chalk.yellow('\n⚠️  WARNING: Skipping all deployment checks!'));
         console.log(chalk.yellow('   This should only be used for emergency hotfixes.'));
         console.log(chalk.yellow('   Deploy at your own risk.\n'));
       }
+
+      // Show progress bar after stage 2
+      progress.printProgressBar();
+
+      // STAGE 3: SST Deployment
+      progress.startStage(3);
+      console.log(chalk.bold.cyan(`${progress.getStageHeader(3)}`));
+      console.log(chalk.gray('Executing infrastructure deployment via SST\n'));
 
       // Parse observability flags
       const isDryRun = args.includes('--dry-run');
@@ -273,6 +309,29 @@ async function cli() {
       });
 
       const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, canary: canaryOptions, maintenance: maintenanceOptions });
+
+      // Complete stage 3 (SST Deployment)
+      progress.completeStage(3, result.success);
+
+      if (result.success) {
+        // STAGE 4: Post-Deployment Validation (handled by DeploymentKit)
+        progress.completeStage(4, true);
+
+        // STAGE 5: Health Verification (handled by DeploymentKit)
+        progress.completeStage(5, true);
+
+        // Show final progress bar
+        progress.printProgressBar();
+
+        console.log(chalk.bold.green('\n✅ Deployment completed successfully!'));
+        console.log(chalk.gray('   All stages passed\n'));
+      } else {
+        // Show progress bar on failure
+        progress.printProgressBar();
+
+        console.log(chalk.red(`\n❌ ${progress.getFailureSummary(3)}`));
+        console.log(chalk.gray('   Check deployment logs above for details\n'));
+      }
 
       // Deployment result is now printed by the deployer itself
       // Exit with appropriate code

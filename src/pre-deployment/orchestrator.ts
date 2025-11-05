@@ -270,10 +270,6 @@ export async function runPreDeploymentChecks(
     };
   }
 
-  console.log(chalk.bold.cyan('\n🔍 Running Pre-Deployment Checks'));
-  console.log(chalk.gray(`   Stage: ${stage}`));
-  console.log(chalk.gray(`   Checks: ${checks.length}\n`));
-
   const startTime = Date.now();
   const results: Array<Awaited<ReturnType<typeof runCheck>>> = [];
   let passed = 0;
