@@ -242,6 +242,9 @@ async function createSettingsJson(claudeDir: string, scriptsDir: string): Promis
   await fs.ensureDir(claudeDir);
 
   const settings = {
+    permissions: {
+      allow: ['Bash'],
+    },
     hooks: {
       SessionStart: [
         {
