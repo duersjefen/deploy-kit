@@ -1,77 +1,90 @@
 ---
-description: Ship PR - commit, push, merge, sync, publish (if package)
-argument-hint: [linear-issue-id]
+description: Ship PR - commit, push, merge, sync, publish (optional)
+argument-hint: [major|minor|patch]
 ---
 
 # Ship PR
 
-Complete workflow: Commit → Push → PR → Merge → Sync → Publish (if package)
+Fast workflow: Commit → PR → Merge → Sync → Publish (if version arg provided)
+
+## Argument
+
+- **No argument** - Skip package publishing entirely
+- **major/minor/patch** - Bump version and publish to npm
 
 ## Workflow
 
-**1. Commit changes**
+**1. Commit and create PR**
 ```bash
-git add -A && git commit -m "[conventional commit message based on changes]"
-```
-
-**2. Push and create PR**
-```bash
+git add -A && git commit -m "[descriptive conventional commit message]"
+# Format: "feat: Add X feature" or "fix: Resolve Y issue"
+# Analyze git diff to understand WHAT changed, then write WHY it changed
 git push -u origin $(git branch --show-current)
 
 gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
 ## Summary
-[Key changes]
+[Detailed summary of what changed and why]
 
-[Linear: ISSUE-ID (if provided)]
+## Changes
+- [Key changes as bullet points]
+
+## Test Plan
+[How to test/verify the changes]
+
+[Linear: ISSUE-ID (if detected in commits)]
+
 🤖 Generated with Claude Code
 EOF
 )"
 ```
 
-**3. Merge PR**
+**2. Merge PR**
 ```bash
-PR_NUMBER=$(gh pr view --json number -q .number)
-gh pr merge $PR_NUMBER --squash --delete-branch 2>&1 | grep -v "already used by worktree" || true
+gh pr merge $(gh pr view --json number -q .number) --squash --delete-branch 2>&1 | grep -v "already used by worktree" || true
 ```
 
-**4. Sync local main**
-
-Conductor worktree:
+If merge fails due to conflicts:
 ```bash
-PROJECT_ROOT=$(git rev-parse --show-toplevel | sed 's|/.conductor/[^/]*$||')
-git -C "$PROJECT_ROOT" pull origin main
+git fetch origin main && git merge origin/main
+pnpm run build  # Regenerate dist/ (if TypeScript project)
+git add -A && git commit -m "Merge branch 'main'"
+git push
+# Retry merge command above
 ```
 
-Regular project:
+**3. Sync main worktree**
+
+Detect if Conductor worktree:
 ```bash
-git checkout main && git pull origin main
+if [[ $(git rev-parse --show-toplevel) == */.conductor/* ]]; then
+  # Conductor: Update parent main
+  git -C $(git rev-parse --show-toplevel | sed 's|/.conductor/[^/]*$||') pull origin main
+else
+  # Regular: Switch to main
+  git checkout main && git pull origin main
+fi
 ```
 
-**5. Update Linear (if issue ID provided)**
+**4. Update Linear (if Linear issue detected in commits)**
 
-Use Linear MCP to update issue state to "Done" and add PR comment.
+Extract issue ID from commits (e.g., DEP-18, PROJ-42), update to "Done" via Linear MCP.
 
-**6. Publish to npm (if public package)**
+**5. Publish (ONLY if version argument provided)**
 
-Check package status:
+If user provided `major|minor|patch` argument:
+
 ```bash
-PRIVATE=$(jq -r '.private // false' package.json)
-VERSION=$(jq -r '.version // ""' package.json)
+cd $(git rev-parse --show-toplevel | sed 's|/.conductor/[^/]*$||')  # Go to parent if Conductor
+pnpm install  # Ensure dependencies installed
+pnpm version [major|minor|patch] --no-git-tag-version
+git add package.json && git commit -m "chore: Bump version to $(jq -r .version package.json)"
+git push
+pnpm publish --no-git-checks
 ```
 
-If package is public (`PRIVATE == false` AND `VERSION` exists):
+## Tips
 
-Ask: **"Publish v$VERSION to npm? (yes/no)"**
-
-If yes:
-```bash
-npm publish
-echo "✅ Published v$VERSION to npm"
-```
-
-## Safety
-
-- Use `--squash` for merges
-- Suppress Conductor "already used by worktree" warnings
-- Skip npm publish for private packages
-- Stop on errors
+- **Descriptive commits**: Analyze `git diff` to write meaningful commit messages (conventional format)
+- **Quality PRs**: Include Summary (why), Changes (what), Test Plan (how to verify)
+- **Fast workflow**: Skip all package logic when no version arg provided
+- **Auto-fix conflicts**: Rebuild `dist/` to regenerate TypeScript output
