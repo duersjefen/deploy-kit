@@ -5,15 +5,6 @@
 
 ---
 
-## Workflow
-
-Use `/ship-pr` for everything - it's all you need!
-
-- `/ship-pr` - Regular development (commits, PR, merge, update main)
-- `/ship-pr patch|minor|major` - Publishing releases (includes version bump + npm publish)
-
----
-
 ## Key Architecture
 
 **Package Manager Detection:**
@@ -35,6 +26,12 @@ Use `/ship-pr` for everything - it's all you need!
 - Expected - integration tests require AWS credentials
 - Unit tests (like package-manager.test.ts) should pass
 - Run specific tests: `node --test dist/path/to/test.js`
+
+---
+
+## Claude Code for the Web (Remote)
+
+When running in Claude Code for the Web (detected by `CLAUDE_CODE_REMOTE=true`), see [@.claude/ccw.md](./.claude/ccw.md) for environment-specific instructions on using APIs with curl instead of CLI tools.
 
 ---
 

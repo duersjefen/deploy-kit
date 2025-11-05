@@ -12,7 +12,7 @@ fi
 # Don't exit on errors - handle them gracefully
 set +e
 
-# Get project directory (use CLAUDE_PROJECT_DIR if set, otherwise use PWD)
+# Get project directory
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 
 echo "🔧 Setting up Claude Code for the Web environment..."
@@ -22,182 +22,59 @@ echo "📂 Project: $PROJECT_DIR"
 if [ -f "$PROJECT_DIR/.claude/global_claude.md" ]; then
   mkdir -p ~/.claude
   cp "$PROJECT_DIR/.claude/global_claude.md" ~/.claude/CLAUDE.md
-  echo "✅ Global CLAUDE.md copied to ~/.claude/CLAUDE.md"
+  echo "✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
 else
-  echo "⚠️  No .claude/global_claude.md found (run 'dk ccw' locally to create)"
+  echo "⚠️  No .claude/global_claude.md found"
 fi
 
-# Append CCW-specific instructions to project CLAUDE.md
-# This keeps CLAUDE.md clean in git for local/Desktop users
-# while CCW users get environment-specific instructions at runtime
-if [ -f "$PROJECT_DIR/.claude/ccw.md" ] && [ -f "$PROJECT_DIR/CLAUDE.md" ]; then
-  echo "" >> "$PROJECT_DIR/CLAUDE.md"
-  echo "---" >> "$PROJECT_DIR/CLAUDE.md"
-  echo "" >> "$PROJECT_DIR/CLAUDE.md"
-  cat "$PROJECT_DIR/.claude/ccw.md" >> "$PROJECT_DIR/CLAUDE.md"
-  echo "✅ CCW instructions appended to CLAUDE.md (runtime only)"
-else
-  if [ ! -f "$PROJECT_DIR/.claude/ccw.md" ]; then
-    echo "⚠️  .claude/ccw.md not found - CCW instructions not available"
-  fi
-fi
-
-# Check for jq (JSON processor)
-if ! command -v jq &> /dev/null; then
-  echo "⚠️  jq not available (requires root to install)"
-else
+# Check for jq (useful for parsing API responses)
+if command -v jq &> /dev/null; then
   echo "✅ jq available"
+else
+  echo "⚠️  jq not available"
 fi
 
-# Note: We use scripts/gh_helper.sh for GitHub operations (automatic gh/curl fallback)
+# Check environment variables for API access
 if [ -n "$GITHUB_TOKEN" ]; then
-  echo "✅ GITHUB_TOKEN available for gh_helper.sh"
+  echo "✅ GITHUB_TOKEN available for GitHub API"
 else
-  echo "⚠️  GITHUB_TOKEN not set - GitHub operations may be limited"
+  echo "⚠️  GITHUB_TOKEN not set"
 fi
 
-# Install MCP servers globally (best effort)
-echo "📦 Installing MCP servers..."
-MCP_INSTALLED=0
-if npm install -g @playwright/mcp 2>/dev/null; then
-  MCP_INSTALLED=$((MCP_INSTALLED + 1))
-fi
-if npm install -g @upstash/context7-mcp 2>/dev/null; then
-  MCP_INSTALLED=$((MCP_INSTALLED + 1))
-fi
-if npm install -g linear-mcp-server 2>/dev/null; then
-  MCP_INSTALLED=$((MCP_INSTALLED + 1))
-fi
-echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
-
-# Merge .mcp.json into ~/.claude.json for CCW
-# CRITICAL: Must merge, not overwrite, to preserve userID, projects, etc.
-if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "📦 Configuring MCP servers..."
-
-  if command -v jq &> /dev/null; then
-    # jq is available - do proper merge
-    if [ -f ~/.claude.json ]; then
-      # Merge mcpServers into existing ~/.claude.json
-      if jq -s '.[0] * .[1]' ~/.claude.json "$PROJECT_DIR/.mcp.json" > ~/.claude.json.tmp 2>/dev/null; then
-        mv ~/.claude.json.tmp ~/.claude.json
-        echo "✅ MCP servers merged into ~/.claude.json (will load in next session)"
-      else
-        rm -f ~/.claude.json.tmp
-        echo "⚠️  Failed to merge MCP config (jq error)"
-      fi
-    else
-      # No existing config, safe to copy
-      cp "$PROJECT_DIR/.mcp.json" ~/.claude.json
-      echo "✅ MCP servers configured in ~/.claude.json (will load in next session)"
-    fi
-  else
-    # jq not available - warn user
-    echo "⚠️  jq not available - cannot merge MCP config safely"
-    echo "⚠️  Installing jq requires root access in CCW"
-    echo "⚠️  MCP servers installed but not configured in ~/.claude.json"
-  fi
+if [ -n "$LINEAR_API_KEY" ]; then
+  echo "✅ LINEAR_API_KEY available for Linear API"
 else
-  echo "⚠️  .mcp.json not found - MCP servers may not be available"
+  echo "⚠️  LINEAR_API_KEY not set"
 fi
 
-# Configure permissions in .claude/settings.json
-echo "⚙️  Configuring Claude Code permissions..."
-SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
-if [ -f "$SETTINGS_FILE" ]; then
-  if command -v jq &> /dev/null; then
-    # Add permissions to existing settings using jq
-    if jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" 2>/dev/null; then
-      mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
-      echo "✅ Permissions configured"
-    else
-      rm -f "$SETTINGS_FILE.tmp"
-      echo "⚠️  Could not update permissions (jq failed)"
-    fi
-  else
-    echo "⚠️  jq not available, skipping permissions update"
-  fi
-else
-  echo "⚠️  Settings file not found at $SETTINGS_FILE"
-fi
-
-# Install project dependencies (package.json if exists)
+# Install project dependencies
 if [ -f "$PROJECT_DIR/package.json" ]; then
   echo "📦 Installing project dependencies..."
   cd "$PROJECT_DIR" || exit 1
 
-  # Detect package manager
+  # Detect and use appropriate package manager
   if [ -f "pnpm-lock.yaml" ]; then
-    if pnpm install 2>&1 | grep -v "WARN"; then
-      echo "✅ Dependencies installed (pnpm)"
-    else
-      echo "⚠️  Some dependencies may have failed to install"
-    fi
+    pnpm install 2>&1 | grep -v "WARN" && echo "✅ Dependencies installed (pnpm)"
   elif [ -f "yarn.lock" ]; then
-    if yarn install 2>&1 | grep -v "warning"; then
-      echo "✅ Dependencies installed (yarn)"
-    else
-      echo "⚠️  Some dependencies may have failed to install"
-    fi
+    yarn install 2>&1 | grep -v "warning" && echo "✅ Dependencies installed (yarn)"
   elif [ -f "bun.lockb" ]; then
-    if bun install 2>&1; then
-      echo "✅ Dependencies installed (bun)"
-    else
-      echo "⚠️  Some dependencies may have failed to install"
-    fi
+    bun install 2>&1 && echo "✅ Dependencies installed (bun)"
   else
-    if npm install 2>&1 | grep -v "WARN"; then
-      echo "✅ Dependencies installed (npm)"
-    else
-      echo "⚠️  Some dependencies may have failed to install"
-    fi
+    npm install 2>&1 | grep -v "WARN" && echo "✅ Dependencies installed (npm)"
   fi
 fi
 
-# Install Python dependencies if requirements.txt exists
-if [ -f "$PROJECT_DIR/requirements.txt" ]; then
-  echo "📦 Installing Python dependencies..."
-  if pip install -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -1; then
-    echo "✅ Python dependencies installed"
-  else
-    echo "⚠️  Some Python dependencies may have failed to install"
-  fi
-fi
-
-# Persist environment variables for session (if CLAUDE_ENV_FILE is set)
-if [ -n "$CLAUDE_ENV_FILE" ]; then
-  # Write npm token to npmrc if NPM_TOKEN is set
-  if [ -n "$NPM_TOKEN" ]; then
-    if echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc 2>/dev/null; then
-      echo "NPM_CONFIGURED=true" >> "$CLAUDE_ENV_FILE"
-      echo "✅ npm token configured"
-    else
-      echo "⚠️  Failed to configure npm token"
-    fi
+# Configure npm token if available
+if [ -n "$NPM_TOKEN" ] && [ -n "$CLAUDE_ENV_FILE" ]; then
+  if echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc 2>/dev/null; then
+    echo "NPM_CONFIGURED=true" >> "$CLAUDE_ENV_FILE"
+    echo "✅ npm token configured"
   fi
 fi
 
 echo ""
 echo "✅ CCW environment setup complete!"
 echo ""
-echo "Environment status:"
-if [ -f ~/.claude/CLAUDE.md ]; then
-  echo "  ✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
-fi
-if [ -n "$GITHUB_TOKEN" ]; then
-  echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
-else
-  echo "  ⚠️  GITHUB_TOKEN not set"
-fi
-if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "  ✅ MCP configuration (.mcp.json) available"
-  echo "  ℹ️  MCP servers auto-loaded from .mcp.json at session start"
-fi
-if [ -n "$LINEAR_API_KEY" ]; then
-  echo "  ✅ Linear API key detected"
-fi
-if [ -n "$NPM_TOKEN" ] && [ -f ~/.npmrc ]; then
-  echo "  ✅ npm authentication configured"
-fi
+echo "See .claude/ccw.md for instructions on using APIs with curl"
 
 exit 0
