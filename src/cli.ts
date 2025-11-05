@@ -14,6 +14,8 @@ import { handleDoctorCommand } from './cli/commands/doctor.js';
 import { handleDevCommand, type DevOptions } from './cli/commands/dev.js';
 import { recover } from './cli/commands/recover.js';
 import { handleReleaseCommand, type ReleaseType } from './cli/commands/release.js';
+import { setupCCW } from './cli/commands/ccw.js';
+import { setupRemoteDeploy } from './cli/commands/remote-deploy.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
@@ -73,6 +75,28 @@ async function cli() {
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('\n❌ Doctor error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'ccw') {
+    try {
+      await setupCCW(process.cwd());
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ CCW setup error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'remote-deploy') {
+    try {
+      await setupRemoteDeploy(process.cwd());
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Remote deploy setup error:'));
       console.error(chalk.red((error as Error).message));
       process.exit(1);
     }

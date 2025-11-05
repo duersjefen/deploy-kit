@@ -11,6 +11,8 @@ import type { CheckConfig, PreDeploymentChecksConfig, PreDeploymentChecksSummary
  * 1. .deploy-config.json (preDeploymentChecks field)
  * 2. Auto-detection from package.json scripts
  *
+ * Also extracts e2eTestStrategy from .deploy-config.json to control E2E test execution.
+ *
  * @param projectRoot - Project root directory
  * @returns Pre-deployment checks configuration
  */
