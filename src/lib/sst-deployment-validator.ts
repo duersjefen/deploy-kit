@@ -55,6 +55,7 @@ export interface SSTDomainConfig {
   hasDomain: boolean;
   usesSstDns: boolean;
   hasExplicitZone?: boolean; // DEP-25: Whether zone ID is explicitly provided
+  hasOverride?: boolean; // DEP-26: Whether override:true is present in dns config
   domainName?: string;
   baseDomain?: string;
 }
@@ -129,6 +130,7 @@ export function parseSSTDomainConfig(
       hasDomain: false,
       usesSstDns: false,
       hasExplicitZone: false,
+      hasOverride: false,
     };
   }
 
@@ -139,6 +141,10 @@ export function parseSSTDomainConfig(
   // Check if zone ID is explicitly provided (DEP-25)
   // This helps detect when auto-detection may fail
   const hasExplicitZone = /dns:\s*sst\.aws\.dns\(\s*\{[^}]*zone:/.test(contentWithoutComments);
+
+  // Check if override:true is present in dns config (DEP-26)
+  // Required when adding domain to existing CloudFront distribution
+  const hasOverride = /dns:\s*sst\.aws\.dns\(\s*\{[^}]*override:\s*true/.test(contentWithoutComments);
 
   // Extract domain name for this stage (try multiple patterns)
   let domainName: string | undefined;
@@ -199,6 +205,7 @@ export function parseSSTDomainConfig(
     hasDomain: domainConfigured,
     usesSstDns,
     hasExplicitZone,
+    hasOverride,
     domainName,
     baseDomain,
   };
@@ -947,6 +954,117 @@ export async function validateRoute53ZoneReadiness(
     // Don't block deployment on readiness check failures
     console.log(chalk.yellow(`⚠️  Route53 readiness check warning: ${error instanceof Error ? error.message : String(error)}`));
     return { passed: true };
+  }
+}
+
+/**
+ * Validate override:true requirement (Pre-deployment, DEP-26)
+ *
+ * Detects when adding domain to existing CloudFront distribution without override:true.
+ * SST requires explicit permission to update existing distributions, otherwise it
+ * silently ignores domain configuration.
+ *
+ * Scenario:
+ * 1. CloudFront distribution exists WITHOUT custom domain (dev mode)
+ * 2. User adds domain configuration to sst.config.ts
+ * 3. Without override:true, SST will silently skip domain setup
+ *
+ * @param config - Project configuration
+ * @param stage - Deployment stage
+ * @param projectRoot - Project root directory
+ * @returns Validation result
+ */
+export async function validateOverrideRequirement(
+  config: ProjectConfig,
+  stage: DeploymentStage,
+  projectRoot: string
+): Promise<ValidationResult> {
+  const spinner = ora('Checking CloudFront override requirement...').start();
+
+  try {
+    // Parse SST config
+    const sstConfig = parseSSTDomainConfig(projectRoot, stage);
+
+    if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
+      spinner.succeed('✅ Override check skipped (no domain configured)');
+      return { passed: true };
+    }
+
+    if (!sstConfig.usesSstDns) {
+      spinner.succeed('✅ Override check skipped (not using sst.aws.dns())');
+      return { passed: true };
+    }
+
+    // Check if CloudFront distribution exists for this stage
+    let distribution;
+    try {
+      distribution = await findCloudFrontDistribution(
+        config.projectName,
+        stage,
+        config.awsProfile
+      );
+    } catch (error) {
+      // If we can't query CloudFront (no AWS creds, etc.), skip check
+      spinner.succeed('✅ Override check skipped (cannot query CloudFront)');
+      return { passed: true };
+    }
+
+    // No existing distribution - override not required for new deployments
+    if (!distribution) {
+      spinner.succeed('✅ Override not required (new deployment)');
+      return { passed: true };
+    }
+
+    // Distribution exists WITH domain aliases - no override needed
+    if (distribution.aliases && distribution.aliases.length > 0) {
+      spinner.succeed('✅ Override not required (distribution has domain configured)');
+      return { passed: true };
+    }
+
+    // CRITICAL: Distribution exists WITHOUT aliases, user is adding domain
+    // Check if override:true is present
+    if (!sstConfig.hasOverride) {
+      spinner.fail('❌ Domain configuration requires override:true');
+
+      const zoneId = sstConfig.hasExplicitZone
+        ? '(your zone ID)'
+        : 'Z009045037PQISRABUZ1C';
+
+      return {
+        passed: false,
+        issue: 'Missing override:true when adding domain to existing distribution',
+        details: `Your CloudFront distribution exists without a custom domain, but you're attempting to add one.
+
+SST requires explicit permission to update existing distributions:
+
+  dns: sst.aws.dns({
+    zone: "${zoneId}",
+    override: true  // Add this
+  })
+
+Without override:true, SST will silently ignore your domain config and continue using ${distribution.domainName}.
+
+Resources that WON'T be created without this flag:
+- ACM certificate for ${sstConfig.domainName}
+- Route53 DNS records
+- CloudFront custom domain aliases
+
+Current CloudFront: ${distribution.id}
+- Status: ${distribution.status}
+- Domain: ${distribution.domainName} (CloudFront default)
+- Aliases: None (no custom domain configured)`,
+        actionRequired: 'Add override:true to your dns configuration in sst.config.ts',
+      };
+    }
+
+    spinner.succeed('✅ Override:true present - safe to update distribution');
+    return { passed: true };
+  } catch (error) {
+    spinner.fail('❌ Override requirement check failed');
+    return {
+      passed: false,
+      issue: `Override check failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }
 

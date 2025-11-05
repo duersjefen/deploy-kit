@@ -257,3 +257,162 @@ test('parseSSTDomainConfig - hasExplicitZone false when zone in comments', () =>
     rmSync(tempDir, { recursive: true });
   }
 });
+
+/**
+ * DEP-26: Test override:true detection
+ */
+
+test('parseSSTDomainConfig - detects override:true (inline)', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'test-'));
+  try {
+    const sstConfig = `
+      export default $config({
+        app() {
+          return { name: "test" };
+        },
+        async run() {
+          new sst.aws.Nextjs("Web", {
+            domain: stage !== "dev" ? {
+              name: "staging.example.com",
+              dns: sst.aws.dns({ zone: "Z009045037PQISRABUZ1C", override: true })
+            } : undefined
+          });
+        }
+      });
+    `;
+    writeFileSync(join(tempDir, 'sst.config.ts'), sstConfig);
+
+    const result = parseSSTDomainConfig(tempDir, 'staging');
+
+    assert.strictEqual(result?.hasDomain, true);
+    assert.strictEqual(result?.usesSstDns, true);
+    assert.strictEqual(result?.hasOverride, true);
+    assert.strictEqual(result?.domainName, 'staging.example.com');
+  } finally {
+    rmSync(tempDir, { recursive: true });
+  }
+});
+
+test('parseSSTDomainConfig - detects override:true (multiline)', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'test-'));
+  try {
+    const sstConfig = `
+      export default $config({
+        app() {
+          return { name: "test" };
+        },
+        async run() {
+          new sst.aws.Nextjs("Web", {
+            domain: stage !== "dev" ? {
+              name: \`\${stage}.example.com\`,
+              dns: sst.aws.dns({
+                zone: "Z009045037PQISRABUZ1C",
+                override: true
+              }),
+            } : undefined
+          });
+        }
+      });
+    `;
+    writeFileSync(join(tempDir, 'sst.config.ts'), sstConfig);
+
+    const result = parseSSTDomainConfig(tempDir, 'staging');
+
+    assert.strictEqual(result?.hasDomain, true);
+    assert.strictEqual(result?.usesSstDns, true);
+    assert.strictEqual(result?.hasOverride, true);
+  } finally {
+    rmSync(tempDir, { recursive: true });
+  }
+});
+
+test('parseSSTDomainConfig - hasOverride false when not present', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'test-'));
+  try {
+    const sstConfig = `
+      export default $config({
+        app() {
+          return { name: "test" };
+        },
+        async run() {
+          new sst.aws.Nextjs("Web", {
+            domain: stage !== "dev" ? {
+              name: "example.com",
+              dns: sst.aws.dns({ zone: "Z009045037PQISRABUZ1C" })
+            } : undefined
+          });
+        }
+      });
+    `;
+    writeFileSync(join(tempDir, 'sst.config.ts'), sstConfig);
+
+    const result = parseSSTDomainConfig(tempDir, 'staging');
+
+    assert.strictEqual(result?.hasDomain, true);
+    assert.strictEqual(result?.usesSstDns, true);
+    assert.strictEqual(result?.hasOverride, false);
+  } finally {
+    rmSync(tempDir, { recursive: true });
+  }
+});
+
+test('parseSSTDomainConfig - hasOverride false when override:false', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'test-'));
+  try {
+    const sstConfig = `
+      export default $config({
+        app() {
+          return { name: "test" };
+        },
+        async run() {
+          new sst.aws.Nextjs("Web", {
+            domain: stage !== "dev" ? {
+              name: "example.com",
+              dns: sst.aws.dns({ zone: "Z009045037PQISRABUZ1C", override: false })
+            } : undefined
+          });
+        }
+      });
+    `;
+    writeFileSync(join(tempDir, 'sst.config.ts'), sstConfig);
+
+    const result = parseSSTDomainConfig(tempDir, 'staging');
+
+    assert.strictEqual(result?.hasDomain, true);
+    assert.strictEqual(result?.usesSstDns, true);
+    assert.strictEqual(result?.hasOverride, false);
+  } finally {
+    rmSync(tempDir, { recursive: true });
+  }
+});
+
+test('parseSSTDomainConfig - hasOverride false when in comments', () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'test-'));
+  try {
+    const sstConfig = `
+      export default $config({
+        app() {
+          return { name: "test" };
+        },
+        async run() {
+          new sst.aws.Nextjs("Web", {
+            domain: stage !== "dev" ? {
+              name: "example.com",
+              dns: sst.aws.dns({ zone: "Z009045037PQISRABUZ1C" })
+              // override: true
+            } : undefined
+          });
+        }
+      });
+    `;
+    writeFileSync(join(tempDir, 'sst.config.ts'), sstConfig);
+
+    const result = parseSSTDomainConfig(tempDir, 'staging');
+
+    assert.strictEqual(result?.hasDomain, true);
+    assert.strictEqual(result?.usesSstDns, true);
+    assert.strictEqual(result?.hasOverride, false);
+  } finally {
+    rmSync(tempDir, { recursive: true });
+  }
+});
