@@ -24,10 +24,10 @@ source .claude-code/mcp-helpers/setup-mcp.sh
 
 ```bash
 # List my issues
-linear_list_my_issues
+mcp_call_tool "linear" "list_issues" '{"assignee": "me"}'
 
 # Get specific issue
-linear_get_issue "DEP-17"
+mcp_call_tool "linear" "get_issue" '{"id": "DEP-17"}'
 ```
 
 ### 3. Create feature branch
@@ -74,10 +74,8 @@ Linear: DEP-17
 ```bash
 git push -u origin feat/dep-17-feature-description
 
-# Create PR using helper function
-PR_NUMBER=$(github_create_pr \
-  "feat: Implement feature description (DEP-17)" \
-  "## Summary
+# Create PR using gh CLI
+gh pr create --title "feat: Implement feature description (DEP-17)" --body "## Summary
 Brief description
 
 ## Problem (Linear DEP-17)
@@ -91,26 +89,23 @@ How solved
 ✅ pnpm test - All tests passing
 
 Linear: DEP-17
-🤖 Generated with Claude Code")
-
-echo "Created PR #$PR_NUMBER"
+🤖 Generated with Claude Code"
 ```
 
 ### 8. Merge PR
 
 ```bash
-# Merge using helper function
-github_merge_pr "$PR_NUMBER"
+# Merge using gh CLI
+gh pr merge --squash
 
-# Delete feature branch
-github_delete_branch "feat/dep-17-feature-description"
+# Branch deletion is automatic on GitHub after merge
 ```
 
 ### 9. Update Linear issue
 
 ```bash
 # Mark issue as Done
-linear_update_issue_state "DEP-17" "Done"
+mcp_call_tool "linear" "update_issue" '{"id": "issue-id", "state": "Done"}'
 ```
 
 ### 10. Version bump and publish (packages only)
@@ -138,10 +133,12 @@ pnpm run release:patch  # or :minor or :major
 
 ```bash
 # 1. Setup
-source .claude-code/mcp-helpers/setup-mcp.sh
+source .claude-code/mcp-helpers/install-official-mcps.sh
+source .claude-code/mcp-helpers/mcp-client.sh
+start_linear
 
 # 2. Get issue
-linear_get_issue "DEP-17"
+mcp_call_tool "linear" "get_issue" '{"id": "DEP-17"}'
 
 # 3. Create branch
 git checkout -b feat/dep-17-add-retry-logic
@@ -158,14 +155,13 @@ git commit -m "feat: Add retry logic to deployment checks (DEP-17)"
 
 # 7. Push & PR
 git push -u origin feat/dep-17-add-retry-logic
-PR_NUMBER=$(github_create_pr "feat: Add retry logic (DEP-17)" "...")
+gh pr create --title "feat: Add retry logic (DEP-17)" --body "..."
 
 # 8. Merge
-github_merge_pr "$PR_NUMBER"
-github_delete_branch "feat/dep-17-add-retry-logic"
+gh pr merge --squash
 
 # 9. Update Linear
-linear_update_issue_state "DEP-17" "Done"
+mcp_call_tool "linear" "update_issue" '{"id": "issue-id", "state": "Done"}'
 
 # 10. Release (packages only)
 pnpm run release:minor

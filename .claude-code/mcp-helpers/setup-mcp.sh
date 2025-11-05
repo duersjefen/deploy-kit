@@ -44,16 +44,11 @@ else
   echo "⚠️  LINEAR_API_KEY not set - Linear operations will fail"
 fi
 
-# Source helper functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/linear.sh"
-source "$SCRIPT_DIR/github.sh"
-
 echo ""
-echo "✅ MCP-like setup complete!"
+echo "✅ Setup complete!"
 echo ""
-echo "Available functions:"
-echo "  Linear: linear_list_my_issues, linear_get_issue, linear_update_issue_state, linear_create_comment"
-echo "  GitHub: github_create_pr, github_merge_pr, github_delete_branch, github_create_release"
+echo "Note: This script is deprecated. Use install-official-mcps.sh instead for official MCP servers."
 echo ""
-echo "Usage: source .claude-code/mcp-helpers/setup-mcp.sh"
+echo "Usage:"
+echo "  source .claude-code/mcp-helpers/install-official-mcps.sh"
+echo "  source .claude-code/mcp-helpers/mcp-client.sh"

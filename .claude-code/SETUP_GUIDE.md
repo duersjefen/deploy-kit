@@ -2,49 +2,17 @@
 
 This guide shows how to use OFFICIAL MCP servers in Claude Code for the Web (CCW).
 
-## Two Approaches Available
+## Official MCP Servers
 
-### Approach A: Official MCP Servers (Recommended)
-
-**Pros:**
+**What you get:**
 - ✅ Same exact tools as Desktop Claude Code
 - ✅ Full feature parity (Playwright, Context7, Linear)
 - ✅ Well-maintained official packages
-- ✅ More powerful than API wrappers
-
-**Cons:**
-- ⚠️ More complex setup (JSON-RPC client needed)
-- ⚠️ Requires managing server processes
-- ⚠️ Debugging is harder
+- ✅ Consistent API across all tools
 
 **Files:**
 - `.claude-code/mcp-helpers/install-official-mcps.sh` - Install official packages
 - `.claude-code/mcp-helpers/mcp-client.sh` - JSON-RPC client
-
-### Approach B: API Wrappers (Simpler)
-
-**Pros:**
-- ✅ Simple bash functions
-- ✅ Easy to debug (just curl commands)
-- ✅ No server management
-- ✅ Direct API calls
-
-**Cons:**
-- ⚠️ Limited to Linear/GitHub only (no Playwright, Context7)
-- ⚠️ Need to write wrappers for each API
-
-**Files:**
-- `.claude-code/mcp-helpers/linear.sh` - Linear API wrappers
-- `.claude-code/mcp-helpers/github.sh` - GitHub API wrappers
-
-## Recommended Hybrid Approach
-
-**Use BOTH:**
-
-1. **Official MCPs for:** Playwright (browser), Context7 (docs)
-2. **API Wrappers for:** Linear, GitHub (simpler, faster)
-
-Why? Playwright and Context7 don't have simple REST APIs, so the official MCP servers are essential. Linear and GitHub DO have REST APIs, so wrappers are simpler.
 
 ## Setup Instructions
 
@@ -123,25 +91,28 @@ mcp_call_tool "playwright" "browser_click" '{"selector": "button.submit"}'
 mcp_call_tool "context7" "get-library-docs" '{"libraryId": "/vercel/next.js", "topic": "routing"}'
 ```
 
-**Linear (API Wrapper - Simpler):**
+**Linear (Official MCP):**
 ```bash
 # List my issues
-linear_list_my_issues
+mcp_call_tool "linear" "list_issues" '{"assignee": "me"}'
 
 # Get issue details
-linear_get_issue "DEP-17"
+mcp_call_tool "linear" "get_issue" '{"id": "DEP-17"}'
 
 # Update issue state
-linear_update_issue_state "DEP-17" "Done"
+mcp_call_tool "linear" "update_issue" '{"id": "issue-id", "state": "Done"}'
 ```
 
-**GitHub (API Wrapper - Simpler):**
+**GitHub (Use gh CLI directly):**
 ```bash
 # Create PR
-github_create_pr "feat: Add feature" "Description here"
+gh pr create --title "feat: Add feature" --body "Description"
 
 # Merge PR
-github_merge_pr "123"
+gh pr merge 123 --squash
+
+# Delete branch
+gh api repos/duersjefen/deploy-kit/git/refs/heads/branch-name -X DELETE
 ```
 
 ## Cost Estimation (1250€ Credit)

@@ -1,20 +1,21 @@
 # Claude Code for the Web (CCW) Setup
 
-This directory contains helper scripts and templates to use deploy-kit with Claude Code for the Web (CCW), replacing MCP servers with API calls.
+This directory contains helper scripts and templates to use deploy-kit with Claude Code for the Web (CCW) using official MCP servers.
 
 ## Directory Structure
 
 ```
 .claude-code/
-├── mcp-helpers/           # MCP server replacements
-│   ├── setup-mcp.sh      # Setup script for CCW session
-│   ├── linear.sh         # Linear API helper functions
-│   └── github.sh         # GitHub API helper functions
-├── workflows/            # Reusable workflows
-│   └── ship-pr.md        # Complete PR workflow
-├── templates/            # Prompt templates
-│   └── ccw-feature-task.md  # Feature implementation template
-└── README.md             # This file
+├── mcp-helpers/                      # MCP server setup
+│   ├── install-official-mcps.sh     # Install Playwright, Context7, Linear MCP servers
+│   ├── mcp-client.sh                # JSON-RPC client for MCP communication
+│   └── setup-mcp.sh                 # Deprecated - use install + client instead
+├── workflows/                        # Reusable workflows
+│   └── ship-pr.md                   # Complete PR workflow
+├── templates/                        # Prompt templates
+│   └── ccw-feature-task.md          # Feature implementation template
+├── SETUP_GUIDE.md                   # Complete setup guide with cost estimation
+└── README.md                        # This file
 ```
 
 ## Quick Start
@@ -24,44 +25,63 @@ This directory contains helper scripts and templates to use deploy-kit with Clau
 In CCW, create a new environment with these variables:
 
 ```
-GITHUB_TOKEN=ghp_your_token_here
+GITHUB_TOKEN=gho_your_token_here
 LINEAR_API_KEY=lin_api_your_key_here
 NPM_TOKEN=npm_your_token_here
 ```
 
 **How to get tokens:**
 
-- **GitHub Token**: https://github.com/settings/tokens (needs: `repo`, `workflow`)
+- **GitHub Token**: `gh auth token` (on your Mac)
 - **Linear API Key**: https://linear.app/settings/api
-- **NPM Token**: `npm token create` (needs: `Read and Publish`)
+- **NPM Token**: `cat ~/.npmrc | grep _authToken` (on your Mac)
 
 ### 2. Start CCW Session
 
 In your first message to CCW, include:
 
 ```
-Please run the setup script:
+I'm working on deploy-kit. Set up the development environment:
 
-source .claude-code/mcp-helpers/setup-mcp.sh
+# Install official MCP servers (Playwright, Context7, Linear)
+source .claude-code/mcp-helpers/install-official-mcps.sh
 
-This will install jq, GitHub CLI, and load helper functions for Linear and GitHub operations.
+# Start MCP servers
+source .claude-code/mcp-helpers/mcp-client.sh
+start_playwright
+start_context7
+start_linear
+
+Now implement: [DESCRIBE YOUR TASK HERE]
 ```
 
-### 3. Use Helper Functions
+### 3. Use MCP Tools
 
-After setup, you can use these functions:
+After setup, you can use these tools:
 
-**Linear:**
-- `linear_list_my_issues` - List issues assigned to you
-- `linear_get_issue "DEP-17"` - Get issue details
-- `linear_update_issue_state "DEP-17" "Done"` - Update issue state
-- `linear_create_comment "issue-id" "comment text"` - Add comment
+**Playwright (Browser Automation):**
+```bash
+mcp_call_tool "playwright" "browser_navigate" '{"url": "http://localhost:3000"}'
+mcp_call_tool "playwright" "browser_take_screenshot" '{"filename": "test.png"}'
+```
 
-**GitHub:**
-- `github_create_pr "title" "body"` - Create PR from current branch
-- `github_merge_pr "123"` - Merge PR #123 (squash merge)
-- `github_delete_branch "branch-name"` - Delete branch
-- `github_create_release "v1.0.0" "Release v1.0.0" "body"` - Create release
+**Context7 (Library Documentation):**
+```bash
+mcp_call_tool "context7" "get-library-docs" '{"libraryId": "/vercel/next.js", "topic": "routing"}'
+```
+
+**Linear (Issue Tracking):**
+```bash
+mcp_call_tool "linear" "list_issues" '{"assignee": "me"}'
+mcp_call_tool "linear" "get_issue" '{"id": "DEP-17"}'
+mcp_call_tool "linear" "update_issue" '{"id": "issue-id", "state": "Done"}'
+```
+
+**GitHub (Use gh CLI directly):**
+```bash
+gh pr create --title "feat: Add feature" --body "Description"
+gh pr merge --squash
+```
 
 ## Workflows
 
@@ -84,15 +104,14 @@ See `.claude-code/templates/ccw-feature-task.md` for a step-by-step guide to imp
 
 **DO:**
 - ✅ Use templates to give CCW clear workflows
-- ✅ Source setup-mcp.sh at start of each session
+- ✅ Install MCP servers at start of each session
 - ✅ Set environment variables in CCW config (not in prompts)
 - ✅ Copy full workflows from `workflows/` directory into prompts
-- ✅ Use helper functions instead of manual API calls
+- ✅ Use official MCP tools for maximum feature parity with Desktop CC
 
 **DON'T:**
 - ❌ Paste API keys in chat (use environment variables)
-- ❌ Skip the setup script (jq and gh are required)
-- ❌ Try to use Desktop Claude Code's MCP servers (they don't work in CCW)
+- ❌ Skip the MCP installation (required for full functionality)
 - ❌ Expect real-time feedback (CCW is async, check back later)
 
 ## Maximizing Your 1250€ Credit
@@ -112,17 +131,28 @@ See `.claude-code/templates/ccw-feature-task.md` for a step-by-step guide to imp
 
 ## Troubleshooting
 
-**"jq: command not found"**
-- Run `source .claude-code/mcp-helpers/setup-mcp.sh` again
+**"MCP server not responding"**
+```bash
+# Check if server is running
+ps aux | grep mcp-server
+
+# Restart server
+mcp_stop_server "playwright"
+start_playwright
+```
+
+**"LINEAR_API_KEY not set"**
+- Check CCW environment configuration
+- Verify variable is spelled exactly: `LINEAR_API_KEY`
 
 **"GitHub CLI not authenticated"**
 - Check GITHUB_TOKEN is set in CCW environment
-- Re-run setup script
-
-**"Linear API request failed"**
-- Check LINEAR_API_KEY is set in CCW environment
-- Verify API key at https://linear.app/settings/api
+- Re-run install script
 
 **"npm publish failed"**
 - Check NPM_TOKEN is set in CCW environment
 - Verify token: `npm whoami` (should show your username)
+
+## More Information
+
+See `SETUP_GUIDE.md` for complete setup instructions and cost estimation for your €1250 credit.
