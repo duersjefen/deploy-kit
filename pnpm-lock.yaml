@@ -50,6 +50,9 @@ importers:
       prompts:
         specifier: ^2.4.2
         version: 2.4.2
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
       ws:
         specifier: ^8.18.3
         version: 8.18.3
@@ -78,9 +81,6 @@ importers:
       lint-staged:
         specifier: ^16.2.6
         version: 16.2.6
-      typescript:
-        specifier: ^5.3.3
-        version: 5.9.3
 
 packages:
 
