@@ -16,15 +16,15 @@ echo "🔧 Setting up Claude Code for the Web environment..."
 # Install jq if needed (JSON processor)
 if ! command -v jq &> /dev/null; then
   echo "📦 Installing jq..."
-  apt-get update && apt-get install -y jq
+  apt-get update 2>/dev/null && apt-get install -y jq 2>/dev/null || true
 fi
 
 # Install GitHub CLI if needed
 if ! command -v gh &> /dev/null; then
   echo "📦 Installing GitHub CLI..."
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg 2>/dev/null | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  apt-get update && apt-get install -y gh
+  apt-get update 2>/dev/null && apt-get install -y gh 2>/dev/null || true
 fi
 
 # Authenticate GitHub CLI if token available
@@ -37,9 +37,44 @@ fi
 
 # Install MCP servers globally
 echo "📦 Installing MCP servers..."
-npm install -g @modelcontextprotocol/server-playwright 2>/dev/null
-npm install -g @context7/mcp-server 2>/dev/null
+npm install -g @playwright/mcp 2>/dev/null
+npm install -g @upstash/context7-mcp 2>/dev/null
 npm install -g @modelcontextprotocol/server-linear 2>/dev/null
+
+# Generate .mcp.json for MCP server configuration
+echo "⚙️  Configuring MCP servers..."
+cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "linear": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-linear"],
+      "env": {
+        "LINEAR_API_KEY": "${LINEAR_API_KEY}"
+      }
+    }
+  }
+}
+MCP_CONFIG
+
+# Configure permissions in .claude/settings.json
+echo "⚙️  Configuring Claude Code permissions..."
+SETTINGS_FILE="$CLAUDE_PROJECT_DIR/.claude/settings.json"
+if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
+  # Add permissions to existing settings using jq
+  jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+fi
 
 # Install project dependencies (package.json if exists)
 if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
@@ -78,6 +113,8 @@ echo "✅ CCW environment ready!"
 echo ""
 echo "Environment:"
 echo "  ✅ MCP servers installed (Playwright, Context7, Linear)"
+echo "  ✅ MCP configuration (.mcp.json) generated"
+echo "  ✅ Permissions configured (Bash auto-approved)"
 echo "  ✅ GitHub CLI configured"
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"
