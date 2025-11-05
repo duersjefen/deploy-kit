@@ -9,6 +9,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server as HttpServer } from 'http';
 import type { DashboardEvent } from '../data/dashboard/event-schemas.js';
+import type { DashboardState } from '../data/dashboard/dashboard-state.js';
 import { getEventEmitter } from './event-emitter.js';
 import chalk from 'chalk';
 
@@ -24,6 +25,11 @@ interface WsEventMessage {
   event: DashboardEvent;
 }
 
+interface WsStateMessage {
+  type: 'state';
+  state: DashboardState;
+}
+
 /**
  * WebSocket server wrapper
  */
@@ -31,9 +37,11 @@ export class DashboardWebSocketServer {
   private wss: WebSocketServer;
   private clients: Set<WebSocket> = new Set();
   private eventListener: ((event: DashboardEvent) => void) | null = null;
+  private getState: (() => DashboardState) | null = null;
 
-  constructor(httpServer: HttpServer) {
+  constructor(httpServer: HttpServer, getState?: () => DashboardState) {
     this.wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+    this.getState = getState || null;
     this.setupEventBroadcasting();
     this.setupWebSocketHandlers();
   }
@@ -65,6 +73,17 @@ export class DashboardWebSocketServer {
         status: 'connected',
         timestamp: Date.now(),
       });
+
+      // Send current state to the newly connected client
+      if (this.getState) {
+        const currentState = this.getState();
+        const stateMessage: WsStateMessage = {
+          type: 'state',
+          state: currentState,
+        };
+        this.sendToClient(ws, stateMessage);
+        console.log(chalk.gray('📡 Sent current state to client'));
+      }
 
       // Handle client messages
       ws.on('message', (data: Buffer) => {
