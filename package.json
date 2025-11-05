@@ -77,11 +77,13 @@
     "cli-table3": "^0.6.5",
     "dotenv": "^16.3.1",
     "execa": "^8.0.1",
+    "fs-extra": "^11.3.2",
     "node-fetch": "^3.3.2",
     "ora": "^8.0.1",
     "prompts": "^2.4.2"
   },
   "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
     "@types/node": "^24.0.0",
     "@types/prompts": "^2.4.9",
     "c8": "^10.1.3",

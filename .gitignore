@@ -138,3 +138,5 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude-code/CCW_ENV_PASTE.txt
 .claude-code/*_TOKENS*
+
+.claude-code/.env*
