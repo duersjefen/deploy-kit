@@ -249,7 +249,7 @@ graph TD
 - **Purpose**: Development server with comprehensive pre-flight checks
 - **Features**:
   - 8 automated pre-flight checks
-  - Intelligent error detection (recursive scripts, canary features, Pulumi outputs)
+  - Intelligent error detection (recursive scripts, Next.js canary features, Pulumi outputs)
   - Hybrid auto-fix system (safe auto-fixes, risky manual-only)
   - SST output filtering and grouping
   - Port conflict resolution
@@ -559,9 +559,8 @@ pie title Test Coverage by Module
 
 1. **Plugin System** - Extensible deployment engines
 2. **Blue-Green Deployments** - Zero-downtime updates
-3. **Canary Deployments** - Gradual traffic shifting
-4. **Distributed Tracing** - Full deployment observability
-5. **Persistent History** - S3/DynamoDB audit logs
+3. **Distributed Tracing** - Full deployment observability
+4. **Persistent History** - S3/DynamoDB audit logs
 
 ### Scalability Targets
 
