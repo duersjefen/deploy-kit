@@ -87,7 +87,7 @@ export class DeploymentKit {
     this.lockManager = getLockManager(projectRoot);
     this.healthChecker = getHealthChecker(config);
     this.preChecks = getPreDeploymentChecks(config, projectRoot);
-    this.postChecks = getPostDeploymentChecks(config);
+    this.postChecks = getPostDeploymentChecks(config, projectRoot);
     this.orchestrator = new DeploymentOrchestrator(config, projectRoot);
     this.rollbackManager = new RollbackManager(this.lockManager);
     this.cloudFrontOps = new CloudFrontOperations(config, config.awsProfile);

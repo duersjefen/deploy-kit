@@ -71,6 +71,7 @@
   "dependencies": {
     "@aws-sdk/client-acm": "^3.921.0",
     "@aws-sdk/client-cloudfront": "^3.921.0",
+    "@aws-sdk/client-lambda": "^3.921.0",
     "@aws-sdk/client-route-53": "^3.921.0",
     "@aws-sdk/client-s3": "^3.921.0",
     "@smithy/node-http-handler": "^4.4.4",

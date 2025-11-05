@@ -3,6 +3,12 @@ import { promisify } from 'util';
 import chalk from 'chalk';
 import ora from 'ora';
 import { ProjectConfig, DeploymentStage } from '../types.js';
+import {
+  validateACMCertificate,
+  validateCloudFrontDomainAlias,
+  validateRoute53DNSRecords,
+  validateNextjsServerLambda,
+} from '../lib/sst-deployment-validator.js';
 
 const execAsync = promisify(exec);
 
@@ -10,7 +16,7 @@ const execAsync = promisify(exec);
  * Post-deployment safety checks
  * Validates deployment was successful
  */
-export function getPostDeploymentChecks(config: ProjectConfig) {
+export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: string = process.cwd()) {
   /**
    * Check Lambda/application is responding
    */
@@ -123,6 +129,98 @@ export function getPostDeploymentChecks(config: ProjectConfig) {
   }
 
   /**
+   * Validate SST domain configuration (DEP-19 Phase 2)
+   *
+   * Checks ACM certificate, CloudFront aliases, Route53 DNS records, and Lambda functions
+   */
+  async function validateSSTDomainConfiguration(stage: DeploymentStage, projectRoot: string): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  SST domain validation skipped (non-SST infrastructure)'));
+      return;
+    }
+
+    console.log(chalk.bold('\n🔍 Validating SST Domain Configuration (DEP-19 Phase 2)\n'));
+
+    const results = [];
+
+    // Check 2A: ACM Certificate
+    try {
+      const certResult = await validateACMCertificate(config, stage, projectRoot);
+      results.push({ name: 'ACM Certificate', result: certResult });
+    } catch (error) {
+      results.push({
+        name: 'ACM Certificate',
+        result: { passed: false, issue: error instanceof Error ? error.message : 'Unknown error' },
+      });
+    }
+
+    // Check 2B: CloudFront Domain Alias
+    try {
+      const cfResult = await validateCloudFrontDomainAlias(config, stage, projectRoot);
+      results.push({ name: 'CloudFront Domain Alias', result: cfResult });
+    } catch (error) {
+      results.push({
+        name: 'CloudFront Domain Alias',
+        result: { passed: false, issue: error instanceof Error ? error.message : 'Unknown error' },
+      });
+    }
+
+    // Check 2C: Route53 DNS Records
+    try {
+      const dnsResult = await validateRoute53DNSRecords(config, stage, projectRoot);
+      results.push({ name: 'Route53 DNS Records', result: dnsResult });
+    } catch (error) {
+      results.push({
+        name: 'Route53 DNS Records',
+        result: { passed: false, issue: error instanceof Error ? error.message : 'Unknown error' },
+      });
+    }
+
+    // Check 2D: Next.js Server Lambda
+    try {
+      const lambdaResult = await validateNextjsServerLambda(config, stage);
+      results.push({ name: 'Next.js Server Lambda', result: lambdaResult });
+    } catch (error) {
+      results.push({
+        name: 'Next.js Server Lambda',
+        result: { passed: false, issue: error instanceof Error ? error.message : 'Unknown error' },
+      });
+    }
+
+    // Print summary
+    console.log(chalk.bold('\n' + '─'.repeat(50)));
+    console.log(chalk.bold('📋 SST Domain Validation Summary'));
+    console.log(chalk.bold('─'.repeat(50)) + '\n');
+
+    let allPassed = true;
+    for (const { name, result } of results) {
+      const icon = result.passed ? '✅' : '❌';
+      const color = result.passed ? chalk.green : chalk.red;
+
+      console.log(`${icon} ${color(name.padEnd(25))} ${result.passed ? 'OK' : result.issue || 'Failed'}`);
+
+      if (!result.passed) {
+        allPassed = false;
+        if (result.details) {
+          console.log(chalk.gray(`   Details: ${result.details}`));
+        }
+        if (result.actionRequired) {
+          console.log(chalk.yellow(`   Action: ${result.actionRequired}`));
+        }
+      }
+    }
+
+    console.log(chalk.bold('\n' + '─'.repeat(50)) + '\n');
+
+    if (!allPassed) {
+      console.log(chalk.yellow('⚠️  Some SST domain validations failed - see details above\n'));
+      throw new Error('SST domain configuration incomplete - deployment may not work correctly');
+    } else {
+      console.log(chalk.green('✅ All SST domain validations passed!\n'));
+    }
+  }
+
+  /**
    * Run all post-deployment checks
    */
   async function run(stage: DeploymentStage): Promise<void> {
@@ -131,17 +229,25 @@ export function getPostDeploymentChecks(config: ProjectConfig) {
     try {
       await checkApplicationHealth(stage);
       await validateCloudFrontOAC(stage);
-      
+
       if (config.database) {
         await checkDatabaseConnection(stage);
       }
 
+      // DEP-19 Phase 2: SST domain configuration validation
+      await validateSSTDomainConfiguration(stage, projectRoot);
+
       console.log(chalk.green(`\n✅ Post-deployment validation complete!\n`));
     } catch (error) {
       console.log(chalk.yellow(`\n⚠️  Post-deployment validation had issues (check manually)\n`));
-      // Don't throw - post-deploy checks are informational
+      console.log(chalk.yellow(`   Error: ${error instanceof Error ? error.message : String(error)}\n`));
+      // Throw error for domain validation failures - these are critical
+      if (error instanceof Error && error.message.includes('SST domain configuration')) {
+        throw error;
+      }
+      // Don't throw for other post-deploy checks - they are informational
     }
   }
 
-  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, run };
+  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, run };
 }

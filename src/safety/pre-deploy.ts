@@ -10,6 +10,11 @@ import {
   findReservedVarsInSstConfig,
   formatReservedVarError,
 } from '../lib/lambda-reserved-vars.js';
+import {
+  ensureRoute53Zone,
+  validateRoute53ZoneExistence,
+  validateRoute53ZoneReadiness,
+} from '../lib/sst-deployment-validator.js';
 
 const execAsync = promisify(exec);
 
@@ -223,11 +228,95 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
       // If certificate setup fails, warn but don't block deployment
       console.log(chalk.yellow(`⚠️  SSL certificate check failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
       console.log(chalk.yellow('   You may need to set up the certificate manually.'));
-      checks.push({ 
-        name: 'SSL Certificate', 
-        status: 'warning', 
-        message: error instanceof Error ? error.message : 'Unknown error' 
+      checks.push({
+        name: 'SSL Certificate',
+        status: 'warning',
+        message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  }
+
+  /**
+   * Check and ensure Route53 hosted zone exists (DEP-19 Phase 1, DEP-20)
+   *
+   * This prevents deployment failures when SST requires Route53 zones.
+   * Offers to auto-create zones if missing.
+   */
+  async function checkRoute53Zone(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  Route53 check skipped (non-SST infrastructure)'));
+      checks.push({ name: 'Route53 Zone', status: 'warning', message: 'Skipped (non-SST)' });
+      return;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // First, check if Route53 zone exists
+      const existenceResult = await validateRoute53ZoneExistence(config, stage, projectRoot);
+
+      if (!existenceResult.passed) {
+        // Zone is missing - try to auto-create (DEP-20)
+        console.log(chalk.yellow('\n⚠️  Route53 zone validation failed:'));
+        console.log(chalk.yellow(`   ${existenceResult.issue}`));
+        console.log(chalk.yellow(`   ${existenceResult.details}\n`));
+
+        try {
+          const zoneInfo = await ensureRoute53Zone(config, stage, projectRoot);
+
+          if (zoneInfo) {
+            checkCount++;
+            checks.push({
+              name: 'Route53 Zone',
+              status: 'success',
+              message: `Created: ${zoneInfo.zone.Id}`,
+            });
+          } else {
+            // No zone needed (domain not configured)
+            checks.push({
+              name: 'Route53 Zone',
+              status: 'warning',
+              message: 'Skipped (no domain configured)',
+            });
+          }
+        } catch (createError) {
+          checks.push({
+            name: 'Route53 Zone',
+            status: 'failed',
+            message: createError instanceof Error ? createError.message : 'Zone creation failed',
+          });
+          throw createError;
+        }
+      } else {
+        // Zone exists - validate readiness (DEP-19 Phase 1, Check 1B)
+        const readinessResult = await validateRoute53ZoneReadiness(config, stage, projectRoot);
+
+        if (!readinessResult.passed) {
+          checks.push({
+            name: 'Route53 Zone',
+            status: 'failed',
+            message: readinessResult.issue || 'Zone not ready',
+          });
+          throw new Error(readinessResult.issue || 'Route53 zone validation failed');
+        }
+
+        checkCount++;
+        checks.push({
+          name: 'Route53 Zone',
+          status: 'success',
+          message: 'Ready for deployment',
+        });
+      }
+
+      console.log(chalk.green(`✅ Route53 zone validated (${((Date.now() - startTime) / 1000).toFixed(1)}s)\n`));
+    } catch (error) {
+      console.log(chalk.red(`❌ Route53 zone check failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      checks.push({
+        name: 'Route53 Zone',
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
     }
   }
 
@@ -271,6 +360,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
       }
 
       await checkSslCertificate(stage);
+      await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
 
       printSummary();
       console.log(chalk.green(`✨ All pre-deployment checks passed!\n`));
@@ -281,5 +371,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, run };
 }
