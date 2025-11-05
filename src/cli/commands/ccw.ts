@@ -131,15 +131,36 @@ if npm install -g linear-mcp-server 2>/dev/null; then
 fi
 echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
-# Verify .mcp.json exists (should be committed to git)
+# Merge .mcp.json into ~/.claude.json for CCW
+# CRITICAL: Must merge, not overwrite, to preserve userID, projects, etc.
 if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "✅ MCP configuration (.mcp.json) found"
+  echo "📦 Configuring MCP servers..."
+
+  if command -v jq &> /dev/null; then
+    # jq is available - do proper merge
+    if [ -f ~/.claude.json ]; then
+      # Merge mcpServers into existing ~/.claude.json
+      if jq -s '.[0] * .[1]' ~/.claude.json "$PROJECT_DIR/.mcp.json" > ~/.claude.json.tmp 2>/dev/null; then
+        mv ~/.claude.json.tmp ~/.claude.json
+        echo "✅ MCP servers merged into ~/.claude.json (will load in next session)"
+      else
+        rm -f ~/.claude.json.tmp
+        echo "⚠️  Failed to merge MCP config (jq error)"
+      fi
+    else
+      # No existing config, safe to copy
+      cp "$PROJECT_DIR/.mcp.json" ~/.claude.json
+      echo "✅ MCP servers configured in ~/.claude.json (will load in next session)"
+    fi
+  else
+    # jq not available - warn user
+    echo "⚠️  jq not available - cannot merge MCP config safely"
+    echo "⚠️  Installing jq requires root access in CCW"
+    echo "⚠️  MCP servers installed but not configured in ~/.claude.json"
+  fi
 else
   echo "⚠️  .mcp.json not found - MCP servers may not be available"
 fi
-
-# Note: MCP servers are auto-discovered from .mcp.json (committed to git)
-# No need to modify ~/.claude.json - it happens too late in SessionStart hook
 
 # Configure permissions in .claude/settings.json
 echo "⚙️  Configuring Claude Code permissions..."
@@ -257,13 +278,23 @@ exit 0
 async function createGitHubHelper(scriptsDir: string): Promise<void> {
   await fs.ensureDir(scriptsDir);
 
-  const helperScript = await fs.readFile(path.join(__dirname, '../../../scripts/gh_helper.sh'), 'utf-8');
-
   const helperPath = path.join(scriptsDir, 'gh_helper.sh');
-  await fs.writeFile(helperPath, helperScript);
-  await fs.chmod(helperPath, 0o755);
 
-  console.log(chalk.green('✅ Created scripts/gh_helper.sh (GitHub CLI wrapper)'));
+  // If gh_helper.sh already exists in scripts/, skip (it's committed to git)
+  if (await fs.pathExists(helperPath)) {
+    console.log(chalk.gray('   scripts/gh_helper.sh already exists (skipping)'));
+    return;
+  }
+
+  // Try to read from project root (if running from published package, this won't exist)
+  const sourceHelperPath = path.join(process.cwd(), 'scripts', 'gh_helper.sh');
+  if (await fs.pathExists(sourceHelperPath)) {
+    await fs.copy(sourceHelperPath, helperPath);
+    await fs.chmod(helperPath, 0o755);
+    console.log(chalk.green('✅ Created scripts/gh_helper.sh (GitHub CLI wrapper)'));
+  } else {
+    console.log(chalk.yellow('⚠️  gh_helper.sh template not found (script may need manual creation)'));
+  }
 }
 
 /**

@@ -55,15 +55,33 @@ if npm install -g linear-mcp-server 2>/dev/null; then
 fi
 echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
-# Copy .mcp.json to ~/.claude.json for CCW
-# Note: This configures MCP servers for future sessions
-# MCP servers are loaded at session start, before SessionStart hook runs
+# Merge .mcp.json into ~/.claude.json for CCW
+# CRITICAL: Must merge, not overwrite, to preserve userID, projects, etc.
 if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "✅ MCP configuration (.mcp.json) found"
+  echo "📦 Configuring MCP servers..."
 
-  # Copy .mcp.json to ~/.claude.json
-  cp "$PROJECT_DIR/.mcp.json" ~/.claude.json
-  echo "✅ MCP servers configured in ~/.claude.json (will load in next session)"
+  if command -v jq &> /dev/null; then
+    # jq is available - do proper merge
+    if [ -f ~/.claude.json ]; then
+      # Merge mcpServers into existing ~/.claude.json
+      if jq -s '.[0] * .[1]' ~/.claude.json "$PROJECT_DIR/.mcp.json" > ~/.claude.json.tmp 2>/dev/null; then
+        mv ~/.claude.json.tmp ~/.claude.json
+        echo "✅ MCP servers merged into ~/.claude.json (will load in next session)"
+      else
+        rm -f ~/.claude.json.tmp
+        echo "⚠️  Failed to merge MCP config (jq error)"
+      fi
+    else
+      # No existing config, safe to copy
+      cp "$PROJECT_DIR/.mcp.json" ~/.claude.json
+      echo "✅ MCP servers configured in ~/.claude.json (will load in next session)"
+    fi
+  else
+    # jq not available - warn user
+    echo "⚠️  jq not available - cannot merge MCP config safely"
+    echo "⚠️  Installing jq requires root access in CCW"
+    echo "⚠️  MCP servers installed but not configured in ~/.claude.json"
+  fi
 else
   echo "⚠️  .mcp.json not found - MCP servers may not be available"
 fi
@@ -156,9 +174,9 @@ if [ -n "$GITHUB_TOKEN" ]; then
 else
   echo "  ⚠️  GITHUB_TOKEN not set"
 fi
-if [ -f ~/.claude.json ]; then
-  echo "  ✅ MCP servers configured in ~/.claude.json"
-  echo "  ℹ️  If MCP tools are not available, start a new CCW session"
+if [ -f "$PROJECT_DIR/.mcp.json" ]; then
+  echo "  ✅ MCP configuration (.mcp.json) available"
+  echo "  ℹ️  MCP servers auto-loaded from .mcp.json at session start"
 fi
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"

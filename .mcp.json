@@ -3,17 +3,26 @@
     "playwright": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
+      "args": [
+        "-y",
+        "@playwright/mcp@latest"
+      ]
     },
     "context7": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
     },
     "linear": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "linear-mcp-server"],
+      "args": [
+        "-y",
+        "linear-mcp-server"
+      ],
       "env": {
         "LINEAR_API_KEY": "${LINEAR_API_KEY}"
       }
