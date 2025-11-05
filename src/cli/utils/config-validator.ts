@@ -16,6 +16,20 @@ import type { HealthCheck } from '../../types.js';
 export type UnvalidatedConfig = Record<string, any>;
 
 /**
+ * E2E test execution strategy configuration
+ */
+export interface E2ETestStrategy {
+  /** Whether E2E tests are enabled */
+  enabled: boolean;
+  /** Stages that should run E2E tests (e.g., ["production"]) */
+  stages?: string[];
+  /** Optional custom test script (default: "npm run test:e2e") */
+  script?: string;
+  /** Optional timeout in milliseconds (default: 180000 = 3 minutes) */
+  timeout?: number;
+}
+
+/**
  * Validated deployment configuration structure
  *
  * Represents the complete configuration for a deploy-kit project after validation.
@@ -31,6 +45,7 @@ export interface DeployConfig {
   awsProfile?: string;
   requireCleanGit?: boolean;
   runTestsBeforeDeploy?: boolean;
+  e2eTestStrategy?: E2ETestStrategy;
   stageConfig: Record<string, any>;
   healthChecks?: HealthCheck[];
   hooks?: Record<string, string>;
@@ -134,6 +149,39 @@ export function validateConfig(config: UnvalidatedConfig): ValidationResult {
       }
       if (check.expectedStatus && typeof check.expectedStatus !== 'number') {
         errors.push(`Health check ${i}: expectedStatus must be a number`);
+      }
+    }
+  }
+
+  // E2E test strategy
+  if (config.e2eTestStrategy) {
+    if (typeof config.e2eTestStrategy !== 'object') {
+      errors.push('e2eTestStrategy must be an object');
+    } else {
+      if (typeof config.e2eTestStrategy.enabled !== 'boolean') {
+        errors.push('e2eTestStrategy.enabled must be a boolean');
+      }
+
+      if (config.e2eTestStrategy.stages) {
+        if (!Array.isArray(config.e2eTestStrategy.stages)) {
+          errors.push('e2eTestStrategy.stages must be an array');
+        } else if (config.stages) {
+          // Validate that stages exist in config.stages
+          const invalidStages = config.e2eTestStrategy.stages.filter(
+            (s: string) => !config.stages.includes(s)
+          );
+          if (invalidStages.length > 0) {
+            errors.push(`e2eTestStrategy.stages contains unknown stages: ${invalidStages.join(', ')}`);
+          }
+        }
+      }
+
+      if (config.e2eTestStrategy.script && typeof config.e2eTestStrategy.script !== 'string') {
+        errors.push('e2eTestStrategy.script must be a string');
+      }
+
+      if (config.e2eTestStrategy.timeout && typeof config.e2eTestStrategy.timeout !== 'number') {
+        errors.push('e2eTestStrategy.timeout must be a number');
       }
     }
   }

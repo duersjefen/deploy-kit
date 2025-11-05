@@ -13,6 +13,7 @@ import type {
   PreDeploymentChecksConfig,
   PreDeploymentChecksSummary,
 } from './types.js';
+import type { E2ETestStrategy } from '../cli/utils/config-validator.js';
 
 /**
  * Load pre-deployment checks configuration
@@ -20,6 +21,8 @@ import type {
  * Tries to load from:
  * 1. .deploy-config.json (preDeploymentChecks field)
  * 2. Auto-detection from package.json scripts
+ *
+ * Also extracts e2eTestStrategy from .deploy-config.json to control E2E test execution.
  *
  * @param projectRoot - Project root directory
  * @returns Pre-deployment checks configuration
@@ -29,9 +32,18 @@ export function loadChecksConfig(
 ): PreDeploymentChecksConfig {
   // Try loading from .deploy-config.json first
   const deployConfigPath = join(projectRoot, '.deploy-config.json');
+  let e2eTestStrategy: E2ETestStrategy | undefined;
+
   if (existsSync(deployConfigPath)) {
     try {
       const deployConfig = JSON.parse(readFileSync(deployConfigPath, 'utf-8'));
+
+      // Extract e2eTestStrategy if defined
+      if (deployConfig.e2eTestStrategy) {
+        e2eTestStrategy = deployConfig.e2eTestStrategy;
+      }
+
+      // If preDeploymentChecks is explicitly configured, use it
       if (deployConfig.preDeploymentChecks) {
         return deployConfig.preDeploymentChecks;
       }
@@ -43,7 +55,7 @@ export function loadChecksConfig(
   }
 
   // Fallback to auto-detection from package.json
-  return autoDetectChecks(projectRoot);
+  return autoDetectChecks(projectRoot, e2eTestStrategy);
 }
 
 /**
@@ -56,10 +68,19 @@ export function loadChecksConfig(
  * - test:e2e
  * - lint
  *
+ * E2E test behavior is controlled by e2eTestStrategy:
+ * - If strategy.enabled = false, E2E tests are skipped
+ * - If strategy.stages defined, only runs on those stages
+ * - If not configured, defaults to production-only: { enabled: true, stages: ['production'] }
+ *
  * @param projectRoot - Project root directory
+ * @param e2eTestStrategy - Optional E2E test execution strategy from .deploy-config.json
  * @returns Auto-detected checks configuration
  */
-function autoDetectChecks(projectRoot: string): PreDeploymentChecksConfig {
+function autoDetectChecks(
+  projectRoot: string,
+  e2eTestStrategy?: E2ETestStrategy
+): PreDeploymentChecksConfig {
   const packageJsonPath = join(projectRoot, 'package.json');
   if (!existsSync(packageJsonPath)) {
     return {};
@@ -94,13 +115,19 @@ function autoDetectChecks(projectRoot: string): PreDeploymentChecksConfig {
       };
     }
 
-    // Detect E2E tests
+    // Detect E2E tests (controlled by e2eTestStrategy)
     if (scripts['test:e2e']) {
-      config.e2e = {
-        command: 'npm run test:e2e',
-        timeout: 180000, // 3 minutes
-        stages: ['staging', 'production'], // Only run on staging/production
-      };
+      // Default to production-only if not configured
+      const strategy = e2eTestStrategy || { enabled: true, stages: ['production'] };
+
+      // Skip E2E tests if explicitly disabled
+      if (strategy.enabled !== false) {
+        config.e2e = {
+          command: strategy.script || 'npm run test:e2e',
+          timeout: strategy.timeout || 180000, // 3 minutes default
+          stages: strategy.stages || ['production'], // Production-only default
+        };
+      }
     }
 
     // Detect linting
@@ -193,7 +220,7 @@ export function getChecksForStage(
     name: 'E2E Tests',
     command: 'npm run test:e2e',
     timeout: 180000,
-    stages: ['staging', 'production'],
+    stages: ['production'], // Default: production-only (configurable via e2eTestStrategy)
   });
   if (e2e && shouldRunCheck(e2e, stage)) {
     checks.push(e2e);
