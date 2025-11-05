@@ -43,7 +43,7 @@ export function getDevChecks(
     { name: 'SST Lock', check: createSstLockCheck(projectRoot) },
     { name: 'Running SST Processes', check: createRunningSstProcessCheck(projectRoot, verbose) },
     { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
-    { name: 'SST Config', check: createSstConfigCheck(projectRoot) },
+    { name: 'SST Config', check: createSstConfigCheck(projectRoot, 'dev') }, // Use 'dev' mode - warnings only for deployment issues
     { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot, config) },
     { name: 'Lambda Reserved Environment Variables', check: createLambdaReservedVarsCheck(projectRoot, verbose) },
     { name: 'Recursive SST Dev Script', check: createRecursiveSstDevCheck(projectRoot) },

@@ -59,7 +59,7 @@ function getSstEnvironmentChecks(
     { name: 'AWS Credentials', check: createAwsCredentialsCheck(projectRoot, config) },
     { name: 'SST Lock', check: createSstLockCheck(projectRoot) },
     { name: 'Running SST Processes', check: createRunningSstProcessCheck(projectRoot, verbose) },
-    { name: 'SST Config', check: createSstConfigCheck(projectRoot) },
+    { name: 'SST Config', check: createSstConfigCheck(projectRoot, 'deploy') }, // Use 'deploy' mode for strict validation
     { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot, config) },
     { name: 'Lambda Reserved Environment Variables', check: createLambdaReservedVarsCheck(projectRoot, verbose) },
     { name: 'Pulumi Output Usage', check: createPulumiOutputUsageCheck(projectRoot) },
