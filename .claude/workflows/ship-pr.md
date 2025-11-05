@@ -21,7 +21,8 @@ git add -A && git commit -m "[descriptive conventional commit message]"
 # Analyze git diff to understand WHAT changed, then write WHY it changed
 git push -u origin $(git branch --show-current)
 
-gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
+# Use gh_helper for compatibility (auto-detects gh CLI or uses curl)
+"$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr create --title "[title from commits]" --body "$(cat <<'EOF'
 ## Summary
 [Detailed summary of what changed and why]
 
@@ -40,7 +41,8 @@ EOF
 
 **2. Merge PR**
 ```bash
-gh pr merge $(gh pr view --json number -q .number) --squash --delete-branch 2>&1 | grep -v "already used by worktree" || true
+# Use gh_helper for compatibility (auto-detects gh CLI or uses curl)
+"$CLAUDE_PROJECT_DIR/scripts/gh_helper.sh" pr merge --squash --delete-branch
 ```
 
 If merge fails due to conflicts:
