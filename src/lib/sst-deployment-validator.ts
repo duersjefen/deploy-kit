@@ -54,6 +54,7 @@ import { trackZoneCreation, isZoneRecent, getZoneAgeMinutes } from './zone-track
 export interface SSTDomainConfig {
   hasDomain: boolean;
   usesSstDns: boolean;
+  hasExplicitZone?: boolean; // DEP-25: Whether zone ID is explicitly provided
   domainName?: string;
   baseDomain?: string;
 }
@@ -127,11 +128,17 @@ export function parseSSTDomainConfig(
     return {
       hasDomain: false,
       usesSstDns: false,
+      hasExplicitZone: false,
     };
   }
 
-  // Check if using sst.aws.dns()
-  const usesSstDns = contentWithoutComments.includes('dns: sst.aws.dns()');
+  // Check if using sst.aws.dns() (with or without arguments)
+  // Matches: dns: sst.aws.dns(), dns:sst.aws.dns(), dns: sst.aws.dns({ zone: "..." })
+  const usesSstDns = /dns:\s*sst\.aws\.dns\(/.test(contentWithoutComments);
+
+  // Check if zone ID is explicitly provided (DEP-25)
+  // This helps detect when auto-detection may fail
+  const hasExplicitZone = /dns:\s*sst\.aws\.dns\(\s*\{[^}]*zone:/.test(contentWithoutComments);
 
   // Extract domain name for this stage (try multiple patterns)
   let domainName: string | undefined;
@@ -156,8 +163,9 @@ export function parseSSTDomainConfig(
   }
 
   // Pattern 3: Template literal `${stage}.example.com`
+  // Handles: domain: `${stage}.example.com` and name: `${stage}.example.com`
   if (!domainName) {
-    const templatePattern = /domain:\s*['"`]\$\{[^}]*\}\.([a-z0-9-]+\.[a-z]{2,})['"`]/i;
+    const templatePattern = /(?:domain|name):\s*['"`]\$\{[^}]*\}\.([a-z0-9-]+\.[a-z]{2,})['"`]/i;
     const templateMatch = contentWithoutComments.match(templatePattern);
     if (templateMatch) {
       // Reconstruct domain with current stage
@@ -175,8 +183,10 @@ export function parseSSTDomainConfig(
   }
 
   // Pattern 5: Multi-part domain object { name: "example.com", dns: ... }
+  // Handles: domain: { name: "..." } and domain: condition ? { name: "..." } : undefined
   if (!domainName) {
-    const objectDomainPattern = /domain:\s*\{[^}]*name:\s*['"`]([a-z0-9-.]+)['"`]/i;
+    // More flexible pattern that handles ternary operators before the object
+    const objectDomainPattern = /domain:[^{]*\{[^}]*name:\s*['"`\$\{]([a-z0-9-.]+)(?:['"`\}]|\\)/i;
     const objectDomainMatch = contentWithoutComments.match(objectDomainPattern);
     if (objectDomainMatch) {
       domainName = objectDomainMatch[1];
@@ -188,6 +198,7 @@ export function parseSSTDomainConfig(
   return {
     hasDomain: domainConfigured,
     usesSstDns,
+    hasExplicitZone,
     domainName,
     baseDomain,
   };
@@ -769,6 +780,26 @@ export async function validateRoute53ZoneExistence(
     }
 
     spinner.succeed(`✅ Route53 hosted zone found: ${zoneInfo.zone.Id}`);
+
+    // DEP-25: Warn if using subdomain without explicit zone ID
+    // SST auto-detection can fail for subdomains, leading to silent failures
+    if (
+      sstConfig.usesSstDns &&
+      !sstConfig.hasExplicitZone &&
+      sstConfig.domainName &&
+      sstConfig.domainName.includes('.') &&
+      sstConfig.domainName !== sstConfig.baseDomain
+    ) {
+      console.log(chalk.yellow('\n⚠️  Using sst.aws.dns() without explicit zone ID'));
+      console.log(chalk.yellow('   SST auto-detection can fail for subdomains'));
+      console.log(chalk.yellow(`   Detected subdomain: ${sstConfig.domainName}`));
+      console.log(chalk.yellow('   Recommendation: Specify zone ID explicitly\n'));
+      console.log(chalk.gray('   Example:'));
+      console.log(chalk.gray('   dns: sst.aws.dns({'));
+      console.log(chalk.gray(`     zone: "${zoneInfo.zone.Id?.replace('/hostedzone/', '')}"  // Your Route53 hosted zone ID`));
+      console.log(chalk.gray('   })\n'));
+    }
+
     return { passed: true };
   } catch (error) {
     spinner.fail('❌ Route53 zone check failed');
