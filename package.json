@@ -24,10 +24,11 @@
     "dist",
     "bin",
     "templates",
+    "dashboard-ui/dist",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && pnpm --filter dashboard-ui build",
     "watch": "tsc --watch",
     "test": "node --test 'dist/**/*.test.js'",
     "test:unit": "node --test --test-name-pattern='(?!Integration)' 'dist/**/*.test.js'",

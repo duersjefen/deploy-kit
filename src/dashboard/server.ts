@@ -70,6 +70,17 @@ export class DashboardServer {
    * Start the dashboard server
    */
   async start(): Promise<{ url: string; port: number }> {
+    // Check if UI is built
+    if (!existsSync(this.options.uiDistPath)) {
+      throw new Error(
+        chalk.red('Dashboard UI not found!\n') +
+        chalk.yellow(`Expected location: ${this.options.uiDistPath}\n\n`) +
+        chalk.gray('The dashboard UI needs to be built. If you installed deploy-kit from npm,\n') +
+        chalk.gray('this is a package issue. Please report it.\n\n') +
+        chalk.gray('If you\'re developing deploy-kit, run: pnpm build')
+      );
+    }
+
     // Create HTTP server
     this.httpServer = createServer((req, res) => {
       this.handleHttpRequest(req, res);

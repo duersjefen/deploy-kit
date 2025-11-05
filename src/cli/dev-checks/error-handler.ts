@@ -45,6 +45,13 @@ export async function handleSstDevError(error: Error, projectRoot?: string): Pro
   const logContent = projectRoot ? readSstLogFile(projectRoot) : null;
   const detailedError = logContent ? parseErrorFromLog(logContent) : null;
 
+  // Check log content for lock errors (even if error message is generic)
+  const logHasLockError = logContent && (
+    logContent.toLowerCase().includes('concurrent update') ||
+    logContent.toLowerCase().includes('locked') ||
+    logContent.includes('sst unlock')
+  );
+
   console.log(chalk.bold.red('🔍 Error Analysis:\n'));
 
   // Pattern 1: Pulumi Output Misuse
@@ -92,7 +99,8 @@ export async function handleSstDevError(error: Error, projectRoot?: string): Pro
   }
 
   // Pattern 4: Concurrent Update / Lock
-  if (message.includes('concurrent update') || message.includes('lock')) {
+  // Check both error message AND log file content for lock errors
+  if (message.includes('concurrent update') || message.includes('lock') || logHasLockError) {
     await handleLockError(projectRoot);
     return;
   }
