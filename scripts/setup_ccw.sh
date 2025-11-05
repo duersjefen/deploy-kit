@@ -18,6 +18,15 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 echo "🔧 Setting up Claude Code for the Web environment..."
 echo "📂 Project: $PROJECT_DIR"
 
+# Copy global CLAUDE.md to ~/.claude/CLAUDE.md
+if [ -f "$PROJECT_DIR/.claude/global_claude.md" ]; then
+  mkdir -p ~/.claude
+  cp "$PROJECT_DIR/.claude/global_claude.md" ~/.claude/CLAUDE.md
+  echo "✅ Global CLAUDE.md copied to ~/.claude/CLAUDE.md"
+else
+  echo "⚠️  No .claude/global_claude.md found (run 'dk ccw' locally to create)"
+fi
+
 # Check for jq (JSON processor)
 if ! command -v jq &> /dev/null; then
   echo "⚠️  jq not available (requires root to install)"
@@ -188,6 +197,9 @@ echo ""
 echo "✅ CCW environment setup complete!"
 echo ""
 echo "Environment status:"
+if [ -f ~/.claude/CLAUDE.md ]; then
+  echo "  ✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
+fi
 if [ -n "$GITHUB_TOKEN" ]; then
   echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
 else

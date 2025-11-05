@@ -51,11 +51,12 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
 }
 
 /**
- * Copy ~/.claude/CLAUDE.md to .claude/GLOBAL_CLAUDE.md
+ * Copy ~/.claude/CLAUDE.md to .claude/global_claude.md
+ * This gets committed to git and copied to ~/.claude/CLAUDE.md on CCW server
  */
 async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
   const globalClaudePath = path.join(os.homedir(), '.claude', 'CLAUDE.md');
-  const targetPath = path.join(claudeDir, 'GLOBAL_CLAUDE.md');
+  const targetPath = path.join(claudeDir, 'global_claude.md');
 
   if (!await fs.pathExists(globalClaudePath)) {
     console.log(chalk.yellow('⚠️  ~/.claude/CLAUDE.md not found - skipping global rules'));
@@ -64,7 +65,7 @@ async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
 
   await fs.ensureDir(claudeDir);
   await fs.copy(globalClaudePath, targetPath);
-  console.log(chalk.green('✅ Copied ~/.claude/CLAUDE.md → .claude/GLOBAL_CLAUDE.md'));
+  console.log(chalk.green('✅ Copied ~/.claude/CLAUDE.md → .claude/global_claude.md'));
 }
 
 /**
@@ -121,6 +122,15 @@ PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-$PWD}"
 
 echo "🔧 Setting up Claude Code for the Web environment..."
 echo "📂 Project: $PROJECT_DIR"
+
+# Copy global CLAUDE.md to ~/.claude/CLAUDE.md
+if [ -f "$PROJECT_DIR/.claude/global_claude.md" ]; then
+  mkdir -p ~/.claude
+  cp "$PROJECT_DIR/.claude/global_claude.md" ~/.claude/CLAUDE.md
+  echo "✅ Global CLAUDE.md copied to ~/.claude/CLAUDE.md"
+else
+  echo "⚠️  No .claude/global_claude.md found (run 'dk ccw' locally to create)"
+fi
 
 # Check for jq (JSON processor)
 if ! command -v jq &> /dev/null; then
@@ -292,6 +302,9 @@ echo ""
 echo "✅ CCW environment setup complete!"
 echo ""
 echo "Environment status:"
+if [ -f ~/.claude/CLAUDE.md ]; then
+  echo "  ✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
+fi
 if [ -n "$GITHUB_TOKEN" ]; then
   echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
 else
@@ -374,8 +387,8 @@ async function createSettingsJson(claudeDir: string, scriptsDir: string): Promis
 }
 
 /**
- * Update project CLAUDE.md with @ sourcing pattern
- * Uses official CCW best practice: @.claude/GLOBAL_CLAUDE.md
+ * Update project CLAUDE.md with CCW info (optional)
+ * No longer adds sourcing pattern - global rules are copied to ~/.claude/CLAUDE.md on CCW server
  */
 async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Promise<void> {
   const claudeMdPath = path.join(projectRoot, 'CLAUDE.md');
@@ -385,30 +398,9 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
     return;
   }
 
-  let content = await fs.readFile(claudeMdPath, 'utf-8');
-
-  // Check if sourcing already exists
-  if (content.includes('@.claude/GLOBAL_CLAUDE.md') || content.includes('.claude/GLOBAL_CLAUDE.md')) {
-    console.log(chalk.gray('   CLAUDE.md already sources global rules'));
-    return;
-  }
-
-  // Add @ sourcing after title (official CCW pattern)
-  const lines = content.split('\n');
-  const titleIndex = lines.findIndex((line: string) => line.startsWith('#'));
-
-  if (titleIndex !== -1) {
-    lines.splice(titleIndex + 1, 0, '',
-      '**IMPORTANT:** See your global CLAUDE.md for universal rules that apply to ALL projects.',
-      '- **Local users:** Use `~/.claude/CLAUDE.md` (your personal global file)',
-      '- **CCW users:** Use `.claude/GLOBAL_CLAUDE.md` (auto-setup by `dk ccw`)',
-      ''
-    );
-
-    content = lines.join('\n');
-    await fs.writeFile(claudeMdPath, content);
-    console.log(chalk.green('✅ Updated ./CLAUDE.md with @ sourcing pattern'));
-  }
+  // No changes needed - project CLAUDE.md stays clean with only project-specific instructions
+  // Global rules are handled by copying .claude/global_claude.md → ~/.claude/CLAUDE.md on CCW server
+  console.log(chalk.gray('   CLAUDE.md remains project-specific (global rules handled by CCW setup)'));
 }
 
 /**
@@ -490,8 +482,9 @@ function outputUsageInstructions(): void {
 5. Start your task - setup runs automatically!
 
 The SessionStart hook will:
+  ✅ Copy global CLAUDE.md to ~/.claude/CLAUDE.md
   ✅ Auto-install MCP servers (Playwright, Context7, Linear)
-  ✅ Auto-authenticate GitHub CLI
+  ✅ Register MCP servers in Claude Code configuration
   ✅ Auto-install project dependencies
   ✅ Configure npm for publishing
 
