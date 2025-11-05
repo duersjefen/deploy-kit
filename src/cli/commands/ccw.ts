@@ -27,8 +27,8 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   // 2. Create SessionStart hook script
   await createSessionStartScript(scriptsDir);
 
-  // 3. Create GitHub helper script
-  await createGitHubHelper(scriptsDir);
+  // 3. Create GitHub helper script in .claude/ folder
+  await createGitHubHelper(claudeDir);
 
   // 4. Create .claude/settings.json with hooks
   await createSettingsJson(claudeDir, scriptsDir);
@@ -125,7 +125,7 @@ else
   echo "✅ jq available"
 fi
 
-# Note: We use scripts/gh_helper.sh for GitHub operations (automatic gh/curl fallback)
+# Note: We use .claude/gh_helper.sh for GitHub operations (automatic gh/curl fallback)
 if [ -n "$GITHUB_TOKEN" ]; then
   echo "✅ GITHUB_TOKEN available for gh_helper.sh"
 else
@@ -287,28 +287,23 @@ exit 0
 }
 
 /**
- * Create scripts/gh_helper.sh - GitHub CLI wrapper with curl fallback
+ * Create .claude/gh_helper.sh - GitHub CLI wrapper with curl fallback
  * Auto-detects gh CLI availability and falls back to GitHub API
  */
-async function createGitHubHelper(scriptsDir: string): Promise<void> {
-  await fs.ensureDir(scriptsDir);
+async function createGitHubHelper(claudeDir: string): Promise<void> {
+  await fs.ensureDir(claudeDir);
 
-  const helperPath = path.join(scriptsDir, 'gh_helper.sh');
+  const helperPath = path.join(claudeDir, 'gh_helper.sh');
 
-  // If gh_helper.sh already exists in scripts/, skip (it's committed to git)
-  if (await fs.pathExists(helperPath)) {
-    console.log(chalk.gray('   scripts/gh_helper.sh already exists (skipping)'));
-    return;
-  }
-
-  // Try to read from project root (if running from published package, this won't exist)
+  // Try to read from scripts/ folder (the source location)
   const sourceHelperPath = path.join(process.cwd(), 'scripts', 'gh_helper.sh');
   if (await fs.pathExists(sourceHelperPath)) {
     await fs.copy(sourceHelperPath, helperPath);
     await fs.chmod(helperPath, 0o755);
-    console.log(chalk.green('✅ Created scripts/gh_helper.sh (GitHub CLI wrapper)'));
+    console.log(chalk.green('✅ Created .claude/gh_helper.sh (GitHub CLI wrapper)'));
   } else {
-    console.log(chalk.yellow('⚠️  gh_helper.sh template not found (script may need manual creation)'));
+    console.log(chalk.yellow('⚠️  gh_helper.sh template not found at scripts/gh_helper.sh'));
+    console.log(chalk.yellow('     Will be created from package when available'));
   }
 }
 

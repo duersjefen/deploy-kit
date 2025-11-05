@@ -24,8 +24,8 @@ You are currently in **Claude Code for Web (CCW)** environment. This is detected
   git add -A
   git commit -m "message"
   git push -u origin branch-name
-  bash scripts/gh_helper.sh pr create --title "..." --body "..."
-  bash scripts/gh_helper.sh pr merge PR_NUMBER --squash
+  bash .claude/gh_helper.sh pr create --title "..." --body "..."
+  bash .claude/gh_helper.sh pr merge PR_NUMBER --squash
   ```
 
 **DO NOT attempt to publish to npm:**
@@ -38,13 +38,13 @@ You are currently in **Claude Code for Web (CCW)** environment. This is detected
 **GitHub Operations (via gh_helper.sh):**
 ```bash
 # Create PR
-bash scripts/gh_helper.sh pr create --title "..." --body "..."
+bash .claude/gh_helper.sh pr create --title "..." --body "..."
 
 # Merge PR
-bash scripts/gh_helper.sh pr merge PR_NUMBER --squash
+bash .claude/gh_helper.sh pr merge PR_NUMBER --squash
 
 # Get PR status
-bash scripts/gh_helper.sh pr view PR_NUMBER
+bash .claude/gh_helper.sh pr view PR_NUMBER
 ```
 
 **Git Operations:**
@@ -80,7 +80,7 @@ git commit -m "feat: Description"
 git push -u origin branch-name
 
 # 6. Create PR
-bash scripts/gh_helper.sh pr create \
+bash .claude/gh_helper.sh pr create \
   --title "feat: Description (DEP-X)" \
   --body "## Summary
 Changes made...
@@ -88,7 +88,7 @@ Changes made...
 Linear: DEP-X"
 
 # 7. Merge PR
-bash scripts/gh_helper.sh pr merge PR_NUMBER --squash
+bash .claude/gh_helper.sh pr merge PR_NUMBER --squash
 
 # 8. Fetch updated main
 git fetch origin main:main
