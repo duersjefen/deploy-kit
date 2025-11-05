@@ -37,14 +37,11 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   // 5. Update project CLAUDE.md with @ sourcing
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
-  // 6. Update .gitignore to exclude settings.json
-  await updateGitignore(projectRoot);
-
-  // 7. Detect and output required tokens
+  // 6. Detect and output required tokens
   const requiredTokens = await detectRequiredTokens(projectRoot);
   outputTokenList(requiredTokens);
 
-  // 8. Output CCW usage instructions
+  // 7. Output CCW usage instructions
   outputUsageInstructions();
 
   console.log(chalk.green('\n✅ CCW setup complete!\n'));
@@ -305,30 +302,13 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
 }
 
 /**
- * Update .gitignore to exclude .claude/settings.json
- * Settings are auto-generated on SessionStart, should not be committed
+ * Update .gitignore
+ * Not needed - .claude/settings.json should be committed (contains SessionStart hook config)
+ * The setup script modifies it at runtime in CCW to add permissions
  */
 async function updateGitignore(projectRoot: string): Promise<void> {
-  const gitignorePath = path.join(projectRoot, '.gitignore');
-
-  if (!await fs.pathExists(gitignorePath)) {
-    console.log(chalk.yellow('⚠️  .gitignore not found - skipping update'));
-    return;
-  }
-
-  let content = await fs.readFile(gitignorePath, 'utf-8');
-
-  // Check if already ignored
-  if (content.includes('.claude/settings.json')) {
-    console.log(chalk.gray('   .gitignore already excludes .claude/settings.json'));
-    return;
-  }
-
-  // Add to gitignore
-  content += '\n# Claude Code CCW settings (auto-generated on session start)\n.claude/settings.json\n';
-  await fs.writeFile(gitignorePath, content);
-
-  console.log(chalk.green('✅ Updated .gitignore to exclude .claude/settings.json'));
+  // No-op - settings.json needs to be in git for SessionStart hook to work
+  console.log(chalk.gray('   .claude/settings.json will be committed (contains SessionStart hook)'));
 }
 
 /**

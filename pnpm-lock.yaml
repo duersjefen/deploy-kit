@@ -20,6 +20,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.921.0
         version: 3.922.0
+      '@smithy/node-http-handler':
+        specifier: ^4.4.4
+        version: 4.4.4
       chalk:
         specifier: ^5.3.0
         version: 5.6.2
