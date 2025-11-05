@@ -252,7 +252,9 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
 
   if (titleIndex !== -1) {
     lines.splice(titleIndex + 1, 0, '',
-      '**IMPORTANT:** See @.claude/GLOBAL_CLAUDE.md for universal rules that apply to ALL projects.',
+      '**IMPORTANT:** See your global CLAUDE.md for universal rules that apply to ALL projects.',
+      '- **Local users:** Use `~/.claude/CLAUDE.md` (your personal global file)',
+      '- **CCW users:** Use `.claude/GLOBAL_CLAUDE.md` (auto-setup by `dk ccw`)',
       ''
     );
 
@@ -268,7 +270,7 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
  */
 async function updateGitignore(projectRoot: string): Promise<void> {
   // No-op - keeping for backward compatibility
-  // All files in .claude-code/ are safe to commit
+  // All files in .claude/ are safe to commit
   console.log(chalk.gray('   .gitignore update not needed (no token files created)'));
 }
 
