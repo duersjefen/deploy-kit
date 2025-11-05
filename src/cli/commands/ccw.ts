@@ -37,10 +37,13 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   // 5. Create .claude/settings.json with hooks
   await createSettingsJson(claudeDir, scriptsDir);
 
-  // 6. Update project CLAUDE.md with @ sourcing
+  // 6. Create .mcp.json for MCP server configuration
+  await createMcpJson(projectRoot);
+
+  // 7. Update project CLAUDE.md with @ sourcing
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
-  // 7. Detect and output required tokens
+  // 8. Detect and output required tokens
   const requiredTokens = await detectRequiredTokens(projectRoot);
   outputTokenList(requiredTokens);
 
@@ -160,67 +163,15 @@ if npm install -g linear-mcp-server 2>/dev/null; then
 fi
 echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
-# Generate .mcp.json for MCP server configuration
-echo "⚙️  Configuring MCP servers..."
-cat > "$PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
-{
-  "mcpServers": {
-    "playwright": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
-    },
-    "context7": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"]
-    },
-    "linear": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "linear-mcp-server"],
-      "env": {
-        "LINEAR_API_KEY": "\${LINEAR_API_KEY}"
-      }
-    }
-  }
-}
-MCP_CONFIG
-
-# Register MCP servers in ~/.claude.json
-echo "⚙️  Registering MCP servers in Claude Code..."
-CLAUDE_CONFIG="$HOME/.claude.json"
-if [ -f "$CLAUDE_CONFIG" ] && command -v jq &> /dev/null; then
-  # Backup original config
-  cp "$CLAUDE_CONFIG" "$CLAUDE_CONFIG.backup" 2>/dev/null
-
-  # Add MCP servers to the project configuration
-  jq --arg project_dir "$PROJECT_DIR" \\
-     '.projects[$project_dir].mcpServers = {
-       "playwright": {
-         "type": "stdio",
-         "command": "npx",
-         "args": ["-y", "@playwright/mcp@latest"]
-       },
-       "context7": {
-         "type": "stdio",
-         "command": "npx",
-         "args": ["-y", "@upstash/context7-mcp"]
-       },
-       "linear": {
-         "type": "stdio",
-         "command": "npx",
-         "args": ["-y", "linear-mcp-server"],
-         "env": {
-           "LINEAR_API_KEY": env.LINEAR_API_KEY
-         }
-       }
-     }' "$CLAUDE_CONFIG" > "$CLAUDE_CONFIG.tmp" 2>/dev/null && mv "$CLAUDE_CONFIG.tmp" "$CLAUDE_CONFIG"
-
-  echo "✅ MCP servers registered in Claude Code for $PROJECT_DIR"
+# Verify .mcp.json exists (should be committed to git)
+if [ -f "$PROJECT_DIR/.mcp.json" ]; then
+  echo "✅ MCP configuration (.mcp.json) found"
 else
-  echo "⚠️  Could not register MCP servers (jq or ~/.claude.json not available)"
+  echo "⚠️  .mcp.json not found - MCP servers may not be available"
 fi
+
+# Note: MCP servers are auto-discovered from .mcp.json (committed to git)
+# No need to modify ~/.claude.json - it happens too late in SessionStart hook
 
 # Configure permissions in .claude/settings.json
 echo "⚙️  Configuring Claude Code permissions..."
@@ -311,15 +262,8 @@ else
   echo "  ⚠️  GITHUB_TOKEN not set"
 fi
 if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "  ✅ MCP configuration (.mcp.json) generated"
-fi
-if [ -f "$HOME/.claude.json" ] && command -v jq &> /dev/null; then
-  MCP_COUNT=$(jq --arg project_dir "$PROJECT_DIR" '.projects[$project_dir].mcpServers | length' "$HOME/.claude.json" 2>/dev/null || echo "0")
-  if [ "$MCP_COUNT" -gt 0 ]; then
-    echo "  ✅ MCP servers registered in Claude Code ($MCP_COUNT servers)"
-  else
-    echo "  ⚠️  MCP servers not registered (restart session to load)"
-  fi
+  echo "  ✅ MCP configuration (.mcp.json) available"
+  echo "  ℹ️  MCP servers auto-loaded from .mcp.json at session start"
 fi
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"
@@ -414,6 +358,40 @@ async function updateGitignore(projectRoot: string): Promise<void> {
 }
 
 /**
+ * Create .mcp.json for MCP server configuration
+ * This file is committed to git so MCP servers load immediately when CCW session starts
+ */
+async function createMcpJson(projectRoot: string): Promise<void> {
+  const mcpJsonPath = path.join(projectRoot, '.mcp.json');
+
+  const mcpConfig = {
+    mcpServers: {
+      playwright: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@playwright/mcp@latest'],
+      },
+      context7: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@upstash/context7-mcp'],
+      },
+      linear: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'linear-mcp-server'],
+        env: {
+          LINEAR_API_KEY: '${LINEAR_API_KEY}',
+        },
+      },
+    },
+  };
+
+  await fs.writeFile(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
+  console.log(chalk.green('✅ Created .mcp.json (MCP servers will load at session start)'));
+}
+
+/**
  * Detect which tokens are required
  */
 async function detectRequiredTokens(projectRoot: string): Promise<string[]> {
@@ -481,10 +459,14 @@ function outputUsageInstructions(): void {
 4. Select this repository
 5. Start your task - setup runs automatically!
 
+MCP servers load automatically from .mcp.json:
+  ✅ Playwright - Browser automation
+  ✅ Context7 - Library documentation
+  ✅ Linear - Issue tracking
+
 The SessionStart hook will:
   ✅ Copy global CLAUDE.md to ~/.claude/CLAUDE.md
-  ✅ Auto-install MCP servers (Playwright, Context7, Linear)
-  ✅ Register MCP servers in Claude Code configuration
+  ✅ Install MCP server packages (Playwright, Context7, Linear)
   ✅ Auto-install project dependencies
   ✅ Configure npm for publishing
 
