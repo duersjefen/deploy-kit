@@ -4,10 +4,10 @@
  */
 
 import chalk from 'chalk';
-import { spawn, ChildProcess } from 'child_process';
 import { resolveAwsProfile } from '../utils/aws-profile-detector.js';
 import type { ProjectConfig } from '../../types.js';
 import { handleSstDevError } from './error-handler.js';
+import { SstProcessManager } from './sst-process-manager.js';
 
 export interface DevOptions {
   skipChecks?: boolean;   // Skip pre-flight checks (for advanced users)
@@ -18,6 +18,7 @@ export interface DevOptions {
 
 /**
  * Start SST dev server with proper environment and error handling
+ * Now includes dashboard integration for real-time monitoring
  */
 export async function startSstDev(
   projectRoot: string,
@@ -44,45 +45,26 @@ export async function startSstDev(
   const profile = config ? resolveAwsProfile(config, projectRoot) : undefined;
 
   try {
-    // Use inherit stdio for direct SST output (simple, reliable)
-    // Future: Web dashboard will provide enhanced visualization (DEP-XX)
-    const child: ChildProcess = spawn(command, {
-      stdio: 'inherit',
-      shell: true,
-      cwd: projectRoot,
+    // Create SST process manager with dashboard integration
+    const manager = new SstProcessManager({
+      projectRoot,
+      command,
+      port: selectedPort,
       env: {
-        ...process.env,
         ...(profile && { AWS_PROFILE: profile }),
       },
+      verbose: options.verbose,
     });
 
-    // Handle graceful shutdown
-    const cleanup = () => {
-      console.log(chalk.yellow('\n\n🛑 Stopping SST dev server...'));
-      if (child.pid) {
-        try {
-          process.kill(child.pid, 'SIGINT');
-        } catch (err) {
-          // Process may have already exited
-        }
-      }
-      process.exit(0);
-    };
+    // Start the process (handles output parsing and event emission)
+    await manager.start();
 
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
+    // Wait for process to exit
+    const exitCode = await manager.waitForExit();
 
-    await new Promise<void>((resolve, reject) => {
-      child.on('exit', (code) => {
-        if (code === 0 || code === null) {
-          resolve();
-        } else {
-          reject(new Error(`SST exited with code ${code}`));
-        }
-      });
-
-      child.on('error', reject);
-    });
+    if (exitCode !== 0) {
+      throw new Error(`SST exited with code ${exitCode}`);
+    }
   } catch (error) {
     console.error(chalk.red('\n❌ SST dev failed\n'));
     await handleSstDevError(error as Error, projectRoot);
