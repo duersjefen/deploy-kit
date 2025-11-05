@@ -54,13 +54,16 @@ git push
 
 **3. Sync main worktree**
 
-Detect if Conductor worktree:
+Detect environment and sync appropriately:
 ```bash
-if [[ $(git rev-parse --show-toplevel) == */.conductor/* ]]; then
+if [ "$CLAUDE_CODE_REMOTE" = "true" ]; then
+  # CCW: No sync needed, user will open new session
+  echo "✅ PR merged to main! Close this session to work on main."
+elif [[ $(git rev-parse --show-toplevel) == */.conductor/* ]]; then
   # Conductor: Update parent main
   git -C $(git rev-parse --show-toplevel | sed 's|/.conductor/[^/]*$||') pull origin main
 else
-  # Regular: Switch to main
+  # Regular local: Switch to main
   git checkout main && git pull origin main
 fi
 ```
