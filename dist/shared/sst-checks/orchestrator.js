@@ -92,9 +92,6 @@ export async function runSstEnvironmentChecks(projectRoot, config, stage, verbos
             failed: 0,
         };
     }
-    console.log(chalk.bold.cyan('\n🔍 Running SST Environment Checks'));
-    console.log(chalk.gray(`   Stage: ${stage}`));
-    console.log(chalk.gray(`   Checks: ${checks.length}\n`));
     const startTime = Date.now();
     const results = [];
     let passed = 0;
