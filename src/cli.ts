@@ -308,7 +308,7 @@ async function cli() {
         verbose,
       });
 
-      const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, canary: canaryOptions, maintenance: maintenanceOptions });
+      const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, skipPreChecks: true, canary: canaryOptions, maintenance: maintenanceOptions });
 
       // Complete stage 3 (SST Deployment)
       progress.completeStage(3, result.success);

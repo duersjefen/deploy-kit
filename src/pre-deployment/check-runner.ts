@@ -5,6 +5,8 @@
  */
 
 import { spawn } from 'child_process';
+import chalk from 'chalk';
+import { CollapsibleOutput } from '../lib/collapsible-output.js';
 import type { CheckConfig, CheckResult } from './types.js';
 
 /**
@@ -40,6 +42,13 @@ export async function runCheck(
   const startTime = Date.now();
   const checkName = check.name || check.command;
 
+  // Create collapsible output section
+  const collapsible = new CollapsibleOutput();
+
+  // Start section with header and command
+  const header = chalk.cyan(`\n▶ Running: ${checkName}`) + '\n' + chalk.gray(`  Command: ${check.command}\n`);
+  collapsible.startSection(header);
+
   return new Promise((resolve) => {
     // Parse command and arguments
     const [command, ...args] = check.command.split(' ');
@@ -54,12 +63,13 @@ export async function runCheck(
     let stdout = '';
     let stderr = '';
 
-    // Stream stdout to console and capture
+    // Stream stdout to console and capture (de-emphasize with gray color)
     if (child.stdout) {
       child.stdout.on('data', (data: Buffer) => {
         const text = data.toString();
         stdout += text;
-        process.stdout.write(text); // Stream to console
+        // Write through collapsible output (de-emphasized)
+        collapsible.writeLine(chalk.gray(text));
       });
     }
 
@@ -68,17 +78,25 @@ export async function runCheck(
       child.stderr.on('data', (data: Buffer) => {
         const text = data.toString();
         stderr += text;
-        process.stderr.write(text); // Stream to console
+        // Write errors (keep visible, no gray)
+        collapsible.writeLine(text);
       });
     }
 
     // Set timeout
     const timeout = setTimeout(() => {
       child.kill('SIGTERM');
+      const duration = Date.now() - startTime;
+      const durationSecs = (duration / 1000).toFixed(1);
+      const summary = chalk.red(`❌ ${checkName} timed out (${durationSecs}s)`);
+
+      // Keep expanded on failure
+      collapsible.keepExpanded(summary);
+
       resolve({
         name: checkName,
         success: false,
-        duration: Date.now() - startTime,
+        duration,
         output: stdout,
         error: `Timeout after ${check.timeout}ms`,
       });
@@ -88,8 +106,13 @@ export async function runCheck(
     child.on('close', (code: number | null) => {
       clearTimeout(timeout);
       const duration = Date.now() - startTime;
+      const durationSecs = (duration / 1000).toFixed(1);
 
       if (code === 0) {
+        // Collapse to just success summary
+        const summary = chalk.green(`✅ ${checkName} passed (${durationSecs}s)`);
+        collapsible.collapse(summary);
+
         resolve({
           name: checkName,
           success: true,
@@ -97,6 +120,10 @@ export async function runCheck(
           output: stdout,
         });
       } else {
+        // Keep expanded on failure
+        const summary = chalk.red(`❌ ${checkName} failed (${durationSecs}s)`);
+        collapsible.keepExpanded(summary);
+
         resolve({
           name: checkName,
           success: false,
@@ -110,10 +137,17 @@ export async function runCheck(
     // Handle spawn errors
     child.on('error', (error: Error) => {
       clearTimeout(timeout);
+      const duration = Date.now() - startTime;
+      const durationSecs = (duration / 1000).toFixed(1);
+      const summary = chalk.red(`❌ ${checkName} failed (${durationSecs}s)`);
+
+      // Keep expanded on failure
+      collapsible.keepExpanded(summary);
+
       resolve({
         name: checkName,
         success: false,
-        duration: Date.now() - startTime,
+        duration,
         output: stdout,
         error: `Failed to spawn process: ${error.message}`,
       });

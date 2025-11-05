@@ -84,6 +84,7 @@ export declare class DeploymentKit {
         isDryRun?: boolean;
         showDiff?: boolean;
         benchmark?: boolean;
+        skipPreChecks?: boolean;
         canary?: {
             initial: number;
             increment: number;
