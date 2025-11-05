@@ -68,14 +68,6 @@ cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 }
 MCP_CONFIG
 
-# Configure permissions in .claude/settings.json
-echo "⚙️  Configuring Claude Code permissions..."
-SETTINGS_FILE="$CLAUDE_PROJECT_DIR/.claude/settings.json"
-if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
-  # Add permissions to existing settings using jq
-  jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
-fi
-
 # Install project dependencies (package.json if exists)
 if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
   echo "📦 Installing project dependencies..."
@@ -114,7 +106,6 @@ echo ""
 echo "Environment:"
 echo "  ✅ MCP servers installed (Playwright, Context7, Linear)"
 echo "  ✅ MCP configuration (.mcp.json) generated"
-echo "  ✅ Permissions configured (Bash auto-approved)"
 echo "  ✅ GitHub CLI configured"
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"
