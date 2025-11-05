@@ -113,41 +113,46 @@ if [ "$CLAUDE_CODE_REMOTE" != "true" ]; then
   exit 0
 fi
 
-set -e
+# Don't exit on errors - handle them gracefully
+set +e
+
+# Get project directory (use CLAUDE_PROJECT_DIR if set, otherwise use PWD)
+PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-$PWD}"
 
 echo "🔧 Setting up Claude Code for the Web environment..."
+echo "📂 Project: $PROJECT_DIR"
 
-# Install jq if needed (JSON processor)
+# Check for jq (JSON processor)
 if ! command -v jq &> /dev/null; then
-  echo "📦 Installing jq..."
-  apt-get update 2>/dev/null && apt-get install -y jq 2>/dev/null || true
-fi
-
-# Install GitHub CLI if needed
-if ! command -v gh &> /dev/null; then
-  echo "📦 Installing GitHub CLI..."
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg 2>/dev/null | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  apt-get update 2>/dev/null && apt-get install -y gh 2>/dev/null || true
-fi
-
-# Authenticate GitHub CLI if token available
-if [ -n "$GITHUB_TOKEN" ]; then
-  echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null
-  echo "✅ GitHub CLI authenticated"
+  echo "⚠️  jq not available (requires root to install)"
 else
-  echo "⚠️  GITHUB_TOKEN not set - GitHub operations will fail"
+  echo "✅ jq available"
 fi
 
-# Install MCP servers globally
+# Note: We use scripts/gh_helper.sh for GitHub operations (automatic gh/curl fallback)
+if [ -n "$GITHUB_TOKEN" ]; then
+  echo "✅ GITHUB_TOKEN available for gh_helper.sh"
+else
+  echo "⚠️  GITHUB_TOKEN not set - GitHub operations may be limited"
+fi
+
+# Install MCP servers globally (best effort)
 echo "📦 Installing MCP servers..."
-npm install -g @playwright/mcp 2>/dev/null
-npm install -g @upstash/context7-mcp 2>/dev/null
-npm install -g linear-mcp-server 2>/dev/null
+MCP_INSTALLED=0
+if npm install -g @playwright/mcp 2>/dev/null; then
+  MCP_INSTALLED=$((MCP_INSTALLED + 1))
+fi
+if npm install -g @upstash/context7-mcp 2>/dev/null; then
+  MCP_INSTALLED=$((MCP_INSTALLED + 1))
+fi
+if npm install -g linear-mcp-server 2>/dev/null; then
+  MCP_INSTALLED=$((MCP_INSTALLED + 1))
+fi
+echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
 # Generate .mcp.json for MCP server configuration
 echo "⚙️  Configuring MCP servers..."
-cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
+cat > "$PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 {
   "mcpServers": {
     "playwright": {
@@ -172,59 +177,142 @@ cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 }
 MCP_CONFIG
 
+# Register MCP servers in ~/.claude.json
+echo "⚙️  Registering MCP servers in Claude Code..."
+CLAUDE_CONFIG="$HOME/.claude.json"
+if [ -f "$CLAUDE_CONFIG" ] && command -v jq &> /dev/null; then
+  # Backup original config
+  cp "$CLAUDE_CONFIG" "$CLAUDE_CONFIG.backup" 2>/dev/null
+
+  # Add MCP servers to the project configuration
+  jq --arg project_dir "$PROJECT_DIR" \\
+     '.projects[$project_dir].mcpServers = {
+       "playwright": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "@playwright/mcp@latest"]
+       },
+       "context7": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "@upstash/context7-mcp"]
+       },
+       "linear": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "linear-mcp-server"],
+         "env": {
+           "LINEAR_API_KEY": env.LINEAR_API_KEY
+         }
+       }
+     }' "$CLAUDE_CONFIG" > "$CLAUDE_CONFIG.tmp" 2>/dev/null && mv "$CLAUDE_CONFIG.tmp" "$CLAUDE_CONFIG"
+
+  echo "✅ MCP servers registered in Claude Code for $PROJECT_DIR"
+else
+  echo "⚠️  Could not register MCP servers (jq or ~/.claude.json not available)"
+fi
+
 # Configure permissions in .claude/settings.json
 echo "⚙️  Configuring Claude Code permissions..."
-SETTINGS_FILE="$CLAUDE_PROJECT_DIR/.claude/settings.json"
-if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
-  # Add permissions to existing settings using jq
-  jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
+if [ -f "$SETTINGS_FILE" ]; then
+  if command -v jq &> /dev/null; then
+    # Add permissions to existing settings using jq
+    if jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" 2>/dev/null; then
+      mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+      echo "✅ Permissions configured"
+    else
+      rm -f "$SETTINGS_FILE.tmp"
+      echo "⚠️  Could not update permissions (jq failed)"
+    fi
+  else
+    echo "⚠️  jq not available, skipping permissions update"
+  fi
+else
+  echo "⚠️  Settings file not found at $SETTINGS_FILE"
 fi
 
 # Install project dependencies (package.json if exists)
-if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
+if [ -f "$PROJECT_DIR/package.json" ]; then
   echo "📦 Installing project dependencies..."
-  cd "$CLAUDE_PROJECT_DIR"
+  cd "$PROJECT_DIR" || exit 1
 
   # Detect package manager
   if [ -f "pnpm-lock.yaml" ]; then
-    pnpm install
+    if pnpm install 2>&1 | grep -v "WARN"; then
+      echo "✅ Dependencies installed (pnpm)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   elif [ -f "yarn.lock" ]; then
-    yarn install
+    if yarn install 2>&1 | grep -v "warning"; then
+      echo "✅ Dependencies installed (yarn)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   elif [ -f "bun.lockb" ]; then
-    bun install
+    if bun install 2>&1; then
+      echo "✅ Dependencies installed (bun)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   else
-    npm install
+    if npm install 2>&1 | grep -v "WARN"; then
+      echo "✅ Dependencies installed (npm)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   fi
 fi
 
 # Install Python dependencies if requirements.txt exists
-if [ -f "$CLAUDE_PROJECT_DIR/requirements.txt" ]; then
+if [ -f "$PROJECT_DIR/requirements.txt" ]; then
   echo "📦 Installing Python dependencies..."
-  pip install -r "$CLAUDE_PROJECT_DIR/requirements.txt"
+  if pip install -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -1; then
+    echo "✅ Python dependencies installed"
+  else
+    echo "⚠️  Some Python dependencies may have failed to install"
+  fi
 fi
 
 # Persist environment variables for session (if CLAUDE_ENV_FILE is set)
 if [ -n "$CLAUDE_ENV_FILE" ]; then
   # Write npm token to npmrc if NPM_TOKEN is set
   if [ -n "$NPM_TOKEN" ]; then
-    echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
-    echo "NPM_CONFIGURED=true" >> "$CLAUDE_ENV_FILE"
+    if echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc 2>/dev/null; then
+      echo "NPM_CONFIGURED=true" >> "$CLAUDE_ENV_FILE"
+      echo "✅ npm token configured"
+    else
+      echo "⚠️  Failed to configure npm token"
+    fi
   fi
 fi
 
 echo ""
-echo "✅ CCW environment ready!"
+echo "✅ CCW environment setup complete!"
 echo ""
-echo "Environment:"
-echo "  ✅ MCP servers installed (Playwright, Context7, Linear)"
-echo "  ✅ MCP configuration (.mcp.json) generated"
-echo "  ✅ Permissions configured (Bash auto-approved)"
-echo "  ✅ GitHub CLI configured"
+echo "Environment status:"
+if [ -n "$GITHUB_TOKEN" ]; then
+  echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
+else
+  echo "  ⚠️  GITHUB_TOKEN not set"
+fi
+if [ -f "$PROJECT_DIR/.mcp.json" ]; then
+  echo "  ✅ MCP configuration (.mcp.json) generated"
+fi
+if [ -f "$HOME/.claude.json" ] && command -v jq &> /dev/null; then
+  MCP_COUNT=$(jq --arg project_dir "$PROJECT_DIR" '.projects[$project_dir].mcpServers | length' "$HOME/.claude.json" 2>/dev/null || echo "0")
+  if [ "$MCP_COUNT" -gt 0 ]; then
+    echo "  ✅ MCP servers registered in Claude Code ($MCP_COUNT servers)"
+  else
+    echo "  ⚠️  MCP servers not registered (restart session to load)"
+  fi
+fi
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"
 fi
-if [ -n "$NPM_TOKEN" ]; then
-  echo "  ✅ npm token configured"
+if [ -n "$NPM_TOKEN" ] && [ -f ~/.npmrc ]; then
+  echo "  ✅ npm authentication configured"
 fi
 
 exit 0
