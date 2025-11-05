@@ -16,7 +16,9 @@ Fast workflow: Commit → PR → Merge → Sync → Publish (if version arg prov
 
 **1. Push and create PR**
 ```bash
-git add -A && git commit -m "[conventional commit from git diff]"
+git add -A && git commit -m "[descriptive conventional commit message]"
+# Format: "feat: Add X feature" or "fix: Resolve Y issue"
+# Analyze git diff to understand WHAT changed, then write WHY it changed
 git push -u origin $(git branch --show-current)
 
 gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
@@ -82,7 +84,7 @@ pnpm publish --no-git-checks
 
 ## Tips
 
-- **Speed**: Commit message generated from `git diff`, not manual
-- **Quality**: PR body includes Summary, Changes, Test Plan for good code review
-- **Parallel**: Skip all package logic if no version arg
-- **Auto-fix**: Merge conflicts resolved by rebuilding dist/
+- **Descriptive commits**: Analyze `git diff` to write meaningful commit messages (conventional format)
+- **Quality PRs**: Include Summary (why), Changes (what), Test Plan (how to verify)
+- **Fast workflow**: Skip all package logic when no version arg provided
+- **Auto-fix conflicts**: Rebuild `dist/` to regenerate TypeScript output
