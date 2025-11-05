@@ -133,7 +133,7 @@ export class DeploymentKit {
    * console.log(result.durationSeconds); // 127
    * ```
    */
-  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; canary?: { initial: number; increment: number; interval: number }; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
+  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
     const isDryRun = options?.isDryRun || false;
     const startTimeDate = new Date();
     const startTime = startTimeDate.getTime();
@@ -168,13 +168,10 @@ export class DeploymentKit {
 
     try {
       // Log deployment start
-      const isCanary = !!options?.canary;
       const withMaintenance = !!options?.maintenance;
       this.logger.info('Deployment started', {
         stage,
         isDryRun,
-        isCanary,
-        canaryConfig: options?.canary,
         withMaintenance,
         projectName: this.config.projectName,
       });
@@ -184,21 +181,11 @@ export class DeploymentKit {
       // Print deployment header
       console.log(chalk.bold.cyan('\n' + '═'.repeat(60)));
       let headerMode = isDryRun ? '🔍 DRY-RUN PREVIEW' : '🚀 DEPLOYMENT PIPELINE';
-      if (isCanary) {
-        headerMode += ' (CANARY)';
-      }
       if (withMaintenance) {
         headerMode += ' (MAINTENANCE)';
       }
       console.log(chalk.bold.cyan(`${headerMode}: ${stage.toUpperCase()}`));
       console.log(chalk.bold.cyan('═'.repeat(60)) + '\n');
-
-      if (isCanary) {
-        console.log(chalk.yellow('🐤 Canary Deployment Mode:'));
-        console.log(chalk.gray(`   Initial traffic: ${options?.canary?.initial}%`));
-        console.log(chalk.gray(`   Traffic increment: ${options?.canary?.increment}%`));
-        console.log(chalk.gray(`   Interval: ${options?.canary?.interval}s\n`));
-      }
 
       if (withMaintenance) {
         console.log(chalk.yellow('🔧 Maintenance Mode:'));

@@ -43,7 +43,7 @@ npx @duersjefen/deploy-kit dev
 
 ### 🚀 Developer Productivity
 - **Pre-flight checks** catch issues before SST starts
-- **Auto-fixes** for recursive scripts, canary features, stale locks
+- **Auto-fixes** for recursive scripts, Next.js canary features, stale locks
 - **Port conflict resolution** - Automatically finds available port
 - **Output profiles** - Silent, normal, verbose, debug modes
 
@@ -132,7 +132,7 @@ npx @duersjefen/deploy-kit dev
 ```
 
 **What it does:**
-1. **9 Pre-Flight Checks** - AWS credentials, SST locks, port availability, config validation, .sst directory health, reserved Lambda vars, recursive scripts, canary features, Pulumi outputs
+1. **9 Pre-Flight Checks** - AWS credentials, SST locks, port availability, config validation, .sst directory health, reserved Lambda vars, recursive scripts, Next.js canary features, Pulumi outputs
 2. **Auto-Fixes** - Resolves common issues automatically (stale locks, port conflicts, recursive scripts)
 3. **Filtered Output** - Smart grouping reduces noise (200 Lambda messages → 2 lines)
 4. **Error Translation** - Converts cryptic SST errors into actionable guidance
