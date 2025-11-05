@@ -230,14 +230,14 @@ export class CloudFrontOperations {
         console.log('');
         console.log(chalk.bold.cyan('🧹 Starting CloudFront cleanup in background...'));
         console.log(chalk.gray('   Cleanup will continue even if you close this terminal'));
-        console.log(chalk.gray('   Check progress anytime with: make cloudfront-report\n'));
+        console.log(chalk.gray('   Check progress anytime with: dk cloudfront report\n'));
 
         // Start cleanup in background (don't wait)
         this.startBackgroundCleanup(stage).catch(err => {
           console.error(chalk.red('⚠️  Background cleanup failed:'), err.message);
         });
       } else {
-        console.log(chalk.gray('\nℹ️  You can cleanup anytime by running: make cloudfront-cleanup\n'));
+        console.log(chalk.gray('\nℹ️  You can cleanup anytime by running: dk cloudfront cleanup --dry-run\n'));
       }
     } catch (error) {
       // Don't break deployment on audit errors, but log for debugging
@@ -301,8 +301,8 @@ export class CloudFrontOperations {
           try {
             // Disable first
             await client.disableDistribution(analysis.id);
-            // Wait for CloudFront to process
-            await client.waitForDistributionDeployed(analysis.id, 60000); // 1 min timeout
+            // Wait for CloudFront to process (CloudFront deployments can take 15-45 minutes)
+            await client.waitForDistributionDeployed(analysis.id, 3600000); // 60 min timeout
             // Then delete
             await client.deleteDistribution(analysis.id);
             console.log(chalk.gray(`✅ Deleted distribution ${analysis.id}`));
