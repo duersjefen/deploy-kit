@@ -17,6 +17,7 @@ import { getFormattedVersion } from '../utils/version.js';
 import { DashboardServer } from '../../dashboard/server.js';
 import { getEventEmitter } from '../../dashboard/event-emitter.js';
 import { createDashboardReadyEvent } from '../../dashboard/index.js';
+import { findAvailablePort } from '../dev-checks/port-availability.js';
 
 // Re-export types for backward compatibility
 export type { DevOptions } from '../dev-checks/sst-starter.js';
@@ -57,8 +58,27 @@ export async function handleDevCommand(
     // Load config
     const config = loadProjectConfig(projectRoot);
 
-    // Start dashboard server
-    dashboardServer = new DashboardServer({ port: 5173 });
+    // Find available dashboard port (starting from 5173)
+    console.log(chalk.gray('🔍 Checking dashboard port availability...'));
+    const dashboardPortInfo = findAvailablePort(5173, 10);
+
+    if (!dashboardPortInfo) {
+      console.error(chalk.red('\n❌ Dashboard Port Conflict: Ports 5173-5182 are all in use\n'));
+      console.log(chalk.yellow('Solutions:'));
+      console.log(chalk.gray('  1. Kill processes using these ports: lsof -ti:5173 | xargs kill'));
+      console.log(chalk.gray('  2. Or kill specific port: kill $(lsof -ti:5173)\n'));
+      throw new Error('All dashboard ports (5173-5182) are in use');
+    }
+
+    const dashboardPort = dashboardPortInfo.port;
+    if (dashboardPort !== 5173) {
+      console.log(chalk.yellow(`⚠️  Port 5173 in use, using port ${dashboardPort} for dashboard`));
+    } else {
+      console.log(chalk.green(`✅ Dashboard port ${dashboardPort} available`));
+    }
+
+    // Start dashboard server with selected port
+    dashboardServer = new DashboardServer({ port: dashboardPort });
     const { url, port } = await dashboardServer.start();
 
     // Emit dashboard ready event
