@@ -19,31 +19,34 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   console.log(chalk.bold.cyan('\n🔧 Setting up Claude Code for the Web (CCW)\n'));
 
   const claudeDir = path.join(projectRoot, '.claude');
-  const scriptsDir = path.join(projectRoot, 'scripts');
+  const claudeScriptsDir = path.join(claudeDir, 'scripts');
 
   // 1. Copy global CLAUDE.md to .claude/
   await copyGlobalClaudeMd(claudeDir);
 
-  // 2. Create SessionStart hook script
-  await createSessionStartScript(scriptsDir);
+  // 2. Create .claude/scripts/ directory
+  await fs.ensureDir(claudeScriptsDir);
 
-  // 3. Create GitHub helper script in .claude/ folder
-  await createGitHubHelper(claudeDir);
+  // 3. Create SessionStart hook script in .claude/scripts/
+  await createSessionStartScript(claudeScriptsDir);
 
-  // 4. Create .claude/settings.json with hooks
-  await createSettingsJson(claudeDir, scriptsDir);
+  // 4. Create GitHub helper script in .claude/scripts/
+  await createGitHubHelper(claudeScriptsDir);
 
-  // 5. Create .mcp.json for MCP server configuration
-  await createMcpJson(projectRoot);
+  // 5. Create Linear helper script in .claude/scripts/
+  await createLinearHelper(claudeScriptsDir);
 
-  // 6. Update project CLAUDE.md with @ sourcing
+  // 6. Create .claude/settings.json with hooks
+  await createSettingsJson(claudeDir, claudeScriptsDir);
+
+  // 7. Update project CLAUDE.md
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
-  // 7. Detect and output required tokens
+  // 8. Detect and output required tokens
   const requiredTokens = await detectRequiredTokens(projectRoot);
   outputTokenList(requiredTokens);
 
-  // 8. Output CCW usage instructions
+  // 9. Output CCW usage instructions
   outputUsageInstructions();
 
   console.log(chalk.green('\n✅ CCW setup complete!\n'));
@@ -68,7 +71,7 @@ async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
 }
 
 /**
- * Create scripts/setup_ccw.sh with SessionStart hook logic
+ * Create .claude/scripts/setup_ccw.sh with SessionStart hook logic
  * This runs automatically when CCW session starts
  */
 async function createSessionStartScript(scriptsDir: string): Promise<void> {
@@ -125,76 +128,17 @@ else
   echo "✅ jq available"
 fi
 
-# Note: We use .claude/gh_helper.sh for GitHub operations (automatic gh/curl fallback)
+# Check for required tools
 if [ -n "$GITHUB_TOKEN" ]; then
-  echo "✅ GITHUB_TOKEN available for gh_helper.sh"
+  echo "✅ GITHUB_TOKEN available (.claude/scripts/gh_helper.sh)"
 else
-  echo "⚠️  GITHUB_TOKEN not set - GitHub operations may be limited"
+  echo "⚠️  GITHUB_TOKEN not set - GitHub operations limited"
 fi
 
-# Install MCP servers globally (best effort)
-echo "📦 Installing MCP servers..."
-MCP_INSTALLED=0
-if npm install -g @playwright/mcp 2>/dev/null; then
-  MCP_INSTALLED=$((MCP_INSTALLED + 1))
-fi
-if npm install -g @upstash/context7-mcp 2>/dev/null; then
-  MCP_INSTALLED=$((MCP_INSTALLED + 1))
-fi
-if npm install -g linear-mcp-server 2>/dev/null; then
-  MCP_INSTALLED=$((MCP_INSTALLED + 1))
-fi
-echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
-
-# Merge .mcp.json into ~/.claude.json for CCW
-# CRITICAL: Must merge, not overwrite, to preserve userID, projects, etc.
-if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "📦 Configuring MCP servers..."
-
-  if command -v jq &> /dev/null; then
-    # jq is available - do proper merge
-    if [ -f ~/.claude.json ]; then
-      # Merge mcpServers into existing ~/.claude.json
-      if jq -s '.[0] * .[1]' ~/.claude.json "$PROJECT_DIR/.mcp.json" > ~/.claude.json.tmp 2>/dev/null; then
-        mv ~/.claude.json.tmp ~/.claude.json
-        echo "✅ MCP servers merged into ~/.claude.json (will load in next session)"
-      else
-        rm -f ~/.claude.json.tmp
-        echo "⚠️  Failed to merge MCP config (jq error)"
-      fi
-    else
-      # No existing config, safe to copy
-      cp "$PROJECT_DIR/.mcp.json" ~/.claude.json
-      echo "✅ MCP servers configured in ~/.claude.json (will load in next session)"
-    fi
-  else
-    # jq not available - warn user
-    echo "⚠️  jq not available - cannot merge MCP config safely"
-    echo "⚠️  Installing jq requires root access in CCW"
-    echo "⚠️  MCP servers installed but not configured in ~/.claude.json"
-  fi
+if [ -n "$LINEAR_API_KEY" ]; then
+  echo "✅ LINEAR_API_KEY available (.claude/scripts/linear_helper.sh)"
 else
-  echo "⚠️  .mcp.json not found - MCP servers may not be available"
-fi
-
-# Configure permissions in .claude/settings.json
-echo "⚙️  Configuring Claude Code permissions..."
-SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
-if [ -f "$SETTINGS_FILE" ]; then
-  if command -v jq &> /dev/null; then
-    # Add permissions to existing settings using jq
-    if jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" 2>/dev/null; then
-      mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
-      echo "✅ Permissions configured"
-    else
-      rm -f "$SETTINGS_FILE.tmp"
-      echo "⚠️  Could not update permissions (jq failed)"
-    fi
-  else
-    echo "⚠️  jq not available, skipping permissions update"
-  fi
-else
-  echo "⚠️  Settings file not found at $SETTINGS_FILE"
+  echo "⚠️  LINEAR_API_KEY not set - Linear operations limited"
 fi
 
 # Install project dependencies (package.json if exists)
@@ -256,21 +200,16 @@ fi
 echo ""
 echo "✅ CCW environment setup complete!"
 echo ""
-echo "Environment status:"
-if [ -f ~/.claude/CLAUDE.md ]; then
-  echo "  ✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
-fi
+echo "Available CLI tools:"
 if [ -n "$GITHUB_TOKEN" ]; then
-  echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
+  echo "  ✅ .claude/scripts/gh_helper.sh (GitHub operations)"
 else
-  echo "  ⚠️  GITHUB_TOKEN not set"
-fi
-if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "  ✅ MCP configuration (.mcp.json) available"
-  echo "  ℹ️  MCP servers auto-loaded from .mcp.json at session start"
+  echo "  ⚠️  .claude/scripts/gh_helper.sh (needs GITHUB_TOKEN)"
 fi
 if [ -n "$LINEAR_API_KEY" ]; then
-  echo "  ✅ Linear API key detected"
+  echo "  ✅ .claude/scripts/linear_helper.sh (Linear operations)"
+else
+  echo "  ⚠️  .claude/scripts/linear_helper.sh (needs LINEAR_API_KEY)"
 fi
 if [ -n "$NPM_TOKEN" ] && [ -f ~/.npmrc ]; then
   echo "  ✅ npm authentication configured"
@@ -283,27 +222,44 @@ exit 0
   await fs.writeFile(setupPath, setupScript);
   await fs.chmod(setupPath, 0o755);
 
-  console.log(chalk.green('✅ Created scripts/setup_ccw.sh (SessionStart hook)'));
+  console.log(chalk.green('✅ Created .claude/scripts/setup_ccw.sh (SessionStart hook)'));
 }
 
 /**
- * Create .claude/gh_helper.sh - GitHub CLI wrapper with curl fallback
+ * Create .claude/scripts/gh_helper.sh - GitHub CLI wrapper with curl fallback
  * Auto-detects gh CLI availability and falls back to GitHub API
  */
-async function createGitHubHelper(claudeDir: string): Promise<void> {
-  await fs.ensureDir(claudeDir);
+async function createGitHubHelper(scriptsDir: string): Promise<void> {
+  const helperPath = path.join(scriptsDir, 'gh_helper.sh');
 
-  const helperPath = path.join(claudeDir, 'gh_helper.sh');
-
-  // Try to read from scripts/ folder (the source location)
-  const sourceHelperPath = path.join(process.cwd(), 'scripts', 'gh_helper.sh');
+  // Try to read from .claude/scripts/ folder (the committed source)
+  const sourceHelperPath = path.join(process.cwd(), '.claude', 'scripts', 'gh_helper.sh');
   if (await fs.pathExists(sourceHelperPath)) {
     await fs.copy(sourceHelperPath, helperPath);
     await fs.chmod(helperPath, 0o755);
-    console.log(chalk.green('✅ Created .claude/gh_helper.sh (GitHub CLI wrapper)'));
+    console.log(chalk.green('✅ Created .claude/scripts/gh_helper.sh (GitHub CLI wrapper)'));
   } else {
-    console.log(chalk.yellow('⚠️  gh_helper.sh template not found at scripts/gh_helper.sh'));
-    console.log(chalk.yellow('     Will be created from package when available'));
+    console.log(chalk.yellow('⚠️  gh_helper.sh template not found'));
+    console.log(chalk.yellow('     Run from published package or ensure .claude/scripts/gh_helper.sh exists'));
+  }
+}
+
+/**
+ * Create .claude/scripts/linear_helper.sh - Linear GraphQL API wrapper
+ * Simple CLI tool for Linear operations without MCP
+ */
+async function createLinearHelper(scriptsDir: string): Promise<void> {
+  const helperPath = path.join(scriptsDir, 'linear_helper.sh');
+
+  // Try to read from .claude/scripts/ folder (the committed source)
+  const sourceHelperPath = path.join(process.cwd(), '.claude', 'scripts', 'linear_helper.sh');
+  if (await fs.pathExists(sourceHelperPath)) {
+    await fs.copy(sourceHelperPath, helperPath);
+    await fs.chmod(helperPath, 0o755);
+    console.log(chalk.green('✅ Created .claude/scripts/linear_helper.sh (Linear CLI wrapper)'));
+  } else {
+    console.log(chalk.yellow('⚠️  linear_helper.sh template not found'));
+    console.log(chalk.yellow('     Run from published package or ensure .claude/scripts/linear_helper.sh exists'));
   }
 }
 
@@ -325,7 +281,7 @@ async function createSettingsJson(claudeDir: string, scriptsDir: string): Promis
           hooks: [
             {
               type: 'command',
-              command: '"$CLAUDE_PROJECT_DIR/scripts/setup_ccw.sh"',
+              command: '"$CLAUDE_PROJECT_DIR/.claude/scripts/setup_ccw.sh"',
             },
           ],
         },
@@ -364,41 +320,6 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
 async function updateGitignore(projectRoot: string): Promise<void> {
   // No-op - settings.json needs to be in git for SessionStart hook to work
   console.log(chalk.gray('   .claude/settings.json will be committed (contains SessionStart hook)'));
-}
-
-/**
- * Create .mcp.json for MCP server configuration
- * This file is copied to ~/.claude.json by SessionStart hook
- * MCP servers will be available in the next CCW session after first setup
- */
-async function createMcpJson(projectRoot: string): Promise<void> {
-  const mcpJsonPath = path.join(projectRoot, '.mcp.json');
-
-  const mcpConfig = {
-    mcpServers: {
-      playwright: {
-        type: 'stdio',
-        command: 'npx',
-        args: ['-y', '@playwright/mcp@latest'],
-      },
-      context7: {
-        type: 'stdio',
-        command: 'npx',
-        args: ['-y', '@upstash/context7-mcp'],
-      },
-      linear: {
-        type: 'stdio',
-        command: 'npx',
-        args: ['-y', 'linear-mcp-server'],
-        env: {
-          LINEAR_API_KEY: '${LINEAR_API_KEY}',
-        },
-      },
-    },
-  };
-
-  await fs.writeFile(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
-  console.log(chalk.green('✅ Created .mcp.json (copied to ~/.claude.json on session start)'));
 }
 
 /**
@@ -462,28 +383,29 @@ function outputUsageInstructions(): void {
 1. Go to claude.ai/code
 2. Connect your GitHub account
 3. Set environment variables in CCW:
-   - GITHUB_TOKEN (required)
-   - LINEAR_API_KEY (if using Linear)
+   - GITHUB_TOKEN (required for GitHub operations)
+   - LINEAR_API_KEY (required for Linear operations)
    - NPM_TOKEN (if publishing packages)
 
 4. Select this repository
-5. Start your task - setup runs automatically!
-
-6. IMPORTANT: After first session, start a NEW session for MCP tools
-   MCP servers are loaded at session start, so they won't be available
-   in your first session. Just start a new task/session to get:
-     ✅ Playwright - Browser automation
-     ✅ Context7 - Library documentation
-     ✅ Linear - Issue tracking
+5. Start working - setup runs automatically!
 
 The SessionStart hook will:
   ✅ Copy global CLAUDE.md to ~/.claude/CLAUDE.md
-  ✅ Install MCP server packages (Playwright, Context7, Linear)
-  ✅ Configure MCP servers in ~/.claude.json
   ✅ Auto-install project dependencies
   ✅ Configure npm for publishing
+  ✅ Provide CLI tools in .claude/scripts/
 
-After first setup, all features work automatically!
+Available CLI tools:
+  • .claude/scripts/gh_helper.sh - GitHub operations (PR, merge, etc.)
+  • .claude/scripts/linear_helper.sh - Linear operations (get/list/update issues)
+
+Usage examples:
+  bash .claude/scripts/gh_helper.sh pr create --title "..." --body "..."
+  bash .claude/scripts/linear_helper.sh get-issue DEP-21
+  bash .claude/scripts/linear_helper.sh list-issues
+
+All features work immediately - no reopen required!
 `));
   console.log(chalk.gray('━'.repeat(60)));
 }
