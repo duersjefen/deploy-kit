@@ -14,6 +14,7 @@ import {
   ensureRoute53Zone,
   validateRoute53ZoneExistence,
   validateRoute53ZoneReadiness,
+  validateOverrideRequirement,
   parseSSTDomainConfig,
   checkACMCertificate,
 } from '../lib/sst-deployment-validator.js';
@@ -400,6 +401,56 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Check CloudFront override requirement (DEP-26)
+   *
+   * Validates that override:true is present when adding domain to existing
+   * CloudFront distribution without custom domain.
+   */
+  async function checkOverrideRequirement(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  Override requirement check skipped (non-SST infrastructure)'));
+      checks.push({ name: 'CloudFront Override', status: 'warning', message: 'Skipped (non-SST)' });
+      return;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      const result = await validateOverrideRequirement(config, stage, projectRoot);
+
+      if (!result.passed) {
+        checks.push({
+          name: 'CloudFront Override',
+          status: 'failed',
+          message: result.issue || 'Override required',
+        });
+
+        console.log(chalk.red('\n❌ Override requirement validation failed:'));
+        console.log(chalk.red(`   ${result.issue}`));
+        console.log(chalk.yellow(`\n${result.details}\n`));
+        console.log(chalk.cyan(`💡 Fix: ${result.actionRequired}\n`));
+        throw new Error(result.issue || 'Override:true required for updating existing distribution');
+      }
+
+      checkCount++;
+      checks.push({
+        name: 'CloudFront Override',
+        status: 'success',
+        message: 'No override required or present',
+      });
+      console.log(chalk.green(`✅ Override requirement validated (${((Date.now() - startTime) / 1000).toFixed(1)}s)\n`));
+    } catch (error) {
+      console.log(chalk.red(`❌ Override requirement check failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      checks.push({
+        name: 'CloudFront Override',
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Print check summary
    */
   function printSummary(): void {
@@ -440,6 +491,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
 
       await checkSslCertificate(stage);
       await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
+      await checkOverrideRequirement(stage); // DEP-26
       await checkACMCertificatePreDeploy(stage); // DEP-22 Phase 3
 
       printSummary();
@@ -451,5 +503,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, checkACMCertificatePreDeploy, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
 }
