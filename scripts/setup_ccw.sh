@@ -39,7 +39,7 @@ fi
 echo "📦 Installing MCP servers..."
 npm install -g @playwright/mcp 2>/dev/null
 npm install -g @upstash/context7-mcp 2>/dev/null
-npm install -g @modelcontextprotocol/server-linear 2>/dev/null
+npm install -g linear-mcp-server 2>/dev/null
 
 # Generate .mcp.json for MCP server configuration
 echo "⚙️  Configuring MCP servers..."
@@ -59,7 +59,7 @@ cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
     "linear": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-linear"],
+      "args": ["-y", "linear-mcp-server"],
       "env": {
         "LINEAR_API_KEY": "${LINEAR_API_KEY}"
       }
