@@ -37,9 +37,36 @@ fi
 
 # Install MCP servers globally
 echo "📦 Installing MCP servers..."
-npm install -g @modelcontextprotocol/server-playwright 2>/dev/null
-npm install -g @context7/mcp-server 2>/dev/null
+npm install -g @playwright/mcp 2>/dev/null
+npm install -g @upstash/context7-mcp 2>/dev/null
 npm install -g @modelcontextprotocol/server-linear 2>/dev/null
+
+# Generate .mcp.json for MCP server configuration
+echo "⚙️  Configuring MCP servers..."
+cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "linear": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-linear"],
+      "env": {
+        "LINEAR_API_KEY": "${LINEAR_API_KEY}"
+      }
+    }
+  }
+}
+MCP_CONFIG
 
 # Install project dependencies (package.json if exists)
 if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
@@ -78,6 +105,7 @@ echo "✅ CCW environment ready!"
 echo ""
 echo "Environment:"
 echo "  ✅ MCP servers installed (Playwright, Context7, Linear)"
+echo "  ✅ MCP configuration (.mcp.json) generated"
 echo "  ✅ GitHub CLI configured"
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"
