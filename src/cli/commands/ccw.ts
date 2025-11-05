@@ -394,6 +394,11 @@ async function createMcpJson(projectRoot: string): Promise<void> {
           LINEAR_API_KEY: '${LINEAR_API_KEY}',
         },
       },
+      serena: {
+        type: 'stdio',
+        command: 'uvx',
+        args: ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server'],
+      },
     },
   };
 
@@ -475,10 +480,11 @@ function outputUsageInstructions(): void {
      ✅ Playwright - Browser automation
      ✅ Context7 - Library documentation
      ✅ Linear - Issue tracking
+     ✅ Serena - Semantic code retrieval and editing
 
 The SessionStart hook will:
   ✅ Copy global CLAUDE.md to ~/.claude/CLAUDE.md
-  ✅ Install MCP server packages (Playwright, Context7, Linear)
+  ✅ Install MCP server packages (Playwright, Context7, Linear, Serena)
   ✅ Configure MCP servers in ~/.claude.json
   ✅ Auto-install project dependencies
   ✅ Configure npm for publishing

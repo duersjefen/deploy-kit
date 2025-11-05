@@ -113,15 +113,29 @@ I can prepare the version bump and PR, but publishing must be done elsewhere.
 
 ## MCP Servers in CCW
 
-After the DEP-17 fix, MCP servers should work correctly:
+Available MCP servers (configured in ~/.claude.json):
 - ✅ Playwright - Browser automation
 - ✅ Context7 - Library documentation
 - ✅ Linear - Issue tracking
+- ✅ Serena - Semantic code retrieval and editing (IDE-like capabilities)
 
-If MCP servers aren't working:
-1. Check if this is your first CCW session (MCP loads at session start)
-2. Start a new session if needed
-3. Verify environment variables are set (LINEAR_API_KEY, etc.)
+**IMPORTANT: MCP Servers Load at Session Start Only**
+- MCP servers are loaded when a CCW session **starts**
+- There is **NO way to reload MCP servers** during an active session
+- If you add a new MCP server mid-session, it won't be available until your **next task**
+- This is a CCW limitation, not a Deploy-Kit issue
+
+**If MCP tools are missing:**
+1. Check if you added them mid-session (they'll work in next task)
+2. Verify environment variables are set (LINEAR_API_KEY, etc.)
+3. Use Desktop Claude Code for immediate MCP reload capability
+
+**Alternative: Manual CLI Usage**
+If you need Serena now (before next session):
+```bash
+# Search code semantically
+uvx --from git+https://github.com/oraios/serena serena --help
+```
 
 ---
 

@@ -26,6 +26,16 @@
       "env": {
         "LINEAR_API_KEY": "${LINEAR_API_KEY}"
       }
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server"
+      ]
     }
   }
 }
