@@ -14,6 +14,9 @@ import { runDevChecks } from '../dev-checks/registry.js';
 import { startSstDev, type DevOptions } from '../dev-checks/sst-starter.js';
 import { InteractiveWizard } from '../dev-checks/interactive-wizard.js';
 import { getFormattedVersion } from '../utils/version.js';
+import { DashboardServer } from '../../dashboard/server.js';
+import { getEventEmitter } from '../../dashboard/event-emitter.js';
+import { createDashboardReadyEvent } from '../../dashboard/index.js';
 
 // Re-export types for backward compatibility
 export type { DevOptions } from '../dev-checks/sst-starter.js';
@@ -46,11 +49,21 @@ export async function handleDevCommand(
   projectRoot: string = process.cwd(),
   options: DevOptions = {}
 ): Promise<void> {
+  let dashboardServer: DashboardServer | null = null;
+
   try {
     printHeader();
 
     // Load config
     const config = loadProjectConfig(projectRoot);
+
+    // Start dashboard server
+    dashboardServer = new DashboardServer({ port: 5173 });
+    const { url, port } = await dashboardServer.start();
+
+    // Emit dashboard ready event
+    const emitter = getEventEmitter();
+    emitter.emitEvent(createDashboardReadyEvent(url, port));
 
     // Run interactive wizard if requested
     if (options.interactive) {
@@ -59,6 +72,7 @@ export async function handleDevCommand(
 
       if (!wizardResult || !wizardResult.proceed) {
         console.log(chalk.yellow('\n⚠️  Dev environment setup cancelled\n'));
+        await dashboardServer.stop();
         process.exit(0);
       }
 
@@ -73,6 +87,7 @@ export async function handleDevCommand(
 
       if (!checksResult.allPassed) {
         printCheckFailureMessage();
+        await dashboardServer.stop();
         process.exit(1);
       }
     }
@@ -81,6 +96,9 @@ export async function handleDevCommand(
     await startSstDev(projectRoot, config, options);
   } catch (error) {
     console.error(chalk.red('\n❌ Dev command failed:'), error);
+    if (dashboardServer) {
+      await dashboardServer.stop();
+    }
     process.exit(1);
   }
 }

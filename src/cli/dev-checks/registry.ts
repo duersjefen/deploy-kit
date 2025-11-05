@@ -17,6 +17,12 @@ import { createNextJsCanaryFeaturesCheck } from './nextjs-canary.js';
 import { createTurbopackMigrationCheck } from './turbopack-migration.js';
 import { createPulumiOutputUsageCheck } from './pulumi-output.js';
 import { createLambdaReservedVarsCheck } from './lambda-reserved-vars.js';
+import { getEventEmitter } from '../../dashboard/event-emitter.js';
+import {
+  createCheckStartEvent,
+  createCheckCompleteEvent,
+  createChecksSummaryEvent,
+} from '../../dashboard/index.js';
 
 /**
  * Safe fixes that can be auto-applied without user confirmation
@@ -81,8 +87,13 @@ export async function runDevChecks(
   let failed = 0;
   let autoFixed = 0;
 
+  const emitter = getEventEmitter();
+
   for (const check of checks) {
     const checkStartTime = Date.now();
+
+    // Emit check start event
+    emitter.emitEvent(createCheckStartEvent(check.name));
 
     console.log(chalk.cyan(`▶ Running: ${check.name}`));
     console.log(chalk.gray('  Validating development environment\n'));
@@ -110,9 +121,15 @@ export async function runDevChecks(
             passed++;
             autoFixed++;
             console.log(chalk.green(`✅ ${check.name} passed after auto-fix (${durationSecs}s)\n`));
+
+            // Emit check complete event (auto-fixed)
+            emitter.emitEvent(createCheckCompleteEvent(check.name, reCheckResult, checkDuration, true));
           } else {
             failed++;
             console.log(chalk.red(`❌ ${check.name} failed - fix verification failed (${durationSecs}s)\n`));
+
+            // Emit check complete event (failed after auto-fix)
+            emitter.emitEvent(createCheckCompleteEvent(check.name, reCheckResult, checkDuration, false));
           }
         } else {
           // Risky fixes: Show issue but don't auto-fix (manual intervention required)
@@ -124,6 +141,9 @@ export async function runDevChecks(
           }
           console.log(''); // Empty line
           results.push(result);
+
+          // Emit check complete event
+          emitter.emitEvent(createCheckCompleteEvent(check.name, result, checkDuration, false));
         }
       } else {
         // Check passed or no auto-fix available
@@ -140,18 +160,30 @@ export async function runDevChecks(
           console.log(''); // Empty line
         }
         results.push(result);
+
+        // Emit check complete event
+        emitter.emitEvent(createCheckCompleteEvent(check.name, result, checkDuration, false));
       }
     } catch (error) {
       const checkDuration = Date.now() - checkStartTime;
       const durationSecs = (checkDuration / 1000).toFixed(1);
       console.log(chalk.yellow(`⚠️  ${check.name}: Could not verify - skipping (${durationSecs}s)\n`));
-      results.push({ passed: true }); // Skip check on error
+      const skipResult = { passed: true };
+      results.push(skipResult); // Skip check on error
       passed++; // Count as passed (skipped)
+
+      // Emit check complete event (skipped)
+      emitter.emitEvent(createCheckCompleteEvent(check.name, skipResult, checkDuration, false));
     }
   }
 
   const totalDuration = Date.now() - startTime;
   const allPassed = failed === 0;
+
+  // Emit checks summary event
+  emitter.emitEvent(
+    createChecksSummaryEvent(checks.length, passed, failed, autoFixed, totalDuration)
+  );
 
   // Print summary
   console.log(chalk.bold('═'.repeat(60)));
