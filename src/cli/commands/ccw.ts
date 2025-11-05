@@ -51,11 +51,12 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
 }
 
 /**
- * Copy ~/.claude/CLAUDE.md to .claude/GLOBAL_CLAUDE.md
+ * Copy ~/.claude/CLAUDE.md to .claude/global_claude.md
+ * This gets committed to git and copied to ~/.claude/CLAUDE.md on CCW server
  */
 async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
   const globalClaudePath = path.join(os.homedir(), '.claude', 'CLAUDE.md');
-  const targetPath = path.join(claudeDir, 'GLOBAL_CLAUDE.md');
+  const targetPath = path.join(claudeDir, 'global_claude.md');
 
   if (!await fs.pathExists(globalClaudePath)) {
     console.log(chalk.yellow('⚠️  ~/.claude/CLAUDE.md not found - skipping global rules'));
@@ -64,7 +65,7 @@ async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
 
   await fs.ensureDir(claudeDir);
   await fs.copy(globalClaudePath, targetPath);
-  console.log(chalk.green('✅ Copied ~/.claude/CLAUDE.md → .claude/GLOBAL_CLAUDE.md'));
+  console.log(chalk.green('✅ Copied ~/.claude/CLAUDE.md → .claude/global_claude.md'));
 }
 
 /**
@@ -113,41 +114,55 @@ if [ "$CLAUDE_CODE_REMOTE" != "true" ]; then
   exit 0
 fi
 
-set -e
+# Don't exit on errors - handle them gracefully
+set +e
+
+# Get project directory (use CLAUDE_PROJECT_DIR if set, otherwise use PWD)
+PROJECT_DIR="\${CLAUDE_PROJECT_DIR:-$PWD}"
 
 echo "🔧 Setting up Claude Code for the Web environment..."
+echo "📂 Project: $PROJECT_DIR"
 
-# Install jq if needed (JSON processor)
-if ! command -v jq &> /dev/null; then
-  echo "📦 Installing jq..."
-  apt-get update 2>/dev/null && apt-get install -y jq 2>/dev/null || true
-fi
-
-# Install GitHub CLI if needed
-if ! command -v gh &> /dev/null; then
-  echo "📦 Installing GitHub CLI..."
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg 2>/dev/null | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  apt-get update 2>/dev/null && apt-get install -y gh 2>/dev/null || true
-fi
-
-# Authenticate GitHub CLI if token available
-if [ -n "$GITHUB_TOKEN" ]; then
-  echo "$GITHUB_TOKEN" | gh auth login --with-token 2>/dev/null
-  echo "✅ GitHub CLI authenticated"
+# Copy global CLAUDE.md to ~/.claude/CLAUDE.md
+if [ -f "$PROJECT_DIR/.claude/global_claude.md" ]; then
+  mkdir -p ~/.claude
+  cp "$PROJECT_DIR/.claude/global_claude.md" ~/.claude/CLAUDE.md
+  echo "✅ Global CLAUDE.md copied to ~/.claude/CLAUDE.md"
 else
-  echo "⚠️  GITHUB_TOKEN not set - GitHub operations will fail"
+  echo "⚠️  No .claude/global_claude.md found (run 'dk ccw' locally to create)"
 fi
 
-# Install MCP servers globally
+# Check for jq (JSON processor)
+if ! command -v jq &> /dev/null; then
+  echo "⚠️  jq not available (requires root to install)"
+else
+  echo "✅ jq available"
+fi
+
+# Note: We use scripts/gh_helper.sh for GitHub operations (automatic gh/curl fallback)
+if [ -n "$GITHUB_TOKEN" ]; then
+  echo "✅ GITHUB_TOKEN available for gh_helper.sh"
+else
+  echo "⚠️  GITHUB_TOKEN not set - GitHub operations may be limited"
+fi
+
+# Install MCP servers globally (best effort)
 echo "📦 Installing MCP servers..."
-npm install -g @playwright/mcp 2>/dev/null
-npm install -g @upstash/context7-mcp 2>/dev/null
-npm install -g linear-mcp-server 2>/dev/null
+MCP_INSTALLED=0
+if npm install -g @playwright/mcp 2>/dev/null; then
+  MCP_INSTALLED=$((MCP_INSTALLED + 1))
+fi
+if npm install -g @upstash/context7-mcp 2>/dev/null; then
+  MCP_INSTALLED=$((MCP_INSTALLED + 1))
+fi
+if npm install -g linear-mcp-server 2>/dev/null; then
+  MCP_INSTALLED=$((MCP_INSTALLED + 1))
+fi
+echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
 # Generate .mcp.json for MCP server configuration
 echo "⚙️  Configuring MCP servers..."
-cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
+cat > "$PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 {
   "mcpServers": {
     "playwright": {
@@ -172,59 +187,145 @@ cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 }
 MCP_CONFIG
 
+# Register MCP servers in ~/.claude.json
+echo "⚙️  Registering MCP servers in Claude Code..."
+CLAUDE_CONFIG="$HOME/.claude.json"
+if [ -f "$CLAUDE_CONFIG" ] && command -v jq &> /dev/null; then
+  # Backup original config
+  cp "$CLAUDE_CONFIG" "$CLAUDE_CONFIG.backup" 2>/dev/null
+
+  # Add MCP servers to the project configuration
+  jq --arg project_dir "$PROJECT_DIR" \\
+     '.projects[$project_dir].mcpServers = {
+       "playwright": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "@playwright/mcp@latest"]
+       },
+       "context7": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "@upstash/context7-mcp"]
+       },
+       "linear": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "linear-mcp-server"],
+         "env": {
+           "LINEAR_API_KEY": env.LINEAR_API_KEY
+         }
+       }
+     }' "$CLAUDE_CONFIG" > "$CLAUDE_CONFIG.tmp" 2>/dev/null && mv "$CLAUDE_CONFIG.tmp" "$CLAUDE_CONFIG"
+
+  echo "✅ MCP servers registered in Claude Code for $PROJECT_DIR"
+else
+  echo "⚠️  Could not register MCP servers (jq or ~/.claude.json not available)"
+fi
+
 # Configure permissions in .claude/settings.json
 echo "⚙️  Configuring Claude Code permissions..."
-SETTINGS_FILE="$CLAUDE_PROJECT_DIR/.claude/settings.json"
-if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
-  # Add permissions to existing settings using jq
-  jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" && mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
+if [ -f "$SETTINGS_FILE" ]; then
+  if command -v jq &> /dev/null; then
+    # Add permissions to existing settings using jq
+    if jq '.permissions = {"allow": ["Bash"]}' "$SETTINGS_FILE" > "$SETTINGS_FILE.tmp" 2>/dev/null; then
+      mv "$SETTINGS_FILE.tmp" "$SETTINGS_FILE"
+      echo "✅ Permissions configured"
+    else
+      rm -f "$SETTINGS_FILE.tmp"
+      echo "⚠️  Could not update permissions (jq failed)"
+    fi
+  else
+    echo "⚠️  jq not available, skipping permissions update"
+  fi
+else
+  echo "⚠️  Settings file not found at $SETTINGS_FILE"
 fi
 
 # Install project dependencies (package.json if exists)
-if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
+if [ -f "$PROJECT_DIR/package.json" ]; then
   echo "📦 Installing project dependencies..."
-  cd "$CLAUDE_PROJECT_DIR"
+  cd "$PROJECT_DIR" || exit 1
 
   # Detect package manager
   if [ -f "pnpm-lock.yaml" ]; then
-    pnpm install
+    if pnpm install 2>&1 | grep -v "WARN"; then
+      echo "✅ Dependencies installed (pnpm)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   elif [ -f "yarn.lock" ]; then
-    yarn install
+    if yarn install 2>&1 | grep -v "warning"; then
+      echo "✅ Dependencies installed (yarn)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   elif [ -f "bun.lockb" ]; then
-    bun install
+    if bun install 2>&1; then
+      echo "✅ Dependencies installed (bun)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   else
-    npm install
+    if npm install 2>&1 | grep -v "WARN"; then
+      echo "✅ Dependencies installed (npm)"
+    else
+      echo "⚠️  Some dependencies may have failed to install"
+    fi
   fi
 fi
 
 # Install Python dependencies if requirements.txt exists
-if [ -f "$CLAUDE_PROJECT_DIR/requirements.txt" ]; then
+if [ -f "$PROJECT_DIR/requirements.txt" ]; then
   echo "📦 Installing Python dependencies..."
-  pip install -r "$CLAUDE_PROJECT_DIR/requirements.txt"
+  if pip install -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -1; then
+    echo "✅ Python dependencies installed"
+  else
+    echo "⚠️  Some Python dependencies may have failed to install"
+  fi
 fi
 
 # Persist environment variables for session (if CLAUDE_ENV_FILE is set)
 if [ -n "$CLAUDE_ENV_FILE" ]; then
   # Write npm token to npmrc if NPM_TOKEN is set
   if [ -n "$NPM_TOKEN" ]; then
-    echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc
-    echo "NPM_CONFIGURED=true" >> "$CLAUDE_ENV_FILE"
+    if echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > ~/.npmrc 2>/dev/null; then
+      echo "NPM_CONFIGURED=true" >> "$CLAUDE_ENV_FILE"
+      echo "✅ npm token configured"
+    else
+      echo "⚠️  Failed to configure npm token"
+    fi
   fi
 fi
 
 echo ""
-echo "✅ CCW environment ready!"
+echo "✅ CCW environment setup complete!"
 echo ""
-echo "Environment:"
-echo "  ✅ MCP servers installed (Playwright, Context7, Linear)"
-echo "  ✅ MCP configuration (.mcp.json) generated"
-echo "  ✅ Permissions configured (Bash auto-approved)"
-echo "  ✅ GitHub CLI configured"
+echo "Environment status:"
+if [ -f ~/.claude/CLAUDE.md ]; then
+  echo "  ✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
+fi
+if [ -n "$GITHUB_TOKEN" ]; then
+  echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
+else
+  echo "  ⚠️  GITHUB_TOKEN not set"
+fi
+if [ -f "$PROJECT_DIR/.mcp.json" ]; then
+  echo "  ✅ MCP configuration (.mcp.json) generated"
+fi
+if [ -f "$HOME/.claude.json" ] && command -v jq &> /dev/null; then
+  MCP_COUNT=$(jq --arg project_dir "$PROJECT_DIR" '.projects[$project_dir].mcpServers | length' "$HOME/.claude.json" 2>/dev/null || echo "0")
+  if [ "$MCP_COUNT" -gt 0 ]; then
+    echo "  ✅ MCP servers registered in Claude Code ($MCP_COUNT servers)"
+  else
+    echo "  ⚠️  MCP servers not registered (restart session to load)"
+  fi
+fi
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"
 fi
-if [ -n "$NPM_TOKEN" ]; then
-  echo "  ✅ npm token configured"
+if [ -n "$NPM_TOKEN" ] && [ -f ~/.npmrc ]; then
+  echo "  ✅ npm authentication configured"
 fi
 
 exit 0
@@ -286,8 +387,8 @@ async function createSettingsJson(claudeDir: string, scriptsDir: string): Promis
 }
 
 /**
- * Update project CLAUDE.md with @ sourcing pattern
- * Uses official CCW best practice: @.claude/GLOBAL_CLAUDE.md
+ * Update project CLAUDE.md with CCW info (optional)
+ * No longer adds sourcing pattern - global rules are copied to ~/.claude/CLAUDE.md on CCW server
  */
 async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Promise<void> {
   const claudeMdPath = path.join(projectRoot, 'CLAUDE.md');
@@ -297,30 +398,9 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
     return;
   }
 
-  let content = await fs.readFile(claudeMdPath, 'utf-8');
-
-  // Check if sourcing already exists
-  if (content.includes('@.claude/GLOBAL_CLAUDE.md') || content.includes('.claude/GLOBAL_CLAUDE.md')) {
-    console.log(chalk.gray('   CLAUDE.md already sources global rules'));
-    return;
-  }
-
-  // Add @ sourcing after title (official CCW pattern)
-  const lines = content.split('\n');
-  const titleIndex = lines.findIndex((line: string) => line.startsWith('#'));
-
-  if (titleIndex !== -1) {
-    lines.splice(titleIndex + 1, 0, '',
-      '**IMPORTANT:** See your global CLAUDE.md for universal rules that apply to ALL projects.',
-      '- **Local users:** Use `~/.claude/CLAUDE.md` (your personal global file)',
-      '- **CCW users:** Use `.claude/GLOBAL_CLAUDE.md` (auto-setup by `dk ccw`)',
-      ''
-    );
-
-    content = lines.join('\n');
-    await fs.writeFile(claudeMdPath, content);
-    console.log(chalk.green('✅ Updated ./CLAUDE.md with @ sourcing pattern'));
-  }
+  // No changes needed - project CLAUDE.md stays clean with only project-specific instructions
+  // Global rules are handled by copying .claude/global_claude.md → ~/.claude/CLAUDE.md on CCW server
+  console.log(chalk.gray('   CLAUDE.md remains project-specific (global rules handled by CCW setup)'));
 }
 
 /**
@@ -402,8 +482,9 @@ function outputUsageInstructions(): void {
 5. Start your task - setup runs automatically!
 
 The SessionStart hook will:
+  ✅ Copy global CLAUDE.md to ~/.claude/CLAUDE.md
   ✅ Auto-install MCP servers (Playwright, Context7, Linear)
-  ✅ Auto-authenticate GitHub CLI
+  ✅ Register MCP servers in Claude Code configuration
   ✅ Auto-install project dependencies
   ✅ Configure npm for publishing
 

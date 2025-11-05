@@ -12,7 +12,20 @@ fi
 # Don't exit on errors - handle them gracefully
 set +e
 
+# Get project directory (use CLAUDE_PROJECT_DIR if set, otherwise use PWD)
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+
 echo "🔧 Setting up Claude Code for the Web environment..."
+echo "📂 Project: $PROJECT_DIR"
+
+# Copy global CLAUDE.md to ~/.claude/CLAUDE.md
+if [ -f "$PROJECT_DIR/.claude/global_claude.md" ]; then
+  mkdir -p ~/.claude
+  cp "$PROJECT_DIR/.claude/global_claude.md" ~/.claude/CLAUDE.md
+  echo "✅ Global CLAUDE.md copied to ~/.claude/CLAUDE.md"
+else
+  echo "⚠️  No .claude/global_claude.md found (run 'dk ccw' locally to create)"
+fi
 
 # Check for jq (JSON processor)
 if ! command -v jq &> /dev/null; then
@@ -44,7 +57,7 @@ echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
 # Generate .mcp.json for MCP server configuration
 echo "⚙️  Configuring MCP servers..."
-cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
+cat > "$PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 {
   "mcpServers": {
     "playwright": {
@@ -69,9 +82,44 @@ cat > "$CLAUDE_PROJECT_DIR/.mcp.json" <<'MCP_CONFIG'
 }
 MCP_CONFIG
 
+# Register MCP servers in ~/.claude.json
+echo "⚙️  Registering MCP servers in Claude Code..."
+CLAUDE_CONFIG="$HOME/.claude.json"
+if [ -f "$CLAUDE_CONFIG" ] && command -v jq &> /dev/null; then
+  # Backup original config
+  cp "$CLAUDE_CONFIG" "$CLAUDE_CONFIG.backup" 2>/dev/null
+
+  # Add MCP servers to the project configuration
+  jq --arg project_dir "$PROJECT_DIR" \
+     '.projects[$project_dir].mcpServers = {
+       "playwright": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "@playwright/mcp@latest"]
+       },
+       "context7": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "@upstash/context7-mcp"]
+       },
+       "linear": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "linear-mcp-server"],
+         "env": {
+           "LINEAR_API_KEY": env.LINEAR_API_KEY
+         }
+       }
+     }' "$CLAUDE_CONFIG" > "$CLAUDE_CONFIG.tmp" 2>/dev/null && mv "$CLAUDE_CONFIG.tmp" "$CLAUDE_CONFIG"
+
+  echo "✅ MCP servers registered in Claude Code for $PROJECT_DIR"
+else
+  echo "⚠️  Could not register MCP servers (jq or ~/.claude.json not available)"
+fi
+
 # Configure permissions in .claude/settings.json
 echo "⚙️  Configuring Claude Code permissions..."
-SETTINGS_FILE="$CLAUDE_PROJECT_DIR/.claude/settings.json"
+SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
 if [ -f "$SETTINGS_FILE" ]; then
   if command -v jq &> /dev/null; then
     # Add permissions to existing settings using jq
@@ -90,9 +138,9 @@ else
 fi
 
 # Install project dependencies (package.json if exists)
-if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
+if [ -f "$PROJECT_DIR/package.json" ]; then
   echo "📦 Installing project dependencies..."
-  cd "$CLAUDE_PROJECT_DIR" || exit 1
+  cd "$PROJECT_DIR" || exit 1
 
   # Detect package manager
   if [ -f "pnpm-lock.yaml" ]; then
@@ -123,9 +171,9 @@ if [ -f "$CLAUDE_PROJECT_DIR/package.json" ]; then
 fi
 
 # Install Python dependencies if requirements.txt exists
-if [ -f "$CLAUDE_PROJECT_DIR/requirements.txt" ]; then
+if [ -f "$PROJECT_DIR/requirements.txt" ]; then
   echo "📦 Installing Python dependencies..."
-  if pip install -r "$CLAUDE_PROJECT_DIR/requirements.txt" 2>&1 | tail -1; then
+  if pip install -r "$PROJECT_DIR/requirements.txt" 2>&1 | tail -1; then
     echo "✅ Python dependencies installed"
   else
     echo "⚠️  Some Python dependencies may have failed to install"
@@ -149,13 +197,24 @@ echo ""
 echo "✅ CCW environment setup complete!"
 echo ""
 echo "Environment status:"
+if [ -f ~/.claude/CLAUDE.md ]; then
+  echo "  ✅ Global CLAUDE.md available at ~/.claude/CLAUDE.md"
+fi
 if [ -n "$GITHUB_TOKEN" ]; then
   echo "  ✅ GITHUB_TOKEN configured (gh_helper.sh will use gh CLI or curl)"
 else
   echo "  ⚠️  GITHUB_TOKEN not set"
 fi
-if [ -f "$CLAUDE_PROJECT_DIR/.mcp.json" ]; then
+if [ -f "$PROJECT_DIR/.mcp.json" ]; then
   echo "  ✅ MCP configuration (.mcp.json) generated"
+fi
+if [ -f "$HOME/.claude.json" ] && command -v jq &> /dev/null; then
+  MCP_COUNT=$(jq --arg project_dir "$PROJECT_DIR" '.projects[$project_dir].mcpServers | length' "$HOME/.claude.json" 2>/dev/null || echo "0")
+  if [ "$MCP_COUNT" -gt 0 ]; then
+    echo "  ✅ MCP servers registered in Claude Code ($MCP_COUNT servers)"
+  else
+    echo "  ⚠️  MCP servers not registered (restart session to load)"
+  fi
 fi
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"

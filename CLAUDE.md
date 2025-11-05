@@ -1,8 +1,8 @@
 # Deploy-Kit - Project Context
 
-**IMPORTANT:** See your global CLAUDE.md for universal rules that apply to ALL projects.
-- **Local users:** Use `~/.claude/CLAUDE.md` (your personal global file)
-- **CCW users:** Use `.claude/GLOBAL_CLAUDE.md` (auto-setup by `dk ccw`)
+**IMPORTANT:** Your global CLAUDE.md rules apply automatically.
+- **Local users:** Already have `~/.claude/CLAUDE.md`
+- **CCW users:** `dk ccw` auto-copies your global rules to `.claude/global_claude.md`, which gets deployed to `~/.claude/CLAUDE.md` on CCW server startup
 
 **Package Manager:** pnpm (required for development)
 **Last Updated:** 2025-11-05
