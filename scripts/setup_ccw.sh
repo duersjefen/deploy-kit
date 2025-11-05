@@ -55,15 +55,18 @@ if npm install -g linear-mcp-server 2>/dev/null; then
 fi
 echo "✅ Installed $MCP_INSTALLED/3 MCP servers"
 
-# Verify .mcp.json exists (should be committed to git)
+# Copy .mcp.json to ~/.claude.json for CCW
+# Note: This configures MCP servers for future sessions
+# MCP servers are loaded at session start, before SessionStart hook runs
 if [ -f "$PROJECT_DIR/.mcp.json" ]; then
   echo "✅ MCP configuration (.mcp.json) found"
+
+  # Copy .mcp.json to ~/.claude.json
+  cp "$PROJECT_DIR/.mcp.json" ~/.claude.json
+  echo "✅ MCP servers configured in ~/.claude.json (will load in next session)"
 else
   echo "⚠️  .mcp.json not found - MCP servers may not be available"
 fi
-
-# Note: MCP servers are auto-discovered from .mcp.json (committed to git)
-# No need to modify ~/.claude.json - it happens too late in SessionStart hook
 
 # Configure permissions in .claude/settings.json
 echo "⚙️  Configuring Claude Code permissions..."
@@ -153,9 +156,9 @@ if [ -n "$GITHUB_TOKEN" ]; then
 else
   echo "  ⚠️  GITHUB_TOKEN not set"
 fi
-if [ -f "$PROJECT_DIR/.mcp.json" ]; then
-  echo "  ✅ MCP configuration (.mcp.json) available"
-  echo "  ℹ️  MCP servers auto-loaded from .mcp.json at session start"
+if [ -f ~/.claude.json ]; then
+  echo "  ✅ MCP servers configured in ~/.claude.json"
+  echo "  ℹ️  If MCP tools are not available, start a new CCW session"
 fi
 if [ -n "$LINEAR_API_KEY" ]; then
   echo "  ✅ Linear API key detected"

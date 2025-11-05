@@ -327,7 +327,8 @@ async function updateGitignore(projectRoot: string): Promise<void> {
 
 /**
  * Create .mcp.json for MCP server configuration
- * This file is committed to git so MCP servers load immediately when CCW session starts
+ * This file is copied to ~/.claude.json by SessionStart hook
+ * MCP servers will be available in the next CCW session after first setup
  */
 async function createMcpJson(projectRoot: string): Promise<void> {
   const mcpJsonPath = path.join(projectRoot, '.mcp.json');
@@ -356,7 +357,7 @@ async function createMcpJson(projectRoot: string): Promise<void> {
   };
 
   await fs.writeFile(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
-  console.log(chalk.green('✅ Created .mcp.json (MCP servers will load at session start)'));
+  console.log(chalk.green('✅ Created .mcp.json (copied to ~/.claude.json on session start)'));
 }
 
 /**
@@ -427,18 +428,21 @@ function outputUsageInstructions(): void {
 4. Select this repository
 5. Start your task - setup runs automatically!
 
-MCP servers load automatically from .mcp.json:
-  ✅ Playwright - Browser automation
-  ✅ Context7 - Library documentation
-  ✅ Linear - Issue tracking
+6. IMPORTANT: After first session, start a NEW session for MCP tools
+   MCP servers are loaded at session start, so they won't be available
+   in your first session. Just start a new task/session to get:
+     ✅ Playwright - Browser automation
+     ✅ Context7 - Library documentation
+     ✅ Linear - Issue tracking
 
 The SessionStart hook will:
   ✅ Copy global CLAUDE.md to ~/.claude/CLAUDE.md
   ✅ Install MCP server packages (Playwright, Context7, Linear)
+  ✅ Configure MCP servers in ~/.claude.json
   ✅ Auto-install project dependencies
   ✅ Configure npm for publishing
 
-No manual setup needed - just start coding!
+After first setup, all features work automatically!
 `));
   console.log(chalk.gray('━'.repeat(60)));
 }
