@@ -14,7 +14,7 @@ Fast workflow: Commit → PR → Merge → Sync → Publish (if version arg prov
 
 ## Workflow
 
-**1. Push and create PR**
+**1. Commit and create PR**
 ```bash
 git add -A && git commit -m "[descriptive conventional commit message]"
 # Format: "feat: Add X feature" or "fix: Resolve Y issue"
@@ -31,7 +31,7 @@ gh pr create --title "[title from commits]" --body "$(cat <<'EOF'
 ## Test Plan
 [How to test/verify the changes]
 
-[Linear: ISSUE-ID (if detected)]
+[Linear: ISSUE-ID (if detected in commits)]
 
 🤖 Generated with Claude Code
 EOF
@@ -46,7 +46,7 @@ gh pr merge $(gh pr view --json number -q .number) --squash --delete-branch 2>&1
 If merge fails due to conflicts:
 ```bash
 git fetch origin main && git merge origin/main
-pnpm run build  # Regenerate dist/
+pnpm run build  # Regenerate dist/ (if TypeScript project)
 git add -A && git commit -m "Merge branch 'main'"
 git push
 # Retry merge command above
@@ -67,7 +67,7 @@ fi
 
 **4. Update Linear (if Linear issue detected in commits)**
 
-Extract issue ID from commits, update to "Done" via Linear MCP.
+Extract issue ID from commits (e.g., DEP-18, PROJ-42), update to "Done" via Linear MCP.
 
 **5. Publish (ONLY if version argument provided)**
 
