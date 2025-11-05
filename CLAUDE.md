@@ -1,79 +1,47 @@
 # Deploy-Kit - Project Context
 
-**IMPORTANT:** See `.claude-code/GLOBAL_CLAUDE.md` for universal rules that apply to ALL projects.
-
+**IMPORTANT:** See your global CLAUDE.md for universal rules that apply to ALL projects.
+- **Local users:** Use `~/.claude/CLAUDE.md` (your personal global file)
+- **CCW users:** Use `.claude/GLOBAL_CLAUDE.md` (auto-setup by `dk ccw`)
 
 **Package Manager:** pnpm (required for development)
-**Last Updated:** 2025-11-04
+**Last Updated:** 2025-11-05
 
 ---
 
-## Development
+## Workflow
+
+We use `/ship-pr` for everything - it's all you need!
+
+### Regular Development (No Publishing)
 
 ```bash
-pnpm install        # Install dependencies
-pnpm run build      # Build TypeScript
-pnpm run watch      # Watch mode
-pnpm test           # Run tests
-```
-
----
-
-## Release Workflow
-
-**Two ways to release:**
-
-### A) /ship-pr (Recommended for regular development)
-
-Claude Code command that handles complete workflow: Commit → PR → Merge → Publish
-
-```bash
-# From your feature branch in Conductor worktree:
 /ship-pr
 ```
 
-**Automatically:**
-1. Commits changes with descriptive message
-2. Creates and merges PR
-3. Updates local main worktree
-4. Prompts for version bump (MAJOR/MINOR/PATCH/SKIP)
-5. Runs build and tests
-6. Publishes to npm
-7. Creates GitHub release
+**Does:**
+1. Commits changes with descriptive conventional message
+2. Creates PR with proper description (Summary, Changes, Test Plan)
+3. Merges PR with squash
+4. Updates local main worktree (Conductor-aware)
+5. Updates Linear issue to "Done" (if detected)
 
-**When to use:** Regular feature development with PR workflow
+**Use for:** Feature branches, bug fixes, refactoring - anything that doesn't need publishing
 
-### B) pnpm release:* (For direct releases)
-
-TypeScript release command for hotfixes or CI/CD:
+### Publishing (With Version Bump)
 
 ```bash
-pnpm run release:patch  # Bug fixes (2.8.0 → 2.8.1)
-pnpm run release:minor  # New features (2.8.0 → 2.9.0)
-pnpm run release:major  # Breaking changes (2.8.0 → 3.0.0)
-
-# Or directly with dry-run
-node dist/cli.js release patch --dry-run
+/ship-pr patch   # Bug fixes (2.9.3 → 2.9.4)
+/ship-pr minor   # New features (2.9.3 → 2.10.0)
+/ship-pr major   # Breaking changes (2.9.3 → 3.0.0)
 ```
 
-**When to use:** Hotfixes, republishing, or automated CI/CD pipelines
+**Does everything above PLUS:**
+6. Bumps version in package.json
+7. Commits version bump
+8. Publishes to npm
 
-**Note:** Both use `git -C` flag to operate on main worktree from anywhere, including Conductor worktrees.
-
----
-
-## npm Publishing
-
-Published to public npm registry as `@duersjefen/deploy-kit`.
-
-**Installation:**
-```bash
-npm install -g @duersjefen/deploy-kit  # Global
-npm install --save-dev @duersjefen/deploy-kit  # Dev dependency
-npx @duersjefen/deploy-kit --version  # Direct usage
-```
-
-**Note:** `.npmrc` has GitHub Packages configuration commented out (switched to public npm).
+**Use for:** Releasing new versions of the package
 
 ---
 
@@ -85,9 +53,10 @@ npx @duersjefen/deploy-kit --version  # Direct usage
 - Deploy-Kit users can use any package manager - we detect and adapt
 
 **Important Files:**
-- `src/cli/commands/release.ts` - TypeScript release command (replaces bash script)
+- `src/cli/commands/ccw.ts` - Claude Code for the Web setup (dk ccw)
+- `src/cli/commands/remote-deploy.ts` - GitHub Actions workflow setup (dk remote-deploy)
+- `src/cli/commands/release.ts` - TypeScript release command (for CI/CD)
 - `src/cli/init/` - Project initialization with package manager detection
-- `dist/` - Compiled output (auto-generated, committed to repo)
 
 ---
 

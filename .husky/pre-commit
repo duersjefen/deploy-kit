@@ -1,3 +1,3 @@
-# Run build to catch TypeScript errors
-# TODO: Add 'pnpm run test:unit' once all unit tests pass
-pnpm run build
+# Type-check only (faster than full build, dist/ is gitignored anyway)
+# Full build happens during npm publish via prepublishOnly hook
+pnpm exec tsc --noEmit
