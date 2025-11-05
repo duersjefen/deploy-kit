@@ -133,7 +133,7 @@ export class DeploymentKit {
    * console.log(result.durationSeconds); // 127
    * ```
    */
-  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; canary?: { initial: number; increment: number; interval: number }; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
+  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; canary?: { initial: number; increment: number; interval: number }; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
     const isDryRun = options?.isDryRun || false;
     const startTimeDate = new Date();
     const startTime = startTimeDate.getTime();
@@ -249,24 +249,32 @@ export class DeploymentKit {
       }
 
       // Stage 1: Pre-deployment safety checks (BEFORE lock acquisition)
+      // Skip if already run by CLI (skipPreChecks flag)
       // This way, if pre-checks fail, lock is never acquired
       let stage1Start = Date.now();
-      this.logger.debug('Running pre-deployment checks', { stage });
-      const preChecksTimer = this.metrics.startTimer('stage.pre-checks');
-      if (perfAnalyzer) perfAnalyzer.start('stage.pre-checks');
-      
-      console.log(chalk.bold.white('▸ Stage 1: Pre-Deployment Checks'));
-      console.log(chalk.gray('  Validating: git status, AWS credentials, tests, SSL\n'));
+      if (!options?.skipPreChecks) {
+        this.logger.debug('Running pre-deployment checks', { stage });
+        const preChecksTimer = this.metrics.startTimer('stage.pre-checks');
+        if (perfAnalyzer) perfAnalyzer.start('stage.pre-checks');
 
-      await this.preChecks.run(stage);
-      result.details.gitStatusOk = true;
-      result.details.testsOk = true;
+        console.log(chalk.bold.white('▸ Stage 1: Pre-Deployment Checks'));
+        console.log(chalk.gray('  Validating: git status, AWS credentials, tests, SSL\n'));
 
-      const stage1Duration = Date.now() - stage1Start;
-      this.metrics.stopTimer(preChecksTimer);
-      if (perfAnalyzer) perfAnalyzer.end('stage.pre-checks');
-      this.logger.info('Pre-deployment checks passed', { stage, durationMs: stage1Duration });
-      stageTimings.push({ name: 'Pre-Deployment Checks', duration: stage1Duration });
+        await this.preChecks.run(stage);
+        result.details.gitStatusOk = true;
+        result.details.testsOk = true;
+
+        const stage1Duration = Date.now() - stage1Start;
+        this.metrics.stopTimer(preChecksTimer);
+        if (perfAnalyzer) perfAnalyzer.end('stage.pre-checks');
+        this.logger.info('Pre-deployment checks passed', { stage, durationMs: stage1Duration });
+        stageTimings.push({ name: 'Pre-Deployment Checks', duration: stage1Duration });
+      } else {
+        this.logger.debug('Skipping pre-deployment checks (already run by CLI)', { stage });
+        console.log(chalk.gray('ℹ️  Pre-deployment checks already validated by CLI\n'));
+        result.details.gitStatusOk = true;
+        result.details.testsOk = true;
+      }
 
       // Only acquire lock AFTER pre-checks pass (skip in dry-run mode)
       let newLock: any;

@@ -253,20 +253,16 @@ export async function runPreDeploymentChecks(projectRoot, stage) {
     let failed = 0;
     // Run checks sequentially
     for (const check of checks) {
-        const checkName = check.name || check.command;
-        console.log(chalk.cyan(`\n▶ Running: ${checkName}`));
-        console.log(chalk.gray(`  Command: ${check.command}\n`));
+        // Note: check runner now handles all output (header, streaming, summary)
+        // including collapsing on success
         const result = await runCheck(check, projectRoot);
         results.push(result);
         if (result.success) {
             passed++;
-            const durationSecs = (result.duration / 1000).toFixed(1);
-            console.log(chalk.green(`\n✅ ${checkName} passed (${durationSecs}s)`));
         }
         else {
             failed++;
-            const durationSecs = (result.duration / 1000).toFixed(1);
-            console.log(chalk.red(`\n❌ ${checkName} failed (${durationSecs}s)`));
+            // Show error details for failures
             console.log(chalk.red(`   Error: ${result.error}\n`));
             // Stop on first failure
             break;
@@ -274,8 +270,8 @@ export async function runPreDeploymentChecks(projectRoot, stage) {
     }
     const totalDuration = Date.now() - startTime;
     const allPassed = failed === 0;
-    // Print summary
-    console.log(chalk.bold('\n' + '═'.repeat(60)));
+    // Print summary with better visual hierarchy
+    console.log('\n' + chalk.bold('═'.repeat(60)));
     if (allPassed) {
         console.log(chalk.bold.green('✅ All Pre-Deployment Checks Passed'));
     }
@@ -283,8 +279,8 @@ export async function runPreDeploymentChecks(projectRoot, stage) {
         console.log(chalk.bold.red('❌ Pre-Deployment Checks Failed'));
     }
     console.log(chalk.bold('═'.repeat(60)));
-    console.log(chalk.gray(`\nPassed: ${passed}/${checks.length}`));
-    console.log(chalk.gray(`Total Duration: ${(totalDuration / 1000).toFixed(1)}s\n`));
+    console.log(chalk.white(`\nPassed: ${passed}/${checks.length}`));
+    console.log(chalk.white(`Total Duration: ${(totalDuration / 1000).toFixed(1)}s\n`));
     return {
         allPassed,
         totalDuration,
