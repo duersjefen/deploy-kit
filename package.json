@@ -30,7 +30,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc && pnpm --filter dashboard-ui build",
+    "build": "pnpm install && tsc && pnpm --filter dashboard-ui build",
     "postinstall": "npm run build",
     "watch": "tsc --watch",
     "test": "node --test 'dist/**/*.test.js'",
