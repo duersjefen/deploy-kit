@@ -318,4 +318,200 @@ export class CloudFrontOperations {
       console.error(chalk.gray(`⚠️  Background cleanup error: ${(error as Error).message}`));
     }
   }
+
+  /**
+   * Detect CNAME conflicts for a given domain
+   *
+   * Checks if any existing CloudFront distribution has the specified domain
+   * configured as a CNAME (alias). Returns list of conflicting distributions.
+   *
+   * @param domain - Domain to check for conflicts (e.g., 'staging.example.com')
+   * @returns Array of conflicting distributions with their details
+   *
+   * @example
+   * ```typescript
+   * const conflicts = await cfOps.detectCnameConflicts('staging.example.com');
+   * if (conflicts.length > 0) {
+   *   console.log(`Found ${conflicts.length} CNAME conflict(s)`);
+   * }
+   * ```
+   */
+  async detectCnameConflicts(domain: string): Promise<Array<{
+    distributionId: string;
+    domainName: string;
+    aliases: string[];
+    status: string;
+    enabled: boolean;
+  }>> {
+    const client = new CloudFrontAPIClient('us-east-1', this.awsProfile);
+    const distributions = await client.listDistributions();
+
+    const conflicts: Array<{
+      distributionId: string;
+      domainName: string;
+      aliases: string[];
+      status: string;
+      enabled: boolean;
+    }> = [];
+    for (const dist of distributions) {
+      if (dist.AliasedDomains.includes(domain)) {
+        conflicts.push({
+          distributionId: dist.Id,
+          domainName: dist.DomainName,
+          aliases: dist.AliasedDomains,
+          status: dist.Status,
+          enabled: dist.Enabled,
+        });
+      }
+    }
+
+    return conflicts;
+  }
+
+  /**
+   * Remove CNAMEs from distributions (fast cleanup, ~1 minute)
+   *
+   * Removes specified aliases from CloudFront distributions without deleting them.
+   * This is the fastest way to resolve CNAME conflicts when you want to keep
+   * the distribution but change its aliases.
+   *
+   * @param conflicts - Array of conflicting distributions
+   * @param targetDomain - Domain to remove from aliases
+   *
+   * @example
+   * ```typescript
+   * await cfOps.removeCnamesFromDistributions(conflicts, 'staging.example.com');
+   * console.log('CNAMEs removed from conflicting distributions');
+   * ```
+   */
+  async removeCnamesFromDistributions(
+    conflicts: Array<{
+      distributionId: string;
+      aliases: string[];
+    }>,
+    targetDomain: string
+  ): Promise<void> {
+    const client = new CloudFrontAPIClient('us-east-1', this.awsProfile);
+
+    for (const conflict of conflicts) {
+      try {
+        console.log(chalk.cyan(`  Removing ${targetDomain} from ${conflict.distributionId}...`));
+
+        // Get current distribution config
+        const { CloudFrontClient, GetDistributionConfigCommand, UpdateDistributionCommand } = await import('@aws-sdk/client-cloudfront');
+
+        // Set AWS profile
+        if (this.awsProfile) {
+          process.env.AWS_PROFILE = this.awsProfile;
+        }
+
+        const cfClient = new CloudFrontClient({ region: 'us-east-1' });
+
+        const getConfigCommand = new GetDistributionConfigCommand({
+          Id: conflict.distributionId,
+        });
+        const configResponse = await cfClient.send(getConfigCommand);
+
+        if (!configResponse.DistributionConfig || !configResponse.ETag) {
+          throw new Error(`Could not get config for distribution ${conflict.distributionId}`);
+        }
+
+        const config = configResponse.DistributionConfig;
+
+        // Remove target domain from aliases
+        const updatedAliases = (config.Aliases?.Items || []).filter(
+          (alias) => alias !== targetDomain
+        );
+
+        config.Aliases = {
+          Quantity: updatedAliases.length,
+          Items: updatedAliases.length > 0 ? updatedAliases : undefined,
+        };
+
+        // Update distribution
+        const updateCommand = new UpdateDistributionCommand({
+          Id: conflict.distributionId,
+          DistributionConfig: config,
+          IfMatch: configResponse.ETag,
+        });
+
+        await cfClient.send(updateCommand);
+
+        console.log(chalk.green(`  ✅ Removed ${targetDomain} from ${conflict.distributionId}`));
+      } catch (error) {
+        console.error(chalk.red(`  ❌ Failed to remove CNAME from ${conflict.distributionId}: ${(error as Error).message}`));
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Delete distributions (slow cleanup, ~10-15 minutes)
+   *
+   * Disables and deletes CloudFront distributions completely. This operation
+   * is slow because CloudFront requires distributions to be fully deployed
+   * in a disabled state before they can be deleted.
+   *
+   * @param conflicts - Array of conflicting distributions to delete
+   *
+   * @example
+   * ```typescript
+   * await cfOps.deleteDistributions(conflicts);
+   * console.log('All conflicting distributions deleted');
+   * ```
+   */
+  async deleteDistributions(
+    conflicts: Array<{
+      distributionId: string;
+      enabled: boolean;
+    }>
+  ): Promise<void> {
+    const client = new CloudFrontAPIClient('us-east-1', this.awsProfile);
+
+    console.log(chalk.cyan('\n  Step 1: Disabling distributions...'));
+
+    // Disable all distributions first
+    for (const conflict of conflicts) {
+      try {
+        if (conflict.enabled) {
+          console.log(chalk.gray(`    Disabling ${conflict.distributionId}...`));
+          await client.disableDistribution(conflict.distributionId);
+          console.log(chalk.green(`    ✅ ${conflict.distributionId} disabled`));
+        } else {
+          console.log(chalk.gray(`    ${conflict.distributionId} already disabled`));
+        }
+      } catch (error) {
+        console.error(chalk.red(`    ❌ Failed to disable ${conflict.distributionId}: ${(error as Error).message}`));
+        throw error;
+      }
+    }
+
+    console.log(chalk.cyan('\n  Step 2: Waiting for distributions to be deployed (5-15 minutes)...\n'));
+
+    // Wait for all distributions to reach Deployed status
+    for (const conflict of conflicts) {
+      try {
+        console.log(chalk.gray(`    Waiting for ${conflict.distributionId}...`));
+        await client.waitForDistributionDeployed(conflict.distributionId, 1200000); // 20 min timeout
+        console.log(chalk.green(`    ✅ ${conflict.distributionId} ready for deletion`));
+      } catch (error) {
+        console.error(chalk.red(`    ❌ Timeout waiting for ${conflict.distributionId}: ${(error as Error).message}`));
+        throw error;
+      }
+    }
+
+    console.log(chalk.cyan('\n  Step 3: Deleting distributions...\n'));
+
+    // Delete all distributions
+    for (const conflict of conflicts) {
+      try {
+        console.log(chalk.gray(`    Deleting ${conflict.distributionId}...`));
+        await client.deleteDistribution(conflict.distributionId);
+        console.log(chalk.green(`    ✅ ${conflict.distributionId} deleted`));
+      } catch (error) {
+        console.error(chalk.red(`    ❌ Failed to delete ${conflict.distributionId}: ${(error as Error).message}`));
+        throw error;
+      }
+    }
+  }
 }

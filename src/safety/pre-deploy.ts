@@ -18,6 +18,8 @@ import {
   parseSSTDomainConfig,
   checkACMCertificate,
 } from '../lib/sst-deployment-validator.js';
+import { CloudFrontOperations } from '../lib/cloudfront/operations.js';
+import prompts from 'prompts';
 
 const execAsync = promisify(exec);
 
@@ -451,6 +453,187 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Check CloudFront CNAME conflicts (DEP-35)
+   *
+   * Detects when existing CloudFront distributions have the same CNAME (alias)
+   * as the domain being deployed. Offers automated cleanup options.
+   *
+   * Prevents deployment failures with AWS error:
+   * "CNAMEAlreadyExists: One or more of the CNAMEs you provided are already
+   *  associated with a different resource"
+   */
+  async function checkCloudFrontCnameConflicts(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  CloudFront CNAME check skipped (non-SST infrastructure)'));
+      checks.push({ name: 'CloudFront CNAME', status: 'warning', message: 'Skipped (non-SST)' });
+      return;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // Parse SST config to extract domain
+      const sstConfig = parseSSTDomainConfig(projectRoot, stage);
+
+      if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
+        console.log(chalk.gray('ℹ️  CloudFront CNAME check skipped (no domain configured)'));
+        checks.push({ name: 'CloudFront CNAME', status: 'warning', message: 'Skipped (no domain)' });
+        return;
+      }
+
+      const spinner = ora(`Checking CloudFront CNAME conflicts for ${sstConfig.domainName}...`).start();
+
+      try {
+        // Check for CNAME conflicts
+        const cfOps = new CloudFrontOperations(config, config.awsProfile);
+        const conflicts = await cfOps.detectCnameConflicts(sstConfig.domainName);
+
+        if (conflicts.length === 0) {
+          checkCount++;
+          spinner.succeed(`✅ No CloudFront CNAME conflicts detected (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+          checks.push({
+            name: 'CloudFront CNAME',
+            status: 'success',
+            message: 'No conflicts detected',
+          });
+          return;
+        }
+
+        // Conflicts detected - display details
+        spinner.fail(`❌ CloudFront CNAME conflicts detected for ${sstConfig.domainName}`);
+
+        console.log(chalk.red(`\n❌ CNAME Conflict Detected\n`));
+        console.log(chalk.yellow(`Found ${conflicts.length} CloudFront distribution(s) with conflicting CNAME: ${sstConfig.domainName}\n`));
+
+        for (const conflict of conflicts) {
+          console.log(chalk.gray(`  Distribution: ${conflict.distributionId}`));
+          console.log(chalk.gray(`  Status: ${conflict.status} (${conflict.enabled ? 'Enabled' : 'Disabled'})`));
+          console.log(chalk.gray(`  CloudFront Domain: ${conflict.domainName}`));
+          console.log(chalk.gray(`  Aliases: ${conflict.aliases.join(', ')}\n`));
+        }
+
+        console.log(chalk.yellow(`\n⚠️  Without cleanup, SST deployment will fail with:\n`));
+        console.log(chalk.red(`   CNAMEAlreadyExists: One or more of the CNAMEs you provided are`));
+        console.log(chalk.red(`   already associated with a different resource\n`));
+
+        // Offer cleanup options
+        console.log(chalk.cyan('🔧 Automated Cleanup Options:\n'));
+        console.log('  1. Remove CNAME from old distributions (Fast, ~1 minute)');
+        console.log('  2. Delete old distributions (Slow, ~10-15 minutes)');
+        console.log('  3. Show manual cleanup commands');
+        console.log('  4. Abort deployment\n');
+
+        const response = await prompts({
+          type: 'select',
+          name: 'action',
+          message: 'How should I proceed?',
+          choices: [
+            { title: 'Auto-fix: Remove CNAMEs from old distributions', value: 'remove' },
+            { title: 'Auto-fix: Delete old distributions', value: 'delete' },
+            { title: 'Manual: Show me the AWS CLI commands', value: 'manual' },
+            { title: 'Abort deployment', value: 'abort' },
+          ],
+          initial: 0,
+        });
+
+        switch (response.action) {
+          case 'remove':
+            console.log(chalk.cyan('\n🔧 Removing CNAMEs from conflicting distributions...\n'));
+            await cfOps.removeCnamesFromDistributions(conflicts, sstConfig.domainName);
+            console.log(chalk.green(`\n✅ CNAMEs removed successfully! Deployment can proceed.\n`));
+            checkCount++;
+            checks.push({
+              name: 'CloudFront CNAME',
+              status: 'success',
+              message: 'Conflicts resolved (CNAMEs removed)',
+            });
+            break;
+
+          case 'delete':
+            console.log(chalk.cyan('\n🔧 Deleting conflicting distributions...\n'));
+            console.log(chalk.yellow('⚠️  This operation takes 10-15 minutes. Please be patient.\n'));
+            await cfOps.deleteDistributions(conflicts);
+            console.log(chalk.green(`\n✅ Distributions deleted successfully! Deployment can proceed.\n`));
+            checkCount++;
+            checks.push({
+              name: 'CloudFront CNAME',
+              status: 'success',
+              message: 'Conflicts resolved (distributions deleted)',
+            });
+            break;
+
+          case 'manual':
+            console.log(chalk.cyan('\n📋 Manual Cleanup Instructions:\n'));
+            console.log(chalk.bold('Option 1: Remove CNAME (Fast, ~1 minute)\n'));
+
+            for (const conflict of conflicts) {
+              console.log(chalk.gray(`# For distribution ${conflict.distributionId}:`));
+              console.log(chalk.white(`aws cloudfront get-distribution-config --id ${conflict.distributionId} > dist-config.json`));
+              console.log(chalk.gray('# Edit dist-config.json: Remove "${sstConfig.domainName}" from Aliases'));
+              console.log(chalk.white(`aws cloudfront update-distribution --id ${conflict.distributionId} --distribution-config file://dist-config.json --if-match <ETag>\n`));
+            }
+
+            console.log(chalk.bold('\nOption 2: Delete Distribution (Slow, ~10-15 minutes)\n'));
+
+            for (const conflict of conflicts) {
+              console.log(chalk.gray(`# Disable distribution first:`));
+              console.log(chalk.white(`aws cloudfront get-distribution-config --id ${conflict.distributionId} > dist-config.json`));
+              console.log(chalk.gray('# Edit dist-config.json: Set Enabled to false'));
+              console.log(chalk.white(`aws cloudfront update-distribution --id ${conflict.distributionId} --distribution-config file://dist-config.json --if-match <ETag>`));
+              console.log(chalk.gray('# Wait 5-15 minutes for deployment'));
+              console.log(chalk.white(`aws cloudfront get-distribution --id ${conflict.distributionId}  # Check Status = Deployed`));
+              console.log(chalk.white(`aws cloudfront delete-distribution --id ${conflict.distributionId} --if-match <ETag>\n`));
+            }
+
+            console.log(chalk.yellow('After manual cleanup, run: npx sst refresh'));
+            console.log(chalk.yellow('Then retry deployment.\n'));
+
+            checks.push({
+              name: 'CloudFront CNAME',
+              status: 'failed',
+              message: 'Manual cleanup required',
+            });
+            throw new Error('CloudFront CNAME conflicts detected - manual cleanup required');
+
+          case 'abort':
+          default:
+            checks.push({
+              name: 'CloudFront CNAME',
+              status: 'failed',
+              message: 'Deployment aborted by user',
+            });
+            throw new Error('Deployment aborted due to CloudFront CNAME conflicts');
+        }
+      } catch (checkError) {
+        // Re-throw if it's one of our expected errors
+        if (
+          (checkError as Error).message.includes('Deployment aborted') ||
+          (checkError as Error).message.includes('manual cleanup required')
+        ) {
+          throw checkError;
+        }
+
+        // Otherwise, treat as warning
+        spinner.warn('⚠️  Could not check CloudFront CNAME conflicts');
+        checks.push({
+          name: 'CloudFront CNAME',
+          status: 'warning',
+          message: 'Check failed (non-blocking)',
+        });
+        console.log(chalk.yellow(`⚠️  CloudFront CNAME check warning: ${(checkError as Error).message}`));
+      }
+    } catch (error) {
+      console.log(chalk.red(`❌ CloudFront CNAME check failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      checks.push({
+        name: 'CloudFront CNAME',
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Print check summary
    */
   function printSummary(): void {
@@ -491,6 +674,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
 
       await checkSslCertificate(stage);
       await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
+      await checkCloudFrontCnameConflicts(stage); // DEP-35
       await checkOverrideRequirement(stage); // DEP-26
       await checkACMCertificatePreDeploy(stage); // DEP-22 Phase 3
 
@@ -503,5 +687,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
 }
