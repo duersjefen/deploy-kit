@@ -105,11 +105,11 @@ export async function handleReleaseCommand(options: ReleaseOptions): Promise<voi
     await pushToGitHub(mainWorktree, versionTag, dryRun);
     console.log(chalk.green('✅ Pushed to GitHub\n'));
 
-    // Step 8: Build and publish
-    console.log(chalk.blue('Step 8/9:'), 'Building and publishing to npm...');
+    // Step 8: Wait for GitHub Actions to publish
+    console.log(chalk.blue('Step 8/9:'), 'Triggering GitHub Actions workflow...');
     currentStep = 8;
-    await buildAndPublish(mainWorktree, dryRun);
-    console.log(chalk.green('✅ Published to npm\n'));
+    console.log(chalk.yellow('  ℹ️  GitHub Actions will automatically publish to npm via OIDC'));
+    console.log(chalk.yellow(`  ℹ️  Monitor: https://github.com/duersjefen/deploy-kit/actions`));
 
     // Step 9: Create GitHub release
     console.log(chalk.blue('Step 9/9:'), 'Creating GitHub release...');
@@ -125,9 +125,10 @@ export async function handleReleaseCommand(options: ReleaseOptions): Promise<voi
     const duration = ((Date.now() - startTime) / 1000).toFixed(1);
     if (!dryRun) {
       console.log(chalk.yellow('📦 Next steps:'));
-      console.log(`1. Verify the release: https://github.com/duersjefen/deploy-kit/releases/tag/${versionTag}`);
-      console.log(`2. Verify the package: https://www.npmjs.com/package/@duersjefen/deploy-kit`);
-      console.log(`3. Update dependent projects to use @duersjefen/deploy-kit@${newVersion}`);
+      console.log(`1. Monitor GitHub Actions: https://github.com/duersjefen/deploy-kit/actions`);
+      console.log(`2. Verify the release: https://github.com/duersjefen/deploy-kit/releases/tag/${versionTag}`);
+      console.log(`3. After CI completes, verify package: https://www.npmjs.com/package/@duersjefen/deploy-kit`);
+      console.log(`4. Update dependent projects to use @duersjefen/deploy-kit@${newVersion}`);
       console.log(chalk.gray(`\nCompleted in ${duration}s\n`));
     } else {
       console.log(chalk.yellow('🔍 Dry run complete - no changes were made'));
@@ -177,12 +178,7 @@ async function preFlightChecks(): Promise<void> {
     throw new Error('Not authenticated with GitHub CLI. Run: gh auth login');
   }
 
-  // Check npm authentication
-  try {
-    await execa('npm', ['whoami'], { stdout: 'ignore', stderr: 'ignore' });
-  } catch (error) {
-    throw new Error('Not authenticated with npm. Run: npm login');
-  }
+  // Note: npm authentication not required - GitHub Actions handles publishing via OIDC
 }
 
 /**
@@ -346,33 +342,6 @@ async function pushToGitHub(worktree: string, tag: string, dryRun: boolean): Pro
 
   console.log('  → Pushing tag...');
   await execa('git', ['-C', worktree, 'push', 'origin', tag]);
-}
-
-/**
- * Step 8: Build and publish
- */
-async function buildAndPublish(worktree: string, dryRun: boolean): Promise<void> {
-  if (dryRun) {
-    console.log(chalk.yellow('  [DRY RUN] Would publish to npm registry'));
-    return;
-  }
-
-  // Check if prepublishOnly exists
-  const packageJson = JSON.parse(readFileSync(join(worktree, 'package.json'), 'utf-8'));
-  if (packageJson.scripts?.prepublishOnly) {
-    console.log('  → Running prepublishOnly...');
-    await execa('pnpm', ['--dir', worktree, 'run', 'prepublishOnly'], {
-      stdout: 'pipe',
-      stderr: 'pipe'
-    });
-  }
-
-  console.log('  → Publishing package...');
-
-  await execa('pnpm', ['--dir', worktree, 'publish', '--no-git-checks'], {
-    stdout: 'pipe',
-    stderr: 'pipe'
-  });
 }
 
 /**
