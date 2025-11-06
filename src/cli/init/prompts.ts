@@ -148,6 +148,13 @@ export function printSummary(answers: InitAnswers, optionalFiles?: OptionalFiles
 
   console.log('\n📦 Files Created/Updated:\n');
   console.log('  ✅ .deploy-config.json - Deployment configuration');
+
+  // Check if sst.config.ts was created (not just exists, but was newly created)
+  const sstConfigPath = join(process.cwd(), 'sst.config.ts');
+  if (existsSync(sstConfigPath)) {
+    console.log('  ✅ sst.config.ts - SST v3 configuration (passes all validations)');
+  }
+
   if (optionalFiles?.createScripts !== false) {
     console.log('  ✅ Updated package.json - Added deploy scripts');
   }

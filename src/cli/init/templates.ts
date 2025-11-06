@@ -127,4 +127,76 @@ export function updatePackageJson(projectRoot: string): void {
   }
 }
 
+/**
+ * Generate sst.config.ts content
+ */
+export function generateSstConfig(answers: InitAnswers): string {
+  return `/// <reference path="./.sst/platform/config.d.ts" />
+
+export default $config({
+  app(input) {
+    return {
+      name: "${answers.projectName}",
+      removal: input?.stage === "production" ? "retain" : "remove",
+      home: "aws",${answers.awsProfile ? `
+      providers: {
+        aws: {
+          region: "${answers.awsRegion}",
+          profile: "${answers.awsProfile}"
+        }
+      }` : `
+      providers: {
+        aws: {
+          region: "${answers.awsRegion}"
+        }
+      }`}
+    };
+  },
+  async run() {
+    const stage = $app.stage;
+
+    // Stage-specific domain configuration
+    const domain = stage === "production"
+      ? "${answers.productionDomain}"
+      : stage === "staging"
+        ? "${answers.stagingDomain}"
+        : undefined;
+
+    // Example Next.js site
+    // const site = new sst.aws.Nextjs("${answers.projectName.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')}Site", {
+    //   domain: domain ? { name: domain } : undefined,
+    // });
+
+    return {
+      // site: site.url,
+    };
+  },
+});
+`;
+}
+
+/**
+ * Create sst.config.ts if it doesn't exist
+ */
+export function createSstConfig(answers: InitAnswers, projectRoot: string): void {
+  const configPath = join(projectRoot, 'sst.config.ts');
+
+  // Skip if file already exists
+  if (existsSync(configPath)) {
+    console.log(chalk.cyan('ℹ️  sst.config.ts already exists, skipping generation'));
+    return;
+  }
+
+  const spinner = ora('Creating sst.config.ts...').start();
+
+  try {
+    const content = generateSstConfig(answers);
+    writeFileSync(configPath, content, 'utf-8');
+    spinner.succeed(chalk.green('✅ Created sst.config.ts'));
+  } catch (error) {
+    spinner.fail('Failed to create sst.config.ts');
+    throw error;
+  }
+}
+
 // Makefile generation removed - users should use `dk` commands directly

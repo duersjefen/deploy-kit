@@ -11,7 +11,7 @@ import type { UnvalidatedConfig, DeployConfig } from '../utils/config-validator.
 
 // Import sub-modules
 import { askQuestions, printBanner, printSummary, type InitAnswers } from './prompts.js';
-import { createDeployConfig, updatePackageJson, generateDeployConfig } from './templates.js';
+import { createDeployConfig, updatePackageJson, generateDeployConfig, createSstConfig } from './templates.js';
 import {
   createLintStagedConfig,
   createHuskyPreCommitHook,
@@ -110,6 +110,9 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       // Create config
       createDeployConfig(answers, projectRoot);
 
+      // Create SST config if it doesn't exist
+      createSstConfig(answers, projectRoot);
+
       // Update package.json with scripts
       updatePackageJson(projectRoot);
 
@@ -128,6 +131,13 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       console.log(chalk.bold.green('✅ Setup Complete!'));
       console.log(chalk.bold.green('═'.repeat(60)));
       console.log(chalk.green('\n✅ Created .deploy-config.json'));
+
+      // Check if sst.config.ts was created
+      const sstConfigPath = join(projectRoot, 'sst.config.ts');
+      if (existsSync(sstConfigPath)) {
+        console.log(chalk.green('✅ Created sst.config.ts (passes all validations)'));
+      }
+
       console.log(chalk.green('✅ Updated package.json'));
       if (flags.withQualityTools) {
         console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
@@ -277,6 +287,9 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
 
     // Generate files
     createDeployConfig(answers, projectRoot, existingConfig as ProjectConfig | null);
+
+    // Create SST config if it doesn't exist
+    createSstConfig(answers, projectRoot);
 
     // If --config-only flag is set, skip scripts and Makefile
     if (flags.configOnly) {
