@@ -31,7 +31,9 @@
 
 ## Claude Code for the Web (Remote)
 
-When running in Claude Code for the Web (detected by `CLAUDE_CODE_REMOTE=true`), see [@.claude/ccw.md](./.claude/ccw.md) for environment-specific instructions on using APIs with curl instead of CLI tools.
+@.claude/ccw.md
+
+When running in Claude Code for the Web (detected by `CLAUDE_CODE_REMOTE=true`), use the comprehensive API patterns and examples in the ccw.md file above for GitHub REST API and Linear GraphQL operations.
 
 ---
 
