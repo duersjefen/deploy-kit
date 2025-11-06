@@ -47,6 +47,7 @@ export function generateDeployConfig(answers: InitAnswers): string {
           domain: answers.productionDomain,
           requiresConfirmation: true,
           awsRegion: answers.awsRegion,
+          sstStageName: 'prod',
         },
       },
       healthChecks: [
