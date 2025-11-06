@@ -344,6 +344,45 @@ const api = new sst.aws.ApiGatewayV2("Api", {
     sstDocsUrl: 'https://sst.dev/docs/reference/linkable',
     deployKitDocsUrl: '#resource-dependency-patterns',
   },
+  'SST-VAL-061': {
+    code: 'SST-VAL-061',
+    title: 'DynamoDB Fields Not Indexed - Unused Attributes',
+    description: 'All fields defined in the "fields" property must be used in at least one index (primaryIndex, globalIndexes, or localIndexes). AWS SDK throws "all attributes must be indexed" error when fields are defined but never indexed.',
+    category: 'dynamodb-schema',
+    rootCause: 'DynamoDB tables require all explicitly declared fields to be indexed somewhere. Fields can still be stored without declaring them in "fields" - only declare fields you will index.',
+    badExample: `const table = new sst.aws.Dynamo("MyTable", {
+  fields: {
+    id: "string",
+    createdAt: "number",     // ❌ WRONG - defined but not indexed
+    lastReadAt: "number"     // ❌ WRONG - defined but not indexed
+  },
+  primaryIndex: { hashKey: "id" }
+});`,
+    goodExample: `// Option 1: Remove unused fields (they can still be stored)
+const table = new sst.aws.Dynamo("MyTable", {
+  fields: {
+    id: "string"
+  },
+  primaryIndex: { hashKey: "id" }
+});
+
+// Option 2: Add indexes for the fields
+const table = new sst.aws.Dynamo("MyTable", {
+  fields: {
+    id: "string",
+    createdAt: "number",
+    lastReadAt: "number"
+  },
+  primaryIndex: { hashKey: "id" },
+  globalIndexes: {
+    createdAtIndex: { hashKey: "createdAt" },
+    lastReadIndex: { hashKey: "lastReadAt" }
+  }
+});`,
+    relatedCodes: [],
+    sstDocsUrl: 'https://sst.dev/docs/component/aws/dynamo',
+    deployKitDocsUrl: '#dynamodb-schema-patterns',
+  },
 };
 
 /**

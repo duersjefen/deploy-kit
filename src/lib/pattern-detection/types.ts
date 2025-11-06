@@ -26,7 +26,8 @@ export type PatternCategory =
   | 'cors-config'
   | 'pulumi-output'
   | 'environment-variable'
-  | 'resource-dependency';
+  | 'resource-dependency'
+  | 'dynamodb-schema';
 
 /**
  * Code fix transformation

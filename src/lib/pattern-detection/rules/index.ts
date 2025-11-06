@@ -10,6 +10,7 @@ import { corsConfigRule } from './cors-config-rule.js';
 import { envVariableRule } from './env-variable-rule.js';
 import { pulumiOutputRule } from './pulumi-output-rule.js';
 import { resourceDependencyRule } from './resource-dependency-rule.js';
+import { dynamoIndexingRule } from './dynamo-indexing-rule.js';
 import type { PatternRule } from '../types.js';
 
 /**
@@ -22,6 +23,7 @@ export const ALL_RULES: PatternRule[] = [
   envVariableRule,
   pulumiOutputRule,
   resourceDependencyRule,
+  dynamoIndexingRule,
 ];
 
 /**
@@ -53,4 +55,5 @@ export {
   envVariableRule,
   pulumiOutputRule,
   resourceDependencyRule,
+  dynamoIndexingRule,
 };
