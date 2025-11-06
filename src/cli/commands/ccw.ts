@@ -24,29 +24,32 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   // 1. Copy global CLAUDE.md to .claude/
   await copyGlobalClaudeMd(claudeDir);
 
-  // 2. Create .claude/scripts/ directory
+  // 2. Copy ccw.md template if it doesn't exist
+  await copyCcwMdTemplate(claudeDir);
+
+  // 3. Create .claude/scripts/ directory
   await fs.ensureDir(claudeScriptsDir);
 
-  // 3. Create SessionStart hook script in .claude/scripts/
+  // 4. Create SessionStart hook script in .claude/scripts/
   await createSessionStartScript(claudeScriptsDir);
 
-  // 4. Create GitHub helper script in .claude/scripts/
+  // 5. Create GitHub helper script in .claude/scripts/
   await createGitHubHelper(claudeScriptsDir);
 
-  // 5. Create Linear helper script in .claude/scripts/
+  // 6. Create Linear helper script in .claude/scripts/
   await createLinearHelper(claudeScriptsDir);
 
-  // 6. Create .claude/settings.json with hooks
+  // 7. Create .claude/settings.json with hooks
   await createSettingsJson(claudeDir, claudeScriptsDir);
 
-  // 7. Update project CLAUDE.md
+  // 8. Update project CLAUDE.md
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
-  // 8. Detect and output required tokens
+  // 9. Detect and output required tokens
   const requiredTokens = await detectRequiredTokens(projectRoot);
   outputTokenList(requiredTokens);
 
-  // 9. Output CCW usage instructions
+  // 10. Output CCW usage instructions
   outputUsageInstructions();
 
   console.log(chalk.green('\n✅ CCW setup complete!\n'));
@@ -68,6 +71,33 @@ async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
   await fs.ensureDir(claudeDir);
   await fs.copy(globalClaudePath, targetPath);
   console.log(chalk.green('✅ Copied ~/.claude/CLAUDE.md → .claude/global_claude.md'));
+}
+
+/**
+ * Copy ccw.md template from deploy-kit if project doesn't have one
+ * This provides comprehensive API patterns for GitHub and Linear
+ */
+async function copyCcwMdTemplate(claudeDir: string): Promise<void> {
+  const targetPath = path.join(claudeDir, 'ccw.md');
+
+  // Skip if project already has ccw.md
+  if (await fs.pathExists(targetPath)) {
+    console.log(chalk.gray('   .claude/ccw.md already exists (keeping existing)'));
+    return;
+  }
+
+  // Try to find ccw.md template in deploy-kit package
+  const templatePath = path.join(__dirname, '..', '..', '..', '.claude', 'ccw.md');
+
+  if (!await fs.pathExists(templatePath)) {
+    console.log(chalk.yellow('⚠️  ccw.md template not found - skipping'));
+    console.log(chalk.yellow('     Run from published package or ensure .claude/ccw.md exists'));
+    return;
+  }
+
+  await fs.ensureDir(claudeDir);
+  await fs.copy(templatePath, targetPath);
+  console.log(chalk.green('✅ Copied ccw.md template → .claude/ccw.md (GitHub/Linear API patterns)'));
 }
 
 /**
