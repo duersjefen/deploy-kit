@@ -74,17 +74,11 @@ async function copyGlobalClaudeMd(claudeDir: string): Promise<void> {
 }
 
 /**
- * Copy ccw.md template from deploy-kit if project doesn't have one
+ * Copy ccw.md template from deploy-kit (always overwrites to get latest patterns)
  * This provides comprehensive API patterns for GitHub and Linear
  */
 async function copyCcwMdTemplate(claudeDir: string): Promise<void> {
   const targetPath = path.join(claudeDir, 'ccw.md');
-
-  // Skip if project already has ccw.md
-  if (await fs.pathExists(targetPath)) {
-    console.log(chalk.gray('   .claude/ccw.md already exists (keeping existing)'));
-    return;
-  }
 
   // Try to find ccw.md template in deploy-kit package
   const templatePath = path.join(__dirname, '..', '..', '..', '.claude', 'ccw.md');
@@ -96,7 +90,7 @@ async function copyCcwMdTemplate(claudeDir: string): Promise<void> {
   }
 
   await fs.ensureDir(claudeDir);
-  await fs.copy(templatePath, targetPath);
+  await fs.copy(templatePath, targetPath, { overwrite: true });
   console.log(chalk.green('✅ Copied ccw.md template → .claude/ccw.md (GitHub/Linear API patterns)'));
 }
 
