@@ -93,6 +93,7 @@ export async function askQuestions(projectRoot: string = process.cwd()): Promise
         { title: 'US East 2 (Ohio)', value: 'us-east-2' },
         { title: 'EU North 1 (Stockholm)', value: 'eu-north-1' },
         { title: 'EU West 1 (Ireland)', value: 'eu-west-1' },
+        { title: 'EU Central 1 (Frankfurt)', value: 'eu-central-1' },
         { title: 'AP Southeast 1 (Singapore)', value: 'ap-southeast-1' },
       ],
       initial: 2,
