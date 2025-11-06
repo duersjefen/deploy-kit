@@ -3,23 +3,24 @@ import { join } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import chalk from 'chalk';
-import { DeploymentStage, DeploymentLock } from '../types.js';
+import { DeploymentStage, DeploymentLock, ProjectConfig } from '../types.js';
 
 const execAsync = promisify(exec);
 
 /**
  * Lock management system preventing concurrent deployments
- * 
+ *
  * Implements a dual-lock system:
  * 1. File-based lock (.deployment-lock-{stage}) - prevents human-triggered concurrent deploys
  * 2. Pulumi lock detection - detects infrastructure state locks and provides recovery
- * 
+ *
  * @param projectRoot - Root directory of the project
+ * @param config - Project configuration
  * @returns Lock manager object with lock management methods
- * 
+ *
  * @example
  * ```typescript
- * const lockManager = getLockManager('/path/to/project');
+ * const lockManager = getLockManager('/path/to/project', config);
  * const lock = await lockManager.acquireLock('staging');
  * try {
  *   // Perform deployment
@@ -28,8 +29,16 @@ const execAsync = promisify(exec);
  * }
  * ```
  */
-export function getLockManager(projectRoot: string) {
+export function getLockManager(projectRoot: string, config: ProjectConfig) {
   const LOCK_DURATION_MINUTES = 120; // Auto-expire after 2 hours
+
+  /**
+   * Get SST stage name from config, falling back to stage name if not configured
+   */
+  function getSstStage(stage: DeploymentStage): string {
+    const stageConfig = config.stageConfig[stage];
+    return (stageConfig && 'sstStageName' in stageConfig && stageConfig.sstStageName) || stage;
+  }
 
   /**
    * Get lock file path
@@ -57,7 +66,7 @@ export function getLockManager(projectRoot: string) {
    */
   async function isPulumiLocked(stage: DeploymentStage): Promise<boolean> {
     try {
-      const sstStage = stage === 'production' ? 'prod' : stage;
+      const sstStage = getSstStage(stage);
       const { stdout } = await execAsync(
         `npx sst status --stage ${sstStage} 2>&1 | grep -i "locked" || true`
       );
@@ -85,7 +94,7 @@ export function getLockManager(projectRoot: string) {
    */
   async function clearPulumiLock(stage: DeploymentStage): Promise<void> {
     try {
-      const sstStage = stage === 'production' ? 'prod' : stage;
+      const sstStage = getSstStage(stage);
       await execAsync(`npx sst unlock --stage ${sstStage}`);
       console.log(chalk.green(`✅ Cleared Pulumi lock for ${stage}`));
     } catch (error) {
