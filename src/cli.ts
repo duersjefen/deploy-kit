@@ -34,6 +34,45 @@ const stage = args[1] as DeploymentStage;
 
 // Main async function to handle all commands
 async function cli() {
+  // ============================================================================
+  // NEW: Terminal UI Mode
+  // ============================================================================
+
+  // Launch terminal UI if no command specified (just `dk`)
+  if (!command || command === '--tui') {
+    const { launchTerminalUI } = await import('./cli/tui/index.js');
+    launchTerminalUI();
+    return;
+  }
+
+  // Launch web dashboard mode (dk --web)
+  if (command === '--web' || command === 'dashboard') {
+    console.log(chalk.bold.cyan('\n🚀 Deploy-Kit Command Center'));
+    console.log(chalk.gray('Opening web dashboard...\n'));
+
+    // Start dashboard server (similar to dev command but without SST)
+    const { DashboardServer } = await import('./dashboard/server.js');
+    const dashboardServer = new DashboardServer();
+
+    try {
+      const url = await dashboardServer.start();
+      console.log(chalk.green(`✅ Dashboard running at: ${chalk.bold(url)}`));
+      console.log(chalk.gray('\nPress Ctrl+C to stop the server\n'));
+
+      // Keep process alive
+      await new Promise(() => {});
+    } catch (error) {
+      console.error(chalk.red('❌ Failed to start dashboard:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+    return;
+  }
+
+  // ============================================================================
+  // Existing command handling
+  // ============================================================================
+
   // Handle early commands that don't require config file
   if (command === 'init') {
     // Parse init flags
@@ -460,6 +499,11 @@ function printHelpMessage(): void {
 
   console.log(chalk.bold('USAGE'));
   console.log('  dk <command> [options]\n');
+
+  console.log(chalk.bold('COMMAND CENTER'));
+  console.log(chalk.green('  dk') + '              Launch interactive command palette (terminal UI)');
+  console.log(chalk.green('  dk --web') + '        Launch web dashboard command center');
+  console.log(chalk.green('  dk dashboard') + '    Same as --web\n');
 
   console.log(chalk.bold('SETUP COMMANDS'));
   console.log(chalk.green('  init') + '            Initialize new project');
