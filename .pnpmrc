@@ -1,0 +1,2 @@
+# Allow postinstall script to run during npm install
+ignore-scripts=false
