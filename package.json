@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "build": "pnpm install && tsc && pnpm --filter dashboard-ui build",
-    "postinstall": "npm run build",
+    "postinstall": "pnpm run build",
     "watch": "tsc --watch",
     "test": "node --test 'dist/**/*.test.js'",
     "test:unit": "node --test --test-name-pattern='(?!Integration)' 'dist/**/*.test.js'",
