@@ -116,6 +116,9 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       // Update package.json with scripts
       updatePackageJson(projectRoot);
 
+      // Always update .gitignore with SST entries (.sst/, sst-env.d.ts)
+      updateGitIgnore(projectRoot);
+
       // Setup quality tools if requested
       if (flags.withQualityTools) {
         console.log();
@@ -123,7 +126,6 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
         createLintStagedConfig(projectRoot);
         createHuskyPreCommitHook(projectRoot);
         addPrepareScript(projectRoot);
-        updateGitIgnore(projectRoot);
       }
 
       // Print summary
@@ -236,13 +238,16 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           if (updateScripts.updateScripts) {
             updatePackageJson(projectRoot);
           }
+
+          // Always update .gitignore with SST entries (.sst/, sst-env.d.ts)
+          updateGitIgnore(projectRoot);
+
           if (updateScripts.updateQualityTools) {
             console.log();
             await installQualityTools(projectRoot);
             createLintStagedConfig(projectRoot);
             createHuskyPreCommitHook(projectRoot);
             addPrepareScript(projectRoot);
-            updateGitIgnore(projectRoot);
           }
 
           console.log('\n' + chalk.bold.green('═'.repeat(60)));
@@ -252,10 +257,10 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           if (updateScripts.updateScripts) {
             console.log(chalk.green('✅ npm scripts updated'));
           }
+          console.log(chalk.green('✅ Updated .gitignore with SST entries'));
           if (updateScripts.updateQualityTools) {
             console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
             console.log(chalk.green('✅ Configured pre-commit hooks'));
-            console.log(chalk.green('✅ Updated .gitignore with SST entries'));
           }
           console.log('\n' + chalk.bold.cyan('═'.repeat(60)) + '\n');
           return;
@@ -321,13 +326,16 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
     if (optionalFiles.createScripts) {
       updatePackageJson(projectRoot);
     }
+
+    // Always update .gitignore with SST entries (.sst/, sst-env.d.ts)
+    updateGitIgnore(projectRoot);
+
     if (optionalFiles.createQualityTools) {
       console.log();
       await installQualityTools(projectRoot);
       createLintStagedConfig(projectRoot);
       createHuskyPreCommitHook(projectRoot);
       addPrepareScript(projectRoot);
-      updateGitIgnore(projectRoot);
     }
 
     // Print summary
