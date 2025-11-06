@@ -81,7 +81,7 @@ async function runSstCheck(
     return {
       passed: result.passed,
       duration,
-      error: result.issue,
+      error: result.manualFix || result.issue,
     };
   } catch (error) {
     const duration = Date.now() - startTime;
