@@ -82,7 +82,7 @@ export async function askQuestions(projectRoot: string = process.cwd()): Promise
       type: 'text',
       name: 'productionDomain',
       message: 'Production domain',
-      initial: (prev: string, values: any) => values.mainDomain,
+      initial: (prev: string, values: Partial<InitAnswers>) => values.mainDomain || '',
     },
     {
       type: 'select',
