@@ -23,17 +23,23 @@ export const ERROR_CATALOG: Record<string, ErrorCatalogEntry> = {
 
   'SST-VAL-001': {
     code: 'SST-VAL-001',
-    title: 'Wrong Stage Variable - Using input.stage Instead of $app.stage',
-    description: 'Using input?.stage or input.stage in SST v3 config causes silent failures. The run() function does not receive parameters.',
+    title: 'Wrong Stage Variable - Using input.stage in run() Function',
+    description: 'Using input?.stage or input.stage in the run() function causes silent failures because run() does not receive input parameter. Note: input?.stage is VALID in app() function.',
     category: 'stage-variable',
-    rootCause: 'SST v3 changed the API - run() no longer receives input parameter. Stage must be accessed via $app.stage global.',
-    badExample: `async run(input: any) {
-  const stage = input?.stage || "dev";  // ❌ WRONG - input is undefined
+    rootCause: 'SST v3 API: app(input) receives input parameter (input?.stage is valid), but run() does not receive parameters (must use $app.stage instead).',
+    badExample: `// ❌ WRONG - input is undefined in run()
+async run() {
+  const stage = input?.stage || "dev";
   // This silently fails - stage is always "dev"
 }`,
-    goodExample: `async run() {
-  const stage = $app.stage;  // ✅ CORRECT - use global $app
-  // Stage correctly reflects CLI --stage flag
+    goodExample: `// ✅ CORRECT - input?.stage in app(), $app.stage in run()
+app(input) {
+  return {
+    removal: input?.stage === "production" ? "retain" : "remove"  // ✅ Valid
+  };
+},
+async run() {
+  const stage = $app.stage;  // ✅ Valid - use global $app
 }`,
     relatedCodes: ['SST-VAL-002', 'SST-VAL-003'],
     sstDocsUrl: 'https://sst.dev/docs/reference/config',
