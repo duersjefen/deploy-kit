@@ -21,14 +21,17 @@
     "dk": "bin/cli.js"
   },
   "files": [
-    "dist",
+    "src",
     "bin",
     "templates",
-    "dashboard-ui/dist",
+    "dashboard-ui",
+    "tsconfig.json",
+    "pnpm-workspace.yaml",
     "README.md"
   ],
   "scripts": {
     "build": "tsc && pnpm --filter dashboard-ui build",
+    "postinstall": "npm run build",
     "watch": "tsc --watch",
     "test": "node --test 'dist/**/*.test.js'",
     "test:unit": "node --test --test-name-pattern='(?!Integration)' 'dist/**/*.test.js'",
