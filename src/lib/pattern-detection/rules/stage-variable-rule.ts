@@ -15,6 +15,34 @@ import type { PatternRule, PatternDetectionContext, PatternViolation, CodeFix } 
 import { getLineAndColumn, getNodeText } from '../pattern-detector.js';
 
 /**
+ * Walk up AST tree to find the containing function name
+ */
+function getContainingFunctionName(node: ts.Node): string | null {
+  let current: ts.Node | undefined = node;
+
+  while (current) {
+    // Check for method declarations (e.g., app() or run() inside $config)
+    if (ts.isMethodDeclaration(current) && ts.isIdentifier(current.name)) {
+      return current.name.text;
+    }
+
+    // Check for function declarations
+    if (ts.isFunctionDeclaration(current) && current.name && ts.isIdentifier(current.name)) {
+      return current.name.text;
+    }
+
+    // Check for arrow functions assigned to variables (e.g., const app = () => ...)
+    if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) {
+      return current.name.text;
+    }
+
+    current = current.parent;
+  }
+
+  return null;
+}
+
+/**
  * Stage Variable Pattern Rule
  */
 export const stageVariableRule: PatternRule = {
@@ -68,6 +96,14 @@ export const stageVariableRule: PatternRule = {
         const text = getNodeText(sourceFile, node);
 
         if (text.includes('input.stage') || text.includes('input?.stage')) {
+          // Find the containing function to determine if this is valid
+          const containingFunction = getContainingFunctionName(node);
+
+          // input.stage is VALID in app() function, only flag in run() or other functions
+          if (containingFunction === 'app') {
+            return; // Skip - this is correct usage
+          }
+
           const { line, column } = getLineAndColumn(sourceFile, node);
 
           // Try to find the full statement for better context
@@ -87,7 +123,9 @@ export const stageVariableRule: PatternRule = {
             category: 'stage-variable',
             resource: 'sst.config.ts',
             property: 'stage',
-            message: 'Using input.stage causes silent failures. Use $app.stage instead.',
+            message: containingFunction === 'run'
+              ? 'run() function does not receive input parameter. Use $app.stage instead of input.stage.'
+              : 'Using input.stage causes silent failures. Use $app.stage instead.',
             line,
             column,
             fix: {
