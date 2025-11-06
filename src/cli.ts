@@ -17,6 +17,7 @@ import { handleReleaseCommand, type ReleaseType } from './cli/commands/release.j
 import { setupCCW } from './cli/commands/ccw.js';
 import { setupRemoteDeploy } from './cli/commands/remote-deploy.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
+import { validateConfig } from './cli/utils/config-validator.js';
 import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
 import { getFormattedVersion } from './cli/utils/version.js';
@@ -245,6 +246,26 @@ async function cli() {
   } catch (error) {
     console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
     process.exit(1);
+  }
+
+  // Validate configuration before use
+  const validationResult = validateConfig(config);
+  if (!validationResult.valid) {
+    console.error(chalk.red('\n❌ Invalid configuration in .deploy-config.json:\n'));
+    validationResult.errors.forEach(err => console.error(chalk.red(`   • ${err}`)));
+
+    if (validationResult.warnings.length > 0) {
+      console.log(chalk.yellow('\n⚠️  Warnings:\n'));
+      validationResult.warnings.forEach(warn => console.log(chalk.yellow(`   • ${warn}`)));
+    }
+
+    console.log(chalk.gray('\n   Run: dk validate\n'));
+    process.exit(1);
+  }
+
+  // Show warnings if any
+  if (validationResult.warnings.length > 0) {
+    validationResult.warnings.forEach(warn => console.log(chalk.yellow(`⚠️  ${warn}`)));
   }
 
   // Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)

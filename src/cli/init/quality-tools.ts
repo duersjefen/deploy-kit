@@ -4,7 +4,7 @@
 
 import chalk from 'chalk';
 import ora from 'ora';
-import { writeFileSync, existsSync, mkdirSync, chmodSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import { formatCommand } from '../../utils/package-manager.js';
@@ -66,7 +66,6 @@ export function updateGitIgnore(projectRoot: string): void {
   const spinner = ora('Updating .gitignore...').start();
 
   try {
-    const { readFileSync } = require('fs');
     const gitignorePath = join(projectRoot, '.gitignore');
     let content = '';
 
@@ -129,7 +128,6 @@ export function addPrepareScript(projectRoot: string): void {
   const spinner = ora('Adding prepare script to package.json...').start();
 
   try {
-    const { readFileSync } = require('fs');
     const packagePath = join(projectRoot, 'package.json');
     const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
 
