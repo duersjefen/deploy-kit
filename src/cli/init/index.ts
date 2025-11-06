@@ -32,6 +32,31 @@ export interface InitFlags {
 }
 
 /**
+ * Type definitions for prompt responses
+ */
+interface ActionPromptResponse {
+  action: 'keep' | 'merge' | 'overwrite' | 'cancel';
+}
+
+interface UpdateScriptsPromptResponse {
+  updateScripts: boolean;
+  updateQualityTools: boolean;
+}
+
+interface MergePromptResponse {
+  merge: boolean;
+}
+
+interface OptionalFilesResponse {
+  createScripts: boolean;
+  createQualityTools: boolean;
+}
+
+interface PromptError extends Error {
+  isTtyError?: boolean;
+}
+
+/**
  * Generate InitAnswers from non-interactive flags
  */
 function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): InitAnswers {
@@ -86,7 +111,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       createDeployConfig(answers, projectRoot);
 
       // Update package.json with scripts
-      updatePackageJson(answers, projectRoot);
+      updatePackageJson(projectRoot);
 
       // Setup quality tools if requested
       if (flags.withQualityTools) {
@@ -127,7 +152,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
 
       console.log(chalk.cyan('\n📝 Updating npm scripts in package.json...\n'));
-      updatePackageJson(config, projectRoot);
+      updatePackageJson(projectRoot);
       console.log(chalk.green('✅ npm scripts updated\n'));
       return;
     }
@@ -139,7 +164,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
 
     const configPath = join(projectRoot, '.deploy-config.json');
     let answers: InitAnswers;
-    let existingConfig: UnvalidatedConfig | null = null;
+    let existingConfig: UnvalidatedConfig | ProjectConfig | null = null;
 
     // Check if .deploy-config.json already exists
     if (existsSync(configPath)) {
@@ -173,7 +198,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
             ],
             initial: 0,
           },
-        ] as any);
+        ]) as ActionPromptResponse;
 
         if (action.action === 'cancel') {
           console.log(chalk.gray('\nSetup cancelled.\n'));
@@ -196,12 +221,12 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
               message: 'Setup pre-commit validation (Husky + lint-staged)?',
               initial: false,
             },
-          ] as any);
+          ]) as UpdateScriptsPromptResponse;
 
           if (updateScripts.updateScripts) {
-            updatePackageJson(existingConfig, projectRoot);
+            updatePackageJson(projectRoot);
           }
-          if ((updateScripts as any).updateQualityTools) {
+          if (updateScripts.updateQualityTools) {
             console.log();
             await installQualityTools(projectRoot);
             createLintStagedConfig(projectRoot);
@@ -217,7 +242,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           if (updateScripts.updateScripts) {
             console.log(chalk.green('✅ npm scripts updated'));
           }
-          if ((updateScripts as any).updateQualityTools) {
+          if (updateScripts.updateQualityTools) {
             console.log(chalk.green('✅ Installed quality tools (Husky, lint-staged, tsc-files)'));
             console.log(chalk.green('✅ Configured pre-commit hooks'));
             console.log(chalk.green('✅ Updated .gitignore with SST entries'));
@@ -232,7 +257,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
           const { mergeConfigs } = await import('../utils/config-validator.js');
           const merged = mergeConfigs(existingConfig as DeployConfig, newConfig as DeployConfig);
           answers = newAnswers;
-          existingConfig = merged;
+          existingConfig = merged as ProjectConfig;
         } else {
           // Overwrite: ask questions fresh
           console.log();
@@ -251,7 +276,7 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
     console.log();
 
     // Generate files
-    createDeployConfig(answers, projectRoot, existingConfig as any);
+    createDeployConfig(answers, projectRoot, existingConfig as ProjectConfig | null);
 
     // If --config-only flag is set, skip scripts and Makefile
     if (flags.configOnly) {
@@ -278,10 +303,10 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
         message: 'Setup pre-commit validation (Husky + lint-staged)?',
         initial: false,
       },
-    ] as any);
+    ]) as OptionalFilesResponse;
 
     if (optionalFiles.createScripts) {
-      updatePackageJson(answers, projectRoot);
+      updatePackageJson(projectRoot);
     }
     if (optionalFiles.createQualityTools) {
       console.log();
@@ -295,7 +320,8 @@ export async function runInit(projectRoot: string = process.cwd(), flags: InitFl
     // Print summary
     printSummary(answers, optionalFiles);
   } catch (error) {
-    if ((error as any).isTtyError) {
+    const err = error as PromptError;
+    if (err.isTtyError) {
       console.error(chalk.red('❌ Interactive prompts could not be rendered in this environment'));
     } else {
       console.error(chalk.red('❌ Setup failed:'), error);

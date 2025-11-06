@@ -68,3 +68,43 @@ export const HEALTH_CHECK = {
   /** Delay between health check retries (2 seconds) */
   RETRY_DELAY_MS: 2000,
 } as const;
+
+/**
+ * Dashboard and UI configuration
+ */
+export const DASHBOARD = {
+  /** Default dashboard port */
+  DEFAULT_PORT: 5173,
+
+  /** SST dev server default port */
+  SST_DEFAULT_PORT: 3000,
+
+  /** Auto-refresh interval for dashboard (ms) */
+  REFRESH_INTERVAL_MS: 5000,
+
+  /** Maximum command history entries */
+  MAX_HISTORY_SIZE: 1000,
+
+  /** Maximum log entries to retain */
+  MAX_LOG_ENTRIES: 1000,
+
+  /** Maximum events in event stream */
+  MAX_EVENTS: 10000,
+} as const;
+
+/**
+ * Terminal UI configuration
+ */
+export const TERMINAL_UI = {
+  /** Minimum terminal width for TUI */
+  MIN_WIDTH: 80,
+
+  /** Minimum terminal height for TUI */
+  MIN_HEIGHT: 24,
+
+  /** Command execution timeout (ms) */
+  COMMAND_TIMEOUT_MS: 600000, // 10 minutes
+
+  /** Display update interval (ms) */
+  UPDATE_INTERVAL_MS: 100,
+} as const;

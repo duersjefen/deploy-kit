@@ -100,7 +100,7 @@ export function createDeployConfig(answers: InitAnswers, projectRoot: string, me
 /**
  * Update package.json with deploy scripts
  */
-export function updatePackageJson(answers: InitAnswers | any, projectRoot: string): void {
+export function updatePackageJson(projectRoot: string): void {
   const spinner = ora('Updating package.json...').start();
 
   try {

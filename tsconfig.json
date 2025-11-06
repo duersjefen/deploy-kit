@@ -3,6 +3,9 @@
     "target": "ES2020",
     "module": "ES2020",
     "lib": ["ES2020"],
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
@@ -12,7 +15,9 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node"
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

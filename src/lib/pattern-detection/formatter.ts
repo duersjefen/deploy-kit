@@ -171,7 +171,7 @@ export function formatQuickSummary(result: PatternDetectionResult): string {
     return chalk.green('✅ No pattern issues detected');
   }
 
-  const parts = [];
+  const parts: string[] = [];
   if (result.errorCount > 0) {
     parts.push(chalk.red(`${result.errorCount} error${result.errorCount > 1 ? 's' : ''}`));
   }

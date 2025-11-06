@@ -17,6 +17,7 @@ import { handleReleaseCommand, type ReleaseType } from './cli/commands/release.j
 import { setupCCW } from './cli/commands/ccw.js';
 import { setupRemoteDeploy } from './cli/commands/remote-deploy.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
+import { validateConfig } from './cli/utils/config-validator.js';
 import type { DeploymentStage } from './types.js';
 import type { UnvalidatedConfig } from './cli/utils/config-validator.js';
 import { getFormattedVersion } from './cli/utils/version.js';
@@ -34,6 +35,45 @@ const stage = args[1] as DeploymentStage;
 
 // Main async function to handle all commands
 async function cli() {
+  // ============================================================================
+  // NEW: Terminal UI Mode
+  // ============================================================================
+
+  // Launch terminal UI if no command specified (just `dk`)
+  if (!command || command === '--tui') {
+    const { launchTerminalUI } = await import('./cli/tui/index.js');
+    launchTerminalUI();
+    return;
+  }
+
+  // Launch web dashboard mode (dk --web)
+  if (command === '--web' || command === 'dashboard') {
+    console.log(chalk.bold.cyan('\n🚀 Deploy-Kit Command Center'));
+    console.log(chalk.gray('Opening web dashboard...\n'));
+
+    // Start dashboard server (similar to dev command but without SST)
+    const { DashboardServer } = await import('./dashboard/server.js');
+    const dashboardServer = new DashboardServer();
+
+    try {
+      const url = await dashboardServer.start();
+      console.log(chalk.green(`✅ Dashboard running at: ${chalk.bold(url)}`));
+      console.log(chalk.gray('\nPress Ctrl+C to stop the server\n'));
+
+      // Keep process alive
+      await new Promise(() => {});
+    } catch (error) {
+      console.error(chalk.red('❌ Failed to start dashboard:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+    return;
+  }
+
+  // ============================================================================
+  // Existing command handling
+  // ============================================================================
+
   // Handle early commands that don't require config file
   if (command === 'init') {
     // Parse init flags
@@ -206,6 +246,26 @@ async function cli() {
   } catch (error) {
     console.error(chalk.red('❌ Error: .deploy-config.json not found in current directory'));
     process.exit(1);
+  }
+
+  // Validate configuration before use
+  const validationResult = validateConfig(config);
+  if (!validationResult.valid) {
+    console.error(chalk.red('\n❌ Invalid configuration in .deploy-config.json:\n'));
+    validationResult.errors.forEach(err => console.error(chalk.red(`   • ${err}`)));
+
+    if (validationResult.warnings.length > 0) {
+      console.log(chalk.yellow('\n⚠️  Warnings:\n'));
+      validationResult.warnings.forEach(warn => console.log(chalk.yellow(`   • ${warn}`)));
+    }
+
+    console.log(chalk.gray('\n   Run: dk validate\n'));
+    process.exit(1);
+  }
+
+  // Show warnings if any
+  if (validationResult.warnings.length > 0) {
+    validationResult.warnings.forEach(warn => console.log(chalk.yellow(`⚠️  ${warn}`)));
   }
 
   // Auto-detect AWS profile from sst.config.ts if not explicitly specified (for SST projects)
@@ -460,6 +520,11 @@ function printHelpMessage(): void {
 
   console.log(chalk.bold('USAGE'));
   console.log('  dk <command> [options]\n');
+
+  console.log(chalk.bold('COMMAND CENTER'));
+  console.log(chalk.green('  dk') + '              Launch interactive command palette (terminal UI)');
+  console.log(chalk.green('  dk --web') + '        Launch web dashboard command center');
+  console.log(chalk.green('  dk dashboard') + '    Same as --web\n');
 
   console.log(chalk.bold('SETUP COMMANDS'));
   console.log(chalk.green('  init') + '            Initialize new project');

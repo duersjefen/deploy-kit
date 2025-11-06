@@ -141,7 +141,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
 
     console.log(chalk.bold('\n🔍 Validating SST Domain Configuration (DEP-19 Phase 2)\n'));
 
-    const results = [];
+    const results: Array<{ name: string; result: any }> = [];
 
     // Check 2A: ACM Certificate
     try {
