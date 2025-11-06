@@ -158,10 +158,12 @@ export function printSummary(answers: InitAnswers, optionalFiles?: OptionalFiles
   if (optionalFiles?.createScripts !== false) {
     console.log('  ✅ Updated package.json - Added deploy scripts');
   }
+
+  console.log('  ✅ Updated .gitignore with SST entries');
+
   if (optionalFiles?.createQualityTools) {
     console.log('  ✅ Installed quality tools (Husky, lint-staged, tsc-files)');
     console.log('  ✅ Configured pre-commit hooks');
-    console.log('  ✅ Updated .gitignore with SST entries');
   }
 
   // Get package manager examples for user-facing messages
