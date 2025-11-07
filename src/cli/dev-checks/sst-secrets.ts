@@ -50,15 +50,31 @@ export function createSstSecretsCheck(
         return {
           passed: false,
           issue: `Missing ${result.missingSecrets.length} secret${result.missingSecrets.length > 1 ? 's' : ''} for stage "${stage}"\n\nMissing secrets:\n${secretsList}`,
-          manualFix: `Run these commands to set the missing secrets:\n\n${fixCommands}\n\nOr set all interactively:\n  npx sst secret set --stage ${stage}`,
+          manualFix: `Run these commands to set the missing secrets:\n\n${fixCommands}`,
           canAutoFix: true,
           autoFix: async () => {
-            // Run SST CLI in interactive mode to set secrets
+            // Run SST CLI interactively for EACH missing secret
             const { execa } = await import('execa');
-            await execa('npx', ['sst', 'secret', 'set', '--stage', stage], {
-              cwd: projectRoot,
-              stdio: 'inherit', // Pass through stdin/stdout for interactive prompts
-            });
+
+            console.log(chalk.cyan(`\n🔐 Setting ${result.missingSecrets.length} secret(s) for stage "${stage}"\n`));
+
+            for (const secretName of result.missingSecrets) {
+              console.log(chalk.bold(`\nEnter value for ${chalk.yellow(secretName)}:`));
+
+              try {
+                // Call SST secret set with the secret name - will prompt for value
+                await execa('npx', ['sst', 'secret', 'set', secretName, '--stage', stage], {
+                  cwd: projectRoot,
+                  stdio: 'inherit', // Pass through stdin/stdout for interactive prompts
+                });
+                console.log(chalk.green(`✓ Set ${secretName}`));
+              } catch (error) {
+                console.log(chalk.red(`✗ Failed to set ${secretName}`));
+                throw error;
+              }
+            }
+
+            console.log(chalk.green(`\n✅ All ${result.missingSecrets.length} secret(s) configured!\n`));
           },
           errorType: 'sst_secrets_missing', // Mark as safe auto-fix (user interaction required)
         };
