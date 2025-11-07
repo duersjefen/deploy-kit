@@ -8,8 +8,30 @@
  */
 
 import chalk from 'chalk';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import type { CheckResult } from './types.js';
+import type { ProjectConfig } from '../../types.js';
 import { validateSstSecrets, projectUsesSecrets } from '../../safety/sst-secret-validator.js';
+
+/**
+ * Load AWS profile from deploy-config.json if it exists
+ */
+function loadAwsProfile(projectRoot: string): string | undefined {
+  const configPath = join(projectRoot, '.deploy-config.json');
+
+  if (!existsSync(configPath)) {
+    return undefined;
+  }
+
+  try {
+    const content = readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(content) as ProjectConfig;
+    return config.awsProfile;
+  } catch (error) {
+    return undefined;
+  }
+}
 
 /**
  * Create SST secrets validation check for dev mode
@@ -56,7 +78,22 @@ export function createSstSecretsCheck(
             // Run SST CLI interactively for EACH missing secret
             const { execa } = await import('execa');
 
+            // Load AWS profile from config
+            const awsProfile = loadAwsProfile(projectRoot);
+
+            // Set up environment with AWS_PROFILE if specified
+            const env = {
+              ...process.env,
+              ...(awsProfile && {
+                AWS_PROFILE: awsProfile,
+              }),
+            };
+
             console.log(chalk.cyan(`\n🔐 Setting ${result.missingSecrets.length} secret(s) for stage "${stage}"\n`));
+
+            if (awsProfile) {
+              console.log(chalk.gray(`Using AWS profile: ${awsProfile}\n`));
+            }
 
             for (const secretName of result.missingSecrets) {
               console.log(chalk.bold(`\nEnter value for ${chalk.yellow(secretName)}:`));
@@ -66,6 +103,7 @@ export function createSstSecretsCheck(
                 await execa('npx', ['sst', 'secret', 'set', secretName, '--stage', stage], {
                   cwd: projectRoot,
                   stdio: 'inherit', // Pass through stdin/stdout for interactive prompts
+                  env,
                 });
                 console.log(chalk.green(`✓ Set ${secretName}`));
               } catch (error) {

@@ -11,13 +11,34 @@
 import chalk from 'chalk';
 import prompts from 'prompts';
 import { execSync } from 'child_process';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { extractSecretNames, getExistingSecrets } from '../../safety/sst-secret-validator.js';
-import type { DeploymentStage } from '../../types.js';
+import type { DeploymentStage, ProjectConfig } from '../../types.js';
 
 interface StageSecretStatus {
   stage: string;
   existingSecrets: string[];
   missingSecrets: string[];
+}
+
+/**
+ * Load AWS profile from deploy-config.json if it exists
+ */
+function loadAwsProfile(projectRoot: string): string | undefined {
+  const configPath = join(projectRoot, '.deploy-config.json');
+
+  if (!existsSync(configPath)) {
+    return undefined;
+  }
+
+  try {
+    const content = readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(content) as ProjectConfig;
+    return config.awsProfile;
+  } catch (error) {
+    return undefined;
+  }
 }
 
 /**
@@ -146,6 +167,21 @@ export async function handleSecretsCommand(projectRoot: string = process.cwd()):
   // 6. Apply secrets to all selected stages
   console.log(chalk.bold('Setting secrets...\n'));
 
+  // Load AWS profile from config
+  const awsProfile = loadAwsProfile(projectRoot);
+
+  // Set up environment with AWS_PROFILE if specified
+  const env = {
+    ...process.env,
+    ...(awsProfile && {
+      AWS_PROFILE: awsProfile,
+    }),
+  };
+
+  if (awsProfile) {
+    console.log(chalk.gray(`Using AWS profile: ${awsProfile}\n`));
+  }
+
   let successCount = 0;
   let failCount = 0;
 
@@ -164,6 +200,7 @@ export async function handleSecretsCommand(projectRoot: string = process.cwd()):
         execSync(`npx sst secret set ${secretName} "${value}" --stage ${stage}`, {
           cwd: projectRoot,
           stdio: 'pipe', // Suppress output
+          env,
         });
 
         console.log(chalk.green(`✓ Set ${chalk.bold(secretName)} for ${chalk.cyan(stage)}`));

@@ -29,7 +29,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import chalk from 'chalk';
-import type { DeploymentStage } from '../types.js';
+import type { DeploymentStage, ProjectConfig } from '../types.js';
 
 export interface SecretValidationResult {
   valid: boolean;
@@ -37,6 +37,29 @@ export interface SecretValidationResult {
   missingSecrets: string[];
   existingSecrets: string[];
   declaredSecrets: string[];
+}
+
+/**
+ * Load AWS profile from deploy-config.json if it exists
+ *
+ * @param projectRoot - Absolute path to project root
+ * @returns AWS profile name or undefined
+ */
+function loadAwsProfile(projectRoot: string): string | undefined {
+  const configPath = join(projectRoot, '.deploy-config.json');
+
+  if (!existsSync(configPath)) {
+    return undefined;
+  }
+
+  try {
+    const content = readFileSync(configPath, 'utf-8');
+    const config = JSON.parse(content) as ProjectConfig;
+    return config.awsProfile;
+  } catch (error) {
+    // If config can't be read, continue without AWS profile
+    return undefined;
+  }
 }
 
 /**
@@ -113,11 +136,23 @@ export function getExistingSecrets(
   stage: DeploymentStage
 ): string[] {
   try {
+    // Load AWS profile from config
+    const awsProfile = loadAwsProfile(projectRoot);
+
+    // Set up environment with AWS_PROFILE if specified
+    const env = {
+      ...process.env,
+      ...(awsProfile && {
+        AWS_PROFILE: awsProfile,
+      }),
+    };
+
     // Run sst secret list
     const output = execSync(`npx sst secret list --stage ${stage}`, {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      env,
     });
 
     // Parse output - each line is "SecretName = value"
