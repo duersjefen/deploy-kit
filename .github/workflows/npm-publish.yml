@@ -1,12 +1,11 @@
-name: Publish to npm
+name: Publish to npm (Manual)
+
+# NOTE: This workflow is for MANUAL publishes only
+# Primary workflow: auto-release.yml (automatic version bump + publish on merge)
+# This workflow: Publishes if package.json was manually updated
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'package.json'
-  workflow_dispatch:  # Allow manual trigger
+  workflow_dispatch:  # Manual trigger only (removed automatic push trigger)
 
 jobs:
   publish:
@@ -57,6 +56,8 @@ jobs:
       - name: Publish to npm
         if: steps.version-check.outputs.exists == 'false'
         run: pnpm publish --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create git tag
         if: steps.version-check.outputs.exists == 'false'
