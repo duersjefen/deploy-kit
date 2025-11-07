@@ -306,3 +306,115 @@ export function formatValidationIssues(config: SSTConfigData): string {
 
   return output;
 }
+
+// ============================================================================
+// Backward Compatibility Adapters
+// ============================================================================
+
+/**
+ * Legacy interface for aws-profile-detector.ts
+ * @deprecated Use parseAndValidateSSTConfig instead
+ */
+export interface SstConfigAnalysis {
+  awsProfile?: string;
+  awsRegion?: string;
+  domains?: {
+    staging?: string;
+    production?: string;
+  };
+  appName?: string;
+}
+
+/**
+ * Analyze SST config - backward compatible with aws-profile-detector
+ * @deprecated Use parseAndValidateSSTConfig instead
+ */
+export function analyzeSstConfig(projectRoot: string): SstConfigAnalysis {
+  const config = parseAndValidateSSTConfig(projectRoot);
+
+  return {
+    awsProfile: config.awsProfile,
+    awsRegion: config.awsRegion,
+    domains: {
+      staging: config.domains['staging']?.name,
+      production: config.domains['production']?.name,
+    },
+    appName: config.appName,
+  };
+}
+
+/**
+ * Detect AWS profile from SST config - backward compatible
+ * @deprecated Use parseAndValidateSSTConfig instead
+ */
+export function detectProfileFromSstConfig(projectRoot: string): string | undefined {
+  const config = parseAndValidateSSTConfig(projectRoot);
+  return config.awsProfile;
+}
+
+/**
+ * Legacy interface for sst-deployment-validator.ts
+ * @deprecated Use SSTConfigData['domains'][stage] instead
+ */
+export interface SSTDomainConfig {
+  hasDomain: boolean;
+  usesSstDns: boolean;
+  hasExplicitZone: boolean;
+  hasOverride: boolean;
+  domainName?: string;
+  baseDomain?: string;
+  zoneId?: string;
+}
+
+/**
+ * Parse SST domain config - backward compatible with sst-deployment-validator
+ * @deprecated Use parseAndValidateSSTConfig and access domains[stage] instead
+ */
+export function parseSSTDomainConfig(
+  projectRoot: string,
+  stage: DeploymentStage
+): SSTDomainConfig | null {
+  const config = parseAndValidateSSTConfig(projectRoot, stage);
+
+  if (!config.exists) {
+    return null;
+  }
+
+  const stageConfig = config.domains[stage];
+  const domainName = stageConfig?.name;
+
+  // Calculate base domain (e.g., "example.com" from "staging.example.com")
+  let baseDomain: string | undefined;
+  if (domainName) {
+    const parts = domainName.split('.');
+    if (parts.length >= 2) {
+      baseDomain = parts.slice(-2).join('.');
+    }
+  }
+
+  // Check if using sst.aws.dns() by re-reading the file
+  // (This is SST-specific and not in the core parser)
+  let usesSstDns = false;
+  try {
+    const sstConfigPath = join(projectRoot, 'sst.config.ts');
+    if (existsSync(sstConfigPath)) {
+      const content = readFileSync(sstConfigPath, 'utf-8');
+      const contentWithoutComments = content
+        .replace(/\/\/.*$/gm, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      usesSstDns = /dns:\s*sst\.aws\.dns\(/.test(contentWithoutComments);
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  return {
+    hasDomain: !!domainName,
+    usesSstDns,
+    hasExplicitZone: stageConfig?.hasExplicitZone || false,
+    hasOverride: stageConfig?.hasOverride || false,
+    domainName,
+    baseDomain,
+    zoneId: stageConfig?.zoneId,
+  };
+}
