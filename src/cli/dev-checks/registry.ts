@@ -44,7 +44,7 @@ export function getDevChecks(
 
   return [
     { name: 'AWS Credentials', check: createAwsCredentialsCheck(projectRoot, config) },
-    { name: 'SST Lock', check: createSstLockCheck(projectRoot) },
+    { name: 'SST Lock', check: createSstLockCheck(projectRoot, devStage) }, // Pass stage to detect remote Pulumi locks
     { name: 'Running SST Processes', check: createRunningSstProcessCheck(projectRoot, verbose) },
     { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
     { name: 'SST Config', check: createSstConfigCheck(projectRoot, 'dev') }, // Use 'dev' mode - warnings only for deployment issues

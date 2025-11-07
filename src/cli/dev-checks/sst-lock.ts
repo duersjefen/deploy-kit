@@ -32,22 +32,49 @@ import { execSync } from 'child_process';
 import { promptYesNo } from '../../lib/prompt.js';
 import type { CheckResult } from './types.js';
 
-export function createSstLockCheck(projectRoot: string): () => Promise<CheckResult> {
+export function createSstLockCheck(projectRoot: string, stage?: string): () => Promise<CheckResult> {
   return async () => {
     console.log(chalk.gray('🔍 Checking for SST locks...'));
 
+    // Check for local lock file
     const lockPath = join(projectRoot, '.sst', 'lock');
+    const hasLocalLock = existsSync(lockPath);
 
-    if (existsSync(lockPath)) {
-      const lockedStage = detectLockedStage(projectRoot);
+    // Check for remote Pulumi state lock by trying to unlock
+    // This is safe - if no lock exists, it just reports "no lock"
+    let hasRemoteLock = false;
+    if (!hasLocalLock && stage) {
+      try {
+        const result = execSync(`npx sst unlock --stage ${stage}`, {
+          cwd: projectRoot,
+          stdio: 'pipe',
+          encoding: 'utf-8',
+        });
+        // If unlock succeeds without "no lock" message, there was a lock
+        if (!result.toLowerCase().includes('no lock')) {
+          hasRemoteLock = true;
+        }
+      } catch (error: any) {
+        const errorMsg = error.message || error.stderr?.toString() || '';
+        // If error contains "no lock", that's fine - no lock exists
+        if (!errorMsg.toLowerCase().includes('no lock')) {
+          // Some other error - treat as potential lock issue
+          hasRemoteLock = true;
+        }
+      }
+    }
+
+    if (hasLocalLock || hasRemoteLock) {
+      const lockedStage = stage || detectLockedStage(projectRoot);
+      const lockType = hasLocalLock ? 'local' : 'remote Pulumi state';
 
       return {
         passed: false,
-        issue: 'SST lock detected (previous session didn\'t exit cleanly)',
+        issue: `SST ${lockType} lock detected (previous session didn't exit cleanly)`,
         canAutoFix: true,
         errorType: 'sst_locks',
         autoFix: async () => {
-          await handleLockWithPrompt(projectRoot, lockedStage);
+          await handleLockWithPrompt(projectRoot, lockedStage, stage);
         },
       };
     }
@@ -93,20 +120,23 @@ function detectLockedStage(projectRoot: string): string | null {
 /**
  * Handle lock with interactive prompt
  */
-async function handleLockWithPrompt(projectRoot: string, stage: string | null): Promise<void> {
+async function handleLockWithPrompt(projectRoot: string, detectedStage: string | null, stage?: string): Promise<void> {
   console.log(chalk.bold.yellow('\n🔒 SST Lock Detected\n'));
   console.log(chalk.gray('A previous session didn\'t exit cleanly, leaving a lock file.\n'));
 
-  if (stage) {
-    console.log(chalk.gray(`Stage: ${chalk.white(stage)}`));
+  const stageToUse = stage || detectedStage;
+  if (stageToUse) {
+    console.log(chalk.gray(`Stage: ${chalk.white(stageToUse)}`));
   }
   console.log(chalk.gray('Lock Type: Pulumi state lock'));
-  console.log(chalk.gray('Location: .sst/lock\n'));
+  console.log(chalk.gray('Location: .sst/lock or remote state\n'));
+
+  const unlockCmd = stageToUse ? `npx sst unlock --stage ${stageToUse}` : 'npx sst unlock';
 
   // Check if we're in non-interactive mode
   if (process.env.CI === 'true' || process.env.NON_INTERACTIVE === 'true' || !process.stdin.isTTY) {
     console.log(chalk.yellow('🔧 Non-interactive mode: Auto-unlocking...'));
-    execSync('npx sst unlock', { cwd: projectRoot, stdio: 'inherit' });
+    execSync(unlockCmd, { cwd: projectRoot, stdio: 'inherit' });
     return;
   }
 
@@ -118,16 +148,16 @@ async function handleLockWithPrompt(projectRoot: string, stage: string | null): 
 
   if (shouldUnlock) {
     try {
-      execSync('npx sst unlock', { cwd: projectRoot, stdio: 'pipe' });
+      execSync(unlockCmd, { cwd: projectRoot, stdio: 'pipe' });
       console.log(chalk.green('✅ Lock cleared successfully!\n'));
     } catch (error) {
       console.log(chalk.yellow('⚠️  Auto-unlock failed'));
-      console.log(chalk.gray('Please run manually: npx sst unlock\n'));
+      console.log(chalk.gray(`Please run manually: ${unlockCmd}\n`));
       throw error;
     }
   } else {
     console.log(chalk.yellow('⚠️  Lock not cleared'));
-    console.log(chalk.gray('You can clear it later with: npx sst unlock\n'));
+    console.log(chalk.gray(`You can clear it later with: ${unlockCmd}\n`));
     throw new Error('User declined to clear SST lock');
   }
 }
