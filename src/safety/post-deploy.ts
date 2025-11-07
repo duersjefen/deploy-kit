@@ -129,7 +129,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
   }
 
   /**
-   * Validate SST domain configuration (DEP-19 Phase 2)
+   * Validate SST domain configuration
    *
    * Checks ACM certificate, CloudFront aliases, Route53 DNS records, and Lambda functions
    */
@@ -139,7 +139,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
       return;
     }
 
-    console.log(chalk.bold('\n🔍 Validating SST Domain Configuration (DEP-19 Phase 2)\n'));
+    console.log(chalk.bold('\n🔍 Validating SST Domain Configuration\n'));
 
     const results: Array<{ name: string; result: any }> = [];
 
@@ -234,7 +234,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
         await checkDatabaseConnection(stage);
       }
 
-      // DEP-19 Phase 2: SST domain configuration validation
+      // SST domain configuration validation
       await validateSSTDomainConfiguration(stage, projectRoot);
 
       console.log(chalk.green(`\n✅ Post-deployment validation complete!\n`));

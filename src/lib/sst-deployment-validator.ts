@@ -444,7 +444,7 @@ export async function waitForDNSPropagation(
 /**
  * Check if ACM certificate exists for domain
  *
- * DEP-19 Phase 2, Check 2A: ACM Certificate Validation
+ * ACM Certificate Validation
  *
  * @param domain - Domain name
  * @param awsProfile - AWS profile name
@@ -563,7 +563,7 @@ export async function findCloudFrontDistribution(
 /**
  * Check if Route53 DNS records exist for domain
  *
- * DEP-19 Phase 2, Check 2C: Route53 DNS Records Validation
+ * Route53 DNS Records Validation
  *
  * @param domain - Domain name
  * @param zoneId - Hosted zone ID
@@ -607,7 +607,7 @@ export async function checkRoute53DNSRecords(
 /**
  * Check if Next.js server Lambda exists (not DevServer)
  *
- * DEP-19 Phase 2, Check 2D: Next.js Server Lambda Validation
+ * Next.js Server Lambda Validation
  *
  * @param projectName - Project name
  * @param stage - Deployment stage
@@ -1223,7 +1223,7 @@ export async function ensureRoute53Zone(
 }
 
 /**
- * Validate ACM certificate (Post-deployment, DEP-19 Phase 2, Check 2A)
+ * Validate ACM certificate (Post-deployment)
  */
 export async function validateACMCertificate(
   config: ProjectConfig,
@@ -1279,7 +1279,7 @@ export async function validateACMCertificate(
 }
 
 /**
- * Validate CloudFront domain alias (Post-deployment, DEP-19 Phase 2, Check 2B)
+ * Validate CloudFront domain alias (Post-deployment)
  */
 export async function validateCloudFrontDomainAlias(
   config: ProjectConfig,
@@ -1355,7 +1355,7 @@ export async function validateCloudFrontDomainAlias(
 }
 
 /**
- * Validate Route53 DNS records (Post-deployment, DEP-19 Phase 2, Check 2C)
+ * Validate Route53 DNS records (Post-deployment)
  */
 export async function validateRoute53DNSRecords(
   config: ProjectConfig,
@@ -1418,7 +1418,7 @@ export async function validateRoute53DNSRecords(
 }
 
 /**
- * Validate Next.js server Lambda (Post-deployment, DEP-19 Phase 2, Check 2D)
+ * Validate Next.js server Lambda (Post-deployment)
  */
 export async function validateNextjsServerLambda(
   config: ProjectConfig,

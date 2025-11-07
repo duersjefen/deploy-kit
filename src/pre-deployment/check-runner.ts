@@ -50,11 +50,9 @@ export async function runCheck(
   collapsible.startSection(header);
 
   return new Promise((resolve) => {
-    // Parse command and arguments
-    const [command, ...args] = check.command.split(' ');
-
-    // Spawn process with shell=true for npm scripts support
-    const child = spawn(command, args, {
+    // Spawn process with shell for npm scripts support
+    // When shell is true, pass command as single string to avoid DEP0190 warning
+    const child = spawn(check.command, [], {
       cwd,
       shell: true,
       env: { ...process.env, CI: 'true' }, // Set CI flag for better test output
