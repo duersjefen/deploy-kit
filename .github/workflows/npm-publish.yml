@@ -1,25 +1,27 @@
-name: Publish to npm
-
-# Triggered automatically when package.json is updated (by auto-version-bump workflow)
-# Also supports manual triggering via workflow_dispatch
+name: Auto Release & Publish
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'package.json'
+    paths-ignore:
+      - '**.md'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  publish:
+  release:
+    # Skip if commit is from github-actions (prevents infinite loop from version bump commits)
+    if: "github.actor != 'github-actions[bot]'"
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for creating tags and releases
-      id-token: write  # Required for npm OIDC trusted publishing
+      contents: write  # Required for creating tags, releases, and pushing version bump
+      id-token: write  # Required for npm provenance
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper tagging
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
 
@@ -29,33 +31,66 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
-      - name: Get package version
-        id: package-version
-        run: echo "version=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine version bump type
+        id: bump-type
+        run: |
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+
+          # Check for BREAKING CHANGE or ! in commit
+          if echo "$COMMIT_MSG" | grep -qiE '(BREAKING CHANGE|^[a-z]+!:)'; then
+            echo "type=major" >> $GITHUB_OUTPUT
+            echo "📢 Detected BREAKING CHANGE → MAJOR version bump"
+          # Check for feat: prefix
+          elif echo "$COMMIT_MSG" | grep -qiE '^feat(\([^)]*\))?:'; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+            echo "✨ Detected feat: → MINOR version bump"
+          # Default to patch
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+            echo "🔧 Default → PATCH version bump"
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm run test:unit
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Bump version
+        id: version
+        run: |
+          # Bump version using pnpm
+          pnpm version ${{ steps.bump-type.outputs.type }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version bumped to: v$NEW_VERSION"
 
       - name: Check if version exists on npm
         id: version-check
         run: |
-          VERSION="${{ steps.package-version.outputs.version }}"
+          VERSION="${{ steps.version.outputs.version }}"
           if npm view @duersjefen/deploy-kit@$VERSION version 2>/dev/null; then
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Version $VERSION already exists on npm - skipping publish"
+            echo "⚠️  Version $VERSION already exists on npm - skipping publish"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Version $VERSION is new - will publish"
+            echo "✅ Version $VERSION is new - will publish"
           fi
 
-      - name: Install dependencies
+      - name: Commit version bump
         if: steps.version-check.outputs.exists == 'false'
-        run: pnpm install --frozen-lockfile
-
-      - name: Run tests
-        if: steps.version-check.outputs.exists == 'false'
-        run: pnpm run test:unit
-
-      - name: Build
-        if: steps.version-check.outputs.exists == 'false'
-        run: pnpm run build
+        run: |
+          git add package.json pnpm-lock.yaml
+          git commit -m "chore: Bump version to v${{ steps.version.outputs.version }}"
+          git push origin main
 
       - name: Publish to npm
         if: steps.version-check.outputs.exists == 'false'
@@ -66,18 +101,17 @@ jobs:
       - name: Create git tag
         if: steps.version-check.outputs.exists == 'false'
         run: |
-          VERSION="${{ steps.package-version.outputs.version }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
+          VERSION="v${{ steps.version.outputs.version }}"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
 
       - name: Create GitHub Release
         if: steps.version-check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ steps.package-version.outputs.version }}"
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --generate-notes
+          VERSION="v${{ steps.version.outputs.version }}"
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --generate-notes \
+            --notes "**Release type:** ${{ steps.bump-type.outputs.type }} bump"
