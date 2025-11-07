@@ -39,22 +39,10 @@ jobs:
       - name: Determine version bump type
         id: bump-type
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-
-          # Check for BREAKING CHANGE: in footer or ! after type
-          # Must be: "BREAKING CHANGE:" (with colon) or "type!:" format
-          if echo "$COMMIT_MSG" | grep -qE '(^BREAKING CHANGE:|^[a-z]+!:)'; then
-            echo "type=major" >> $GITHUB_OUTPUT
-            echo "📢 Detected BREAKING CHANGE → MAJOR version bump"
-          # Check for feat: prefix
-          elif echo "$COMMIT_MSG" | grep -qiE '^feat(\([^)]*\))?:'; then
-            echo "type=minor" >> $GITHUB_OUTPUT
-            echo "✨ Detected feat: → MINOR version bump"
-          # Default to patch
-          else
-            echo "type=patch" >> $GITHUB_OUTPUT
-            echo "🔧 Default → PATCH version bump"
-          fi
+          # ALWAYS bump patch version automatically
+          # For minor/major bumps, manually run: pnpm version minor/major
+          echo "type=patch" >> $GITHUB_OUTPUT
+          echo "🔧 Auto PATCH version bump"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
