@@ -29,6 +29,18 @@ export interface StageConfig {
 
   /** DynamoDB table name (for DynamoDB projects) */
   dynamoTableName?: string;
+
+  /**
+   * Enable enhanced post-deployment validation (default: true for SST projects)
+   *
+   * Enhanced validation includes:
+   * - DNS resolution testing across multiple public resolvers
+   * - ACM certificate validation monitoring (waits for ISSUED status)
+   * - Real HTTPS accessibility testing
+   *
+   * Set to false to skip enhanced validation and use basic checks only.
+   */
+  enhancedValidation?: boolean;
 }
 
 export interface HealthCheck {
