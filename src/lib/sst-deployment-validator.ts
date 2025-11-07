@@ -1423,13 +1423,22 @@ export async function validateRoute53DNSRecords(
  */
 export async function validateNextjsServerLambda(
   config: ProjectConfig,
-  stage: DeploymentStage
+  stage: DeploymentStage,
+  projectRoot: string
 ): Promise<ValidationResult> {
   const spinner = ora('Checking Next.js server Lambda...').start();
 
   try {
     if (config.infrastructure !== 'sst-serverless') {
       spinner.succeed('✅ Lambda check skipped (non-SST infrastructure)');
+      return { passed: true, skipped: true };
+    }
+
+    // Parse SST config to check if domain is configured
+    const sstConfig = parseSSTDomainConfig(projectRoot, stage);
+
+    if (!sstConfig || !sstConfig.hasDomain) {
+      spinner.succeed('✅ Lambda check skipped (no domain configured)');
       return { passed: true, skipped: true };
     }
 

@@ -178,7 +178,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
 
     // Check 2D: Next.js Server Lambda
     try {
-      const lambdaResult = await validateNextjsServerLambda(config, stage);
+      const lambdaResult = await validateNextjsServerLambda(config, stage, projectRoot);
       results.push({ name: 'Next.js Server Lambda', result: lambdaResult });
     } catch (error) {
       results.push({
