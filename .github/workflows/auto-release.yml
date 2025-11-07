@@ -70,10 +70,11 @@ jobs:
       - name: Bump version
         id: version
         run: |
-          # Bump version without creating git tag (we'll do that after publish)
-          NEW_VERSION=$(npm version ${{ steps.bump-type.outputs.type }} --no-git-tag-version)
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "📦 Version bumped to: $NEW_VERSION"
+          # Bump version using pnpm (works with workspace)
+          pnpm version ${{ steps.bump-type.outputs.type }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "version=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version bumped to: v$NEW_VERSION"
 
       - name: Commit version bump
         run: |
