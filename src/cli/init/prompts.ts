@@ -3,10 +3,10 @@
  */
 
 import chalk from 'chalk';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import prompt, { type PromptObject } from 'prompts';
-import { detectProfileFromSstConfig } from '../utils/aws-profile-detector.js';
+import { analyzeSstConfig } from '../utils/aws-profile-detector.js';
 import { getPackageManagerExamples } from '../../utils/package-manager.js';
 
 export interface InitAnswers {
@@ -28,26 +28,63 @@ export interface OptionalFiles {
  * Ask user for project configuration
  */
 export async function askQuestions(projectRoot: string = process.cwd()): Promise<InitAnswers> {
-  // Check if this is an SST project and try to auto-detect profile
-  let detectedProfile: string | undefined;
+  // Try to get project name from package.json
+  let defaultProjectName = 'my-awesome-app';
+  try {
+    const packagePath = join(projectRoot, 'package.json');
+    if (existsSync(packagePath)) {
+      const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
+      if (packageJson.name) {
+        defaultProjectName = packageJson.name;
+      }
+    }
+  } catch {
+    // Ignore errors, use default
+  }
+
+  // Analyze existing SST config if present
   let showProfileQuestion = true;
+  let sstAnalysis = analyzeSstConfig(projectRoot);
 
   const sstConfigExists = existsSync(join(projectRoot, 'sst.config.ts'));
-  if (sstConfigExists) {
-    detectedProfile = detectProfileFromSstConfig(projectRoot);
-    if (detectedProfile) {
-      console.log(chalk.cyan(`\n📝 Found AWS profile in sst.config.ts: ${chalk.bold(detectedProfile)}`));
-      console.log(chalk.gray('   This profile will be auto-detected, so you can skip specifying it here.\n'));
+  if (sstConfigExists && Object.keys(sstAnalysis).length > 0) {
+    console.log(chalk.cyan('\n📋 Found existing sst.config.ts - analyzing configuration...\n'));
+
+    if (sstAnalysis.awsProfile) {
+      console.log(chalk.green(`  ✓ AWS Profile: ${chalk.bold(sstAnalysis.awsProfile)}`));
       showProfileQuestion = false;
     }
+
+    if (sstAnalysis.awsRegion) {
+      console.log(chalk.green(`  ✓ AWS Region: ${chalk.bold(sstAnalysis.awsRegion)}`));
+    }
+
+    if (sstAnalysis.appName) {
+      console.log(chalk.green(`  ✓ App Name: ${chalk.bold(sstAnalysis.appName)}`));
+      defaultProjectName = sstAnalysis.appName;
+    }
+
+    if (sstAnalysis.domains?.staging) {
+      console.log(chalk.green(`  ✓ Staging Domain: ${chalk.bold(sstAnalysis.domains.staging)}`));
+    }
+
+    if (sstAnalysis.domains?.production) {
+      console.log(chalk.green(`  ✓ Production Domain: ${chalk.bold(sstAnalysis.domains.production)}`));
+    }
+
+    console.log(chalk.gray('\n  These values will be used as defaults below.\n'));
   }
+
+  // Calculate default domain from production domain or project name
+  const defaultMainDomain = sstAnalysis.domains?.production ||
+                           `${defaultProjectName.replace(/^@[^/]+\//, '')}.com`;
 
   const questions: PromptObject[] = [
     {
       type: 'text',
       name: 'projectName',
       message: 'Project name (kebab-case)',
-      initial: 'my-awesome-app',
+      initial: defaultProjectName,
       validate: (val: string) =>
         /^[a-z0-9-]+$/.test(val) ? true : 'Use lowercase letters, numbers, and hyphens only',
     },
@@ -55,7 +92,7 @@ export async function askQuestions(projectRoot: string = process.cwd()): Promise
       type: 'text',
       name: 'mainDomain',
       message: 'Main domain (e.g., myapp.com)',
-      initial: 'myapp.com',
+      initial: defaultMainDomain,
       validate: (val: string) =>
         /^[a-z0-9.-]+\.[a-z]{2,}$/.test(val) ? true : 'Please enter a valid domain',
     },
@@ -67,36 +104,44 @@ export async function askQuestions(projectRoot: string = process.cwd()): Promise
       type: 'text',
       name: 'awsProfile',
       message: 'AWS profile name (for credentials)',
-      initial: 'my-awesome-app',
+      initial: (prev: string, values: Partial<InitAnswers>) => values.projectName || defaultProjectName,
     });
   }
+
+  // Determine default region index (eu-central-1 is index 4)
+  const regionChoices = [
+    { title: 'US East 1 (N. Virginia)', value: 'us-east-1' },
+    { title: 'US East 2 (Ohio)', value: 'us-east-2' },
+    { title: 'EU North 1 (Stockholm)', value: 'eu-north-1' },
+    { title: 'EU West 1 (Ireland)', value: 'eu-west-1' },
+    { title: 'EU Central 1 (Frankfurt)', value: 'eu-central-1' },
+    { title: 'AP Southeast 1 (Singapore)', value: 'ap-southeast-1' },
+  ];
+
+  const defaultRegion = sstAnalysis.awsRegion || 'eu-central-1';
+  const defaultRegionIndex = regionChoices.findIndex(c => c.value === defaultRegion);
 
   questions.push(
     {
       type: 'text',
       name: 'stagingDomain',
       message: 'Staging domain',
-      initial: (prev: string) => `staging.${prev}`,
+      initial: sstAnalysis.domains?.staging ||
+               ((prev: string) => `staging.${prev}`),
     },
     {
       type: 'text',
       name: 'productionDomain',
       message: 'Production domain',
-      initial: (prev: string, values: Partial<InitAnswers>) => values.mainDomain || '',
+      initial: sstAnalysis.domains?.production ||
+               ((prev: string, values: Partial<InitAnswers>) => values.mainDomain || ''),
     },
     {
       type: 'select',
       name: 'awsRegion',
       message: 'AWS region',
-      choices: [
-        { title: 'US East 1 (N. Virginia)', value: 'us-east-1' },
-        { title: 'US East 2 (Ohio)', value: 'us-east-2' },
-        { title: 'EU North 1 (Stockholm)', value: 'eu-north-1' },
-        { title: 'EU West 1 (Ireland)', value: 'eu-west-1' },
-        { title: 'EU Central 1 (Frankfurt)', value: 'eu-central-1' },
-        { title: 'AP Southeast 1 (Singapore)', value: 'ap-southeast-1' },
-      ],
-      initial: 2,
+      choices: regionChoices,
+      initial: defaultRegionIndex >= 0 ? defaultRegionIndex : 4, // Default to eu-central-1
     },
     {
       type: 'confirm',
@@ -109,8 +154,8 @@ export async function askQuestions(projectRoot: string = process.cwd()): Promise
   const answers = await prompt(questions);
 
   // If profile was auto-detected from SST, include it in answers
-  if (detectedProfile && !answers.awsProfile) {
-    answers.awsProfile = detectedProfile;
+  if (sstAnalysis.awsProfile && !answers.awsProfile) {
+    answers.awsProfile = sstAnalysis.awsProfile;
   }
 
   return answers as InitAnswers;
