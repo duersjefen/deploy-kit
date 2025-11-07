@@ -23,7 +23,8 @@ jobs:
           # Fetch full history for proper tag creation
           fetch-depth: 0
           # Use PAT to allow workflow to trigger other workflows
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Fallback to GITHUB_TOKEN if PAT not available (but won't chain workflows)
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - uses: pnpm/action-setup@v4
 
@@ -32,6 +33,21 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
+
+      - name: Check for PAT_TOKEN
+        run: |
+          if [ -z "${{ secrets.PAT_TOKEN }}" ]; then
+            echo "⚠️  WARNING: PAT_TOKEN secret not configured!"
+            echo "The version will be bumped, but npm-publish workflow won't trigger automatically."
+            echo ""
+            echo "To fix:"
+            echo "1. Create a Personal Access Token with 'repo' and 'workflow' permissions"
+            echo "2. Add it as a repository secret named 'PAT_TOKEN'"
+            echo "3. See: https://github.com/settings/tokens/new"
+            echo ""
+          else
+            echo "✅ PAT_TOKEN is configured - workflows will chain properly"
+          fi
 
       - name: Configure git
         run: |
