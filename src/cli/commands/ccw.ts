@@ -42,7 +42,10 @@ export async function setupCCW(projectRoot: string = process.cwd()): Promise<voi
   // 5. Create .claude/settings.json with hooks
   await createSettingsJson(claudeDir, claudeScriptsDir);
 
-  // 6. Update project CLAUDE.md
+  // 6. Ensure .claude/ is not ignored in .gitignore
+  await ensureClaudeDirNotIgnored(projectRoot);
+
+  // 7. Update project CLAUDE.md
   await updateProjectClaudeMd(projectRoot, claudeDir);
 
   // 7. Detect and output required tokens
@@ -322,6 +325,42 @@ async function createSettingsJson(claudeDir: string, scriptsDir: string): Promis
 }
 
 /**
+ * Ensure .claude/ is not ignored in .gitignore
+ * These files should be committed as they contain project-wide CCW configuration
+ */
+async function ensureClaudeDirNotIgnored(projectRoot: string): Promise<void> {
+  const gitignorePath = path.join(projectRoot, '.gitignore');
+
+  if (!await fs.pathExists(gitignorePath)) {
+    console.log(chalk.gray('   No .gitignore found - .claude/ will be tracked by default'));
+    return;
+  }
+
+  let gitignoreContent = await fs.readFile(gitignorePath, 'utf-8');
+  const lines = gitignoreContent.split('\n');
+  let modified = false;
+
+  // Look for lines that ignore .claude/ directory
+  const updatedLines = lines.map(line => {
+    const trimmed = line.trim();
+    // Check for .claude/ patterns (with or without trailing slash, with or without leading dot)
+    if (trimmed === '.claude' || trimmed === '.claude/' || trimmed === '/.claude' || trimmed === '/.claude/') {
+      modified = true;
+      // Comment it out instead of removing (preserve user's intent but make it inactive)
+      return `# ${line} # Commented by dk ccw - .claude/ should be tracked for CCW config`;
+    }
+    return line;
+  });
+
+  if (modified) {
+    await fs.writeFile(gitignorePath, updatedLines.join('\n'));
+    console.log(chalk.green('✅ Removed .claude/ from .gitignore (CCW files should be tracked)'));
+  } else {
+    console.log(chalk.gray('   .claude/ not in .gitignore - will be tracked ✓'));
+  }
+}
+
+/**
  * Update project CLAUDE.md with CCW info (optional)
  * No longer adds sourcing pattern - global rules are copied to ~/.claude/CLAUDE.md on CCW server
  */
@@ -336,16 +375,6 @@ async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Pr
   // No changes needed - project CLAUDE.md stays clean with only project-specific instructions
   // Global rules are handled by copying .claude/global_claude.md → ~/.claude/CLAUDE.md on CCW server
   console.log(chalk.gray('   CLAUDE.md remains project-specific (global rules handled by CCW setup)'));
-}
-
-/**
- * Update .gitignore
- * Not needed - .claude/settings.json should be committed (contains SessionStart hook config)
- * The setup script modifies it at runtime in CCW to add permissions
- */
-async function updateGitignore(projectRoot: string): Promise<void> {
-  // No-op - settings.json needs to be in git for SessionStart hook to work
-  console.log(chalk.gray('   .claude/settings.json will be committed (contains SessionStart hook)'));
 }
 
 /**
