@@ -83,8 +83,8 @@ jobs:
 
       - name: Publish to npm
         run: pnpm publish --provenance --no-git-checks
-        # Uses OIDC trusted publishing (id-token: write permission)
-        # No NPM_TOKEN needed!
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create and push git tag
         run: |
