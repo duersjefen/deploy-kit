@@ -41,10 +41,16 @@ export function createSstSecretsCheck(
       const result = await validateSstSecrets(projectRoot, stage as any);
 
       if (!result.valid) {
+        // Build clear error message showing exactly what's missing
+        const secretsList = result.missingSecrets.map(s => `  - ${s}`).join('\n');
+        const fixCommands = result.missingSecrets
+          .map(s => `  npx sst secret set ${s} "your-value" --stage ${stage}`)
+          .join('\n');
+
         return {
           passed: false,
-          issue: `Missing ${result.missingSecrets.length} SST secret(s) for stage "${stage}"`,
-          manualFix: result.error || `Missing secrets: ${result.missingSecrets.join(', ')}`,
+          issue: `Missing ${result.missingSecrets.length} secret${result.missingSecrets.length > 1 ? 's' : ''} for stage "${stage}"\n\nMissing secrets:\n${secretsList}`,
+          manualFix: `Run these commands to set the missing secrets:\n\n${fixCommands}\n\nOr set all interactively:\n  npx sst secret set --stage ${stage}`,
         };
       }
 
