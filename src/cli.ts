@@ -24,6 +24,7 @@ import { recover } from './cli/commands/recover.js';
 import { handleReleaseCommand, type ReleaseType } from './cli/commands/release.js';
 import { setupCCW } from './cli/commands/ccw.js';
 import { setupRemoteDeploy } from './cli/commands/remote-deploy.js';
+import { handleSecretsCommand } from './cli/commands/secrets.js';
 import { resolveAwsProfile, logAwsProfile } from './cli/utils/aws-profile-detector.js';
 import { validateConfig } from './cli/utils/config-validator.js';
 import type { DeploymentStage } from './types.js';
@@ -123,6 +124,17 @@ async function cli() {
       process.exit(0);
     } catch (error) {
       console.error(chalk.red('\n❌ Doctor error:'));
+      console.error(chalk.red((error as Error).message));
+      process.exit(1);
+    }
+  }
+
+  if (command === 'secrets') {
+    try {
+      await handleSecretsCommand(process.cwd());
+      process.exit(0);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Secrets wizard error:'));
       console.error(chalk.red((error as Error).message));
       process.exit(1);
     }
@@ -544,6 +556,7 @@ function printHelpMessage(): void {
   console.log('                  --aws-region=REGION  Set AWS region (default: eu-north-1)');
   console.log(chalk.green('  validate') + '        Validate .deploy-config.json');
   console.log(chalk.green('  doctor') + '          Run comprehensive health checks');
+  console.log(chalk.green('  secrets') + '         Interactive SST secrets setup wizard');
   console.log(chalk.green('  ccw') + '             Setup Claude Code for the Web');
   console.log(chalk.green('  remote-deploy') + '   Setup GitHub Actions workflow\n');
 
