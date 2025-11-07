@@ -60,6 +60,9 @@ export interface DeploymentHooks {
 
   /** Run if deployment fails */
   onError?: string;
+
+  /** Run before starting dev server (after pre-flight checks) */
+  preDev?: string;
 }
 
 export interface HostedZone {

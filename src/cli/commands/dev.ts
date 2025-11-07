@@ -146,12 +146,13 @@ export async function handleDevCommand(
     }
 
     // Run preDev hook if defined (DEP-37)
-    // Use 'dev' as stage for dev environment (lifecycle hooks expect a stage)
+    // Supports both .deploy-config.json hooks and package.json scripts
     const hookSuccess = await runLifecycleHook('pre-dev', {
       stage: 'staging', // Use 'staging' as placeholder (dev hooks don't use stage-specific versions)
       isDryRun: false,
       startTime: new Date(),
       projectRoot,
+      config: config || undefined, // Pass config to enable .deploy-config.json hooks
     });
 
     if (!hookSuccess) {

@@ -1,10 +1,15 @@
 /**
  * Lifecycle Hooks - Execute custom scripts during deployment
  *
- * Supports npm-style lifecycle hooks via package.json scripts:
- * - pre-deploy / pre-deploy:<stage>
- * - post-deploy / post-deploy:<stage>
- * - on-failure / on-failure:<stage>
+ * Supports lifecycle hooks from two sources (in priority order):
+ * 1. .deploy-config.json hooks section (recommended)
+ * 2. package.json scripts (fallback for backward compatibility)
+ *
+ * Available hooks:
+ * - preDev: Run before starting dev server
+ * - preDeploy / preDeploy:<stage>: Run before deployment
+ * - postDeploy / postDeploy:<stage>: Run after deployment
+ * - onError / onError:<stage>: Run on deployment failure
  *
  * Stage-specific hooks take precedence over generic hooks.
  */
@@ -13,7 +18,7 @@ import { execa } from 'execa';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import chalk from 'chalk';
-import type { DeploymentStage } from '../types.js';
+import type { DeploymentStage, ProjectConfig } from '../types.js';
 import { detectPackageManager } from '../utils/package-manager.js';
 
 export type LifecycleHookType = 'pre-deploy' | 'post-deploy' | 'on-failure' | 'pre-dev';
@@ -23,6 +28,7 @@ export interface LifecycleHookContext {
   isDryRun: boolean;
   startTime: Date;
   projectRoot: string;
+  config?: ProjectConfig;
 }
 
 export interface PackageJsonScripts {
@@ -48,27 +54,43 @@ function loadPackageJson(projectRoot: string): PackageJsonScripts | null {
 }
 
 /**
- * Resolve hook name with stage-specific fallback
+ * Resolve hook command from config or package.json
  *
  * Priority:
- * 1. <hookType>:<stage> (e.g., "pre-deploy:production")
- * 2. <hookType> (e.g., "pre-deploy")
- * 3. null (no hook found)
+ * 1. config.hooks[hookType] (from .deploy-config.json)
+ * 2. package.json scripts[hookType:stage]
+ * 3. package.json scripts[hookType]
+ * 4. null (no hook found)
  */
-function resolveHookName(
-  scripts: PackageJsonScripts,
+function resolveHookCommand(
   hookType: LifecycleHookType,
-  stage: DeploymentStage
-): string | null {
-  // Try stage-specific hook first
-  const stageSpecificHook = `${hookType}:${stage}`;
-  if (scripts[stageSpecificHook]) {
-    return stageSpecificHook;
+  stage: DeploymentStage,
+  config?: ProjectConfig,
+  scripts?: PackageJsonScripts
+): { command: string; source: 'config' | 'package.json' } | null {
+  // Convert hook type to config key (pre-deploy -> preDeploy)
+  const configKey = hookType.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+
+  // 1. Check .deploy-config.json hooks first (highest priority)
+  if (config?.hooks) {
+    const hookCommand = (config.hooks as any)[configKey];
+    if (hookCommand) {
+      return { command: hookCommand, source: 'config' };
+    }
   }
 
-  // Fallback to generic hook
-  if (scripts[hookType]) {
-    return hookType;
+  // 2. Check package.json scripts (fallback for backward compatibility)
+  if (scripts) {
+    // Try stage-specific hook first
+    const stageSpecificHook = `${hookType}:${stage}`;
+    if (scripts[stageSpecificHook]) {
+      return { command: stageSpecificHook, source: 'package.json' };
+    }
+
+    // Fallback to generic hook
+    if (scripts[hookType]) {
+      return { command: hookType, source: 'package.json' };
+    }
   }
 
   return null;
@@ -86,14 +108,13 @@ function resolveHookName(
  */
 async function executeHook(
   hookName: string,
-  hookScript: string,
+  hookCommand: string,
+  source: 'config' | 'package.json',
   context: LifecycleHookContext
 ): Promise<boolean> {
-  console.log(chalk.gray(`  Running ${hookName}: ${hookScript}`));
+  console.log(chalk.gray(`  Running ${hookName}: ${hookCommand}`));
 
   try {
-    const packageManager = detectPackageManager(context.projectRoot);
-
     // Set environment variables
     const env = {
       ...process.env,
@@ -102,25 +123,35 @@ async function executeHook(
       DEPLOY_KIT_START_TIME: context.startTime.toISOString(),
     };
 
-    // Execute via package manager's run command
-    // runCommand already includes 'npm', 'pnpm', etc.
-    // We just need to add 'run' and the hook name
-    const { stdout, stderr } = await execa(
-      packageManager.name,
-      ['run', hookName],
-      {
+    let execResult;
+
+    if (source === 'config') {
+      // Execute command directly (from .deploy-config.json)
+      execResult = await execa(hookCommand, {
         cwd: context.projectRoot,
         env,
         shell: true,
-      }
-    );
+      });
+    } else {
+      // Execute via package manager (from package.json scripts)
+      const packageManager = detectPackageManager(context.projectRoot);
+      execResult = await execa(
+        packageManager.name,
+        ['run', hookCommand],
+        {
+          cwd: context.projectRoot,
+          env,
+          shell: true,
+        }
+      );
+    }
 
     // Log output if present
-    if (stdout) {
-      console.log(chalk.gray(stdout));
+    if (execResult.stdout) {
+      console.log(chalk.gray(execResult.stdout));
     }
-    if (stderr) {
-      console.log(chalk.gray(stderr));
+    if (execResult.stderr) {
+      console.log(chalk.gray(execResult.stderr));
     }
 
     console.log(chalk.green(`  ✓ ${hookName} completed successfully`));
@@ -145,17 +176,22 @@ async function executeHook(
 /**
  * Run a lifecycle hook if it exists
  *
- * @param hookType - Type of hook (pre-deploy, post-deploy, on-failure)
- * @param context - Deployment context
+ * Checks both .deploy-config.json hooks and package.json scripts.
+ * Config hooks take precedence over package.json scripts.
+ *
+ * @param hookType - Type of hook (pre-dev, pre-deploy, post-deploy, on-failure)
+ * @param context - Deployment context with optional config
  * @returns true if hook ran successfully (or no hook exists), false if hook failed
  *
  * @example
  * ```typescript
- * await runLifecycleHook('pre-deploy', {
- *   stage: 'production',
+ * // From .deploy-config.json
+ * await runLifecycleHook('pre-dev', {
+ *   stage: 'staging',
  *   isDryRun: false,
  *   startTime: new Date(),
- *   projectRoot: '/path/to/project'
+ *   projectRoot: '/path/to/project',
+ *   config: config
  * });
  * ```
  */
@@ -165,39 +201,33 @@ export async function runLifecycleHook(
 ): Promise<boolean> {
   const scripts = loadPackageJson(context.projectRoot);
 
-  // No package.json or no scripts - skip
-  if (!scripts) {
-    return true;
-  }
-
-  // Resolve hook name (stage-specific or generic)
-  const hookName = resolveHookName(scripts, hookType, context.stage);
+  // Resolve hook command from config or package.json
+  const resolved = resolveHookCommand(hookType, context.stage, context.config, scripts || undefined);
 
   // No hook defined - skip
-  if (!hookName) {
+  if (!resolved) {
     return true;
   }
 
-  const hookScript = scripts[hookName];
+  const hookDisplayName = hookType + (resolved.source === 'config' ? ' (.deploy-config.json)' : ' (package.json)');
 
-  console.log(chalk.bold.white(`\n▸ Lifecycle Hook: ${hookName}`));
+  console.log(chalk.bold.white(`\n▸ Lifecycle Hook: ${hookDisplayName}`));
 
-  return await executeHook(hookName, hookScript, context);
+  return await executeHook(hookType, resolved.command, resolved.source, context);
 }
 
 /**
  * Check if a lifecycle hook exists
  *
- * Useful for conditional logging/behavior
+ * Checks both .deploy-config.json hooks and package.json scripts.
+ * Useful for conditional logging/behavior.
  */
 export function hasLifecycleHook(
   hookType: LifecycleHookType,
   stage: DeploymentStage,
-  projectRoot: string
+  projectRoot: string,
+  config?: ProjectConfig
 ): boolean {
   const scripts = loadPackageJson(projectRoot);
-  if (!scripts) {
-    return false;
-  }
-  return resolveHookName(scripts, hookType, stage) !== null;
+  return resolveHookCommand(hookType, stage, config, scripts || undefined) !== null;
 }
