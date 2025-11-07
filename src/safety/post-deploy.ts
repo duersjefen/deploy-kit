@@ -9,6 +9,7 @@ import {
   validateRoute53DNSRecords,
   validateNextjsServerLambda,
 } from '../lib/sst-deployment-validator.js';
+import { runEnhancedPostDeployValidation } from './enhanced-post-deploy.js';
 
 const execAsync = promisify(exec);
 
@@ -239,15 +240,33 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
         await checkDatabaseConnection(stage);
       }
 
-      // SST domain configuration validation
+      // SST domain configuration validation (basic checks)
       await validateSSTDomainConfiguration(stage, projectRoot);
+
+      // Enhanced post-deployment validation (comprehensive checks)
+      // Check if enhanced validation is enabled (default: true for SST projects)
+      const enableEnhancedValidation = config.stageConfig[stage]?.enhancedValidation !== false;
+
+      if (enableEnhancedValidation && config.infrastructure === 'sst-serverless') {
+        const enhancedResult = await runEnhancedPostDeployValidation(config, stage, projectRoot);
+
+        // If enhanced validation found critical failures, throw error
+        if (!enhancedResult.passed && enhancedResult.failures.length > 0) {
+          throw new Error(`Enhanced validation failed: ${enhancedResult.failures.join(', ')}`);
+        }
+
+        // If only warnings (e.g., certificate pending), continue but inform user
+        if (enhancedResult.warnings.length > 0 && enhancedResult.failures.length === 0) {
+          console.log(chalk.yellow('ℹ️  Note: Some validations are pending (see warnings above)\n'));
+        }
+      }
 
       console.log(chalk.green(`\n✅ Post-deployment validation complete!\n`));
     } catch (error) {
       console.log(chalk.yellow(`\n⚠️  Post-deployment validation had issues (check manually)\n`));
       console.log(chalk.yellow(`   Error: ${error instanceof Error ? error.message : String(error)}\n`));
       // Throw error for domain validation failures - these are critical
-      if (error instanceof Error && error.message.includes('SST domain configuration')) {
+      if (error instanceof Error && (error.message.includes('SST domain configuration') || error.message.includes('Enhanced validation failed'))) {
         throw error;
       }
       // Don't throw for other post-deploy checks - they are informational
