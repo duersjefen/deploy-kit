@@ -361,14 +361,84 @@ async function ensureClaudeDirNotIgnored(projectRoot: string): Promise<void> {
 }
 
 /**
+ * Generate a basic CLAUDE.md template for new projects
+ */
+function generateClaudeMdTemplate(projectRoot: string): string {
+  // Try to get project name from package.json
+  let projectName = path.basename(projectRoot);
+  const packageJsonPath = path.join(projectRoot, 'package.json');
+
+  try {
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      projectName = packageJson.name || projectName;
+    }
+  } catch (error) {
+    // Use directory name if package.json can't be read
+  }
+
+  return `# ${projectName} - Project Context
+
+**Last Updated:** ${new Date().toISOString().split('T')[0]}
+
+---
+
+## Project Overview
+
+<!-- Add a brief description of your project here -->
+
+---
+
+## Key Architecture
+
+<!-- Document important architectural decisions and patterns -->
+
+**Important Files:**
+<!-- List key files and their purposes -->
+- \`src/\` - Main source directory
+
+---
+
+## Development Setup
+
+<!-- Add setup instructions specific to your project -->
+
+1. Install dependencies: (pnpm/yarn/npm/bun install)
+2. Build: (pnpm/yarn/npm/bun run build)
+3. Test: (pnpm/yarn/npm/bun test)
+
+---
+
+## Common Issues
+
+<!-- Document common problems and their solutions -->
+
+---
+
+## Claude Code for the Web (Remote)
+
+@.claude/ccw.md
+
+When running in Claude Code for the Web (detected by \`CLAUDE_CODE_REMOTE=true\`), use the comprehensive API patterns and examples in the ccw.md file above for GitHub REST API and Linear GraphQL operations.
+
+---
+
+<!-- Add any additional project-specific instructions below -->
+`;
+}
+
+/**
  * Update project CLAUDE.md with CCW info (optional)
- * No longer adds sourcing pattern - global rules are copied to ~/.claude/CLAUDE.md on CCW server
+ * Creates a template CLAUDE.md if one doesn't exist
  */
 async function updateProjectClaudeMd(projectRoot: string, claudeDir: string): Promise<void> {
   const claudeMdPath = path.join(projectRoot, 'CLAUDE.md');
 
   if (!await fs.pathExists(claudeMdPath)) {
-    console.log(chalk.yellow('⚠️  CLAUDE.md not found - skipping update'));
+    // Create a template CLAUDE.md
+    const template = generateClaudeMdTemplate(projectRoot);
+    await fs.writeFile(claudeMdPath, template);
+    console.log(chalk.green('✅ Created CLAUDE.md from template (please customize for your project)'));
     return;
   }
 
