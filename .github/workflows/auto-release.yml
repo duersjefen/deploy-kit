@@ -1,4 +1,4 @@
-name: Auto Release
+name: Auto Version Bump
 
 on:
   push:
@@ -10,13 +10,12 @@ on:
       - '!.github/workflows/auto-release.yml'
 
 jobs:
-  auto-release:
+  auto-version-bump:
     # Skip if commit is from github-actions (prevents infinite loop)
-    if: "!contains(github.event.head_commit.message, '[skip-release]') && github.actor != 'github-actions[bot]'"
+    if: "github.actor != 'github-actions[bot]'"
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for pushing version bump and tags
-      id-token: write  # Required for npm OIDC trusted publishing
+      contents: write  # Required for pushing version bump to main
 
     steps:
       - uses: actions/checkout@v4
@@ -76,28 +75,10 @@ jobs:
           echo "version=v$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "📦 Version bumped to: v$NEW_VERSION"
 
-      - name: Commit version bump
+      - name: Commit and push version bump
         run: |
           git add package.json pnpm-lock.yaml
-          git commit -m "chore: Bump version to ${{ steps.version.outputs.version }} [skip-release]"
-
-      - name: Publish to npm
-        run: pnpm publish --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create and push git tag
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          git tag -a "$VERSION" -m "Release $VERSION"
-          git push origin main --follow-tags
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          gh release create "$VERSION" \
-            --title "$VERSION" \
-            --generate-notes \
-            --notes "**Release type:** ${{ steps.bump-type.outputs.type }} bump"
+          git commit -m "chore: Bump version to ${{ steps.version.outputs.version }}"
+          git push origin main
+          echo "✅ Version bumped to ${{ steps.version.outputs.version }}"
+          echo "📦 npm-publish workflow will now publish to npm automatically"
