@@ -7,7 +7,7 @@ import ora from 'ora';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { ProjectConfig } from '../../types.js';
-import { getPackageManagerExamples } from '../../utils/package-manager.js';
+import { detectPackageManager, getPackageManagerExamples } from '../../utils/package-manager.js';
 
 export interface InitAnswers {
   projectName: string;
@@ -98,7 +98,37 @@ export function createDeployConfig(answers: InitAnswers, projectRoot: string, me
 }
 
 /**
+ * Detect if running in a Conductor workspace
+ *
+ * Conductor (Claude Code app for Mac) uses a .conductor/ directory structure
+ * with git worktrees. This function detects that environment.
+ *
+ * @param projectRoot - Project root directory
+ * @returns true if in Conductor workspace, false otherwise
+ */
+function isConductorWorkspace(projectRoot: string): boolean {
+  // Check if current path contains .conductor/
+  if (projectRoot.includes('/.conductor/')) {
+    return true;
+  }
+
+  // Check if .conductor directory exists in parent paths
+  const parts = projectRoot.split('/');
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const testPath = parts.slice(0, i + 1).join('/') + '/.conductor';
+    if (existsSync(testPath)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Update package.json with deploy scripts
+ *
+ * Adds standard deploy-kit scripts. When running in Conductor workspace,
+ * also adds setup/run scripts for Conductor integration.
  */
 export function updatePackageJson(projectRoot: string): void {
   const spinner = ora('Updating package.json...').start();
@@ -111,6 +141,7 @@ export function updatePackageJson(projectRoot: string): void {
       packageJson.scripts = {};
     }
 
+    // Standard deploy-kit scripts
     packageJson.scripts['deploy:staging'] = 'npx @duersjefen/deploy-kit deploy staging';
     packageJson.scripts['deploy:prod'] = 'npx @duersjefen/deploy-kit deploy production';
     packageJson.scripts['deployment-status'] = 'npx @duersjefen/deploy-kit status';
@@ -119,8 +150,23 @@ export function updatePackageJson(projectRoot: string): void {
     packageJson.scripts['validate:config'] = 'npx @duersjefen/deploy-kit validate';
     packageJson.scripts['doctor'] = 'npx @duersjefen/deploy-kit doctor';
 
+    // Add Conductor-specific scripts if in Conductor workspace
+    if (isConductorWorkspace(projectRoot)) {
+      const packageManager = detectPackageManager(projectRoot);
+
+      packageJson.scripts['setup'] = packageManager.installCommand;
+      packageJson.scripts['run'] = 'npx @duersjefen/deploy-kit dev';
+
+      spinner.text = 'Updating package.json (Conductor workspace detected)...';
+    }
+
     writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
-    spinner.succeed(chalk.green('✅ Updated package.json with deploy scripts'));
+
+    if (isConductorWorkspace(projectRoot)) {
+      spinner.succeed(chalk.green('✅ Updated package.json with deploy scripts + Conductor integration'));
+    } else {
+      spinner.succeed(chalk.green('✅ Updated package.json with deploy scripts'));
+    }
   } catch (error) {
     spinner.fail('Failed to update package.json');
     throw error;

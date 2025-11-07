@@ -1,11 +1,21 @@
 /**
- * AWS Profile Auto-Detection for SST Projects
- * Reads AWS profile from sst.config.ts to avoid duplication in .deploy-config.json
+ * AWS Profile Auto-Detection and SST Config Analysis
+ *
+ * NOTE: This module now delegates to src/lib/sst-config-parser.ts
+ * which is the single source of truth for all SST config parsing.
+ *
+ * This file maintains backward compatibility while using the unified parser.
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
 import type { ProjectConfig } from '../../types.js';
+import {
+  analyzeSstConfig as _analyzeSstConfig,
+  detectProfileFromSstConfig as _detectProfileFromSstConfig,
+  type SstConfigAnalysis,
+} from '../../lib/sst-config-parser.js';
+
+// Re-export the interface for backward compatibility
+export type { SstConfigAnalysis };
 
 /**
  * Resolve the AWS profile to use with priority:
@@ -19,12 +29,12 @@ export function resolveAwsProfile(config: ProjectConfig, projectRoot: string): s
     return config.awsProfile;
   }
 
-  // 2. For SST projects, auto-detect from sst.config.ts
+  // 2. For SST projects, auto-detect from sst.config.ts (via unified parser)
   if (config.infrastructure === 'sst-serverless') {
-    const detectedProfile = detectProfileFromSstConfig(projectRoot);
-    if (detectedProfile) {
-      console.log(`📝 Using AWS profile from sst.config.ts: ${detectedProfile}`);
-      return detectedProfile;
+    const analysis = _analyzeSstConfig(projectRoot);
+    if (analysis.awsProfile) {
+      console.log(`📝 Using AWS profile from sst.config.ts: ${analysis.awsProfile}`);
+      return analysis.awsProfile;
     }
   }
 
@@ -33,45 +43,28 @@ export function resolveAwsProfile(config: ProjectConfig, projectRoot: string): s
 }
 
 /**
- * Read AWS profile from sst.config.ts using regex pattern matching
- * Handles multiple formats:
- * - profile: 'my-profile'
- * - profile: "my-profile"
- * - profile: "my-profile" (with spaces)
- * 
- * Returns undefined if:
- * - sst.config.ts doesn't exist
- * - profile is not found in the file
- * - file cannot be read
+ * Analyze sst.config.ts and extract configuration values
+ *
+ * Delegates to unified parser in src/lib/sst-config-parser.ts
+ *
+ * @param projectRoot - Project root directory
+ * @returns SstConfigAnalysis object with extracted values
+ */
+export function analyzeSstConfig(projectRoot: string): SstConfigAnalysis {
+  return _analyzeSstConfig(projectRoot);
+}
+
+/**
+ * Read AWS profile from sst.config.ts
+ *
+ * Delegates to unified parser in src/lib/sst-config-parser.ts
+ *
+ * @param projectRoot - Project root directory
+ * @returns AWS profile name or undefined
+ * @deprecated Use analyzeSstConfig() instead for more complete analysis
  */
 export function detectProfileFromSstConfig(projectRoot: string): string | undefined {
-  try {
-    const sstConfigPath = join(projectRoot, 'sst.config.ts');
-    
-    // Check if file exists
-    if (!existsSync(sstConfigPath)) {
-      return undefined;
-    }
-
-    // Read file content
-    const content = readFileSync(sstConfigPath, 'utf-8');
-    
-    // Match profile in AWS provider configuration
-    // Patterns:
-    // - profile: "my-profile"
-    // - profile: 'my-profile'
-    // - profile: 'my-profile' (with spaces)
-    const match = content.match(/profile\s*:\s*["']([^"']+)["']/);
-    
-    if (match && match[1]) {
-      return match[1];
-    }
-
-    return undefined;
-  } catch (error) {
-    // Silently fail if file cannot be read
-    return undefined;
-  }
+  return _detectProfileFromSstConfig(projectRoot);
 }
 
 /**

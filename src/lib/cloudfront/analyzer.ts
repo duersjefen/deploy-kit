@@ -84,13 +84,16 @@ export class CloudFrontAnalyzer {
     };
 
     // Check if distribution is in config
-    const inConfig =
-      (config.mainDomain && config.mainDomain === distribution.DomainName) ||
-      distribution.AliasedDomains.some(
-        (alias) =>
-          (config.mainDomain && alias.endsWith(config.mainDomain)) ||
-          (config.mainDomain && alias === `staging.${config.mainDomain}`)
-      );
+    // Collect all configured domains from stageConfig (e.g., ["staging.example.com", "example.com"])
+    const configuredDomains = [
+      config.stageConfig.staging?.domain,
+      config.stageConfig.production?.domain,
+    ].filter((domain): domain is string => Boolean(domain));
+
+    // Check if ANY distribution alias matches ANY configured domain (exact match)
+    const inConfig = distribution.AliasedDomains.some((alias) =>
+      configuredDomains.includes(alias)
+    );
 
     // Check if distribution is in DNS
     const inDns = dnsRecords.some((record) => {

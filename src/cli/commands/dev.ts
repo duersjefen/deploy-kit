@@ -17,6 +17,7 @@ import { getFormattedVersion } from '../utils/version.js';
 import { DashboardServer } from '../../dashboard/server.js';
 import { getEventEmitter } from '../../dashboard/event-emitter.js';
 import { createDashboardReadyEvent } from '../../dashboard/index.js';
+import { runLifecycleHook } from '../../lib/lifecycle-hooks.js';
 
 // Re-export types for backward compatibility
 export type { DevOptions } from '../dev-checks/sst-starter.js';
@@ -142,6 +143,22 @@ export async function handleDevCommand(
         await dashboardServer.stop();
         process.exit(1);
       }
+    }
+
+    // Run preDev hook if defined (DEP-37)
+    // Supports both .deploy-config.json hooks and package.json scripts
+    const hookSuccess = await runLifecycleHook('pre-dev', {
+      stage: 'staging', // Use 'staging' as placeholder (dev hooks don't use stage-specific versions)
+      isDryRun: false,
+      startTime: new Date(),
+      projectRoot,
+      config: config || undefined, // Pass config to enable .deploy-config.json hooks
+    });
+
+    if (!hookSuccess) {
+      console.log(chalk.red('\n❌ preDev hook failed - aborting dev server start\n'));
+      await dashboardServer.stop();
+      process.exit(1);
     }
 
     // Start SST dev

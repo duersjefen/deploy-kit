@@ -19,6 +19,7 @@ import {
   installQualityTools,
   addPrepareScript,
 } from './quality-tools.js';
+import { analyzeSstConfig } from '../utils/aws-profile-detector.js';
 
 export interface InitFlags {
   configOnly?: boolean;
@@ -60,6 +61,9 @@ interface PromptError extends Error {
  * Generate InitAnswers from non-interactive flags
  */
 function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): InitAnswers {
+  // Analyze existing SST config if present
+  const sstAnalysis = analyzeSstConfig(projectRoot);
+
   // Try to auto-detect project name from package.json or directory name
   let projectName = flags.projectName;
   if (!projectName) {
@@ -72,17 +76,25 @@ function generateAnswersFromFlags(flags: InitFlags, projectRoot: string): InitAn
     }
   }
 
+  // Use SST app name if available
+  if (sstAnalysis.appName && !projectName) {
+    projectName = sstAnalysis.appName;
+  }
+
   // Ensure projectName is always a string
   projectName = projectName || 'my-app';
-  const domain = flags.domain || `${projectName}.com`;
-  const awsProfile = flags.awsProfile || projectName;
-  const awsRegion = flags.awsRegion || 'eu-north-1';
+
+  // Use SST domains if available, otherwise generate from project name
+  const domain = flags.domain || sstAnalysis.domains?.production || `${projectName}.com`;
+  const stagingDomain = sstAnalysis.domains?.staging || `staging.${domain}`;
+  const awsProfile = flags.awsProfile || sstAnalysis.awsProfile || projectName;
+  const awsRegion = flags.awsRegion || sstAnalysis.awsRegion || 'eu-central-1';
 
   return {
     projectName,
     mainDomain: domain,
     awsProfile: awsProfile,
-    stagingDomain: `staging.${domain}`,
+    stagingDomain: stagingDomain,
     productionDomain: domain,
     awsRegion,
     runTests: true,

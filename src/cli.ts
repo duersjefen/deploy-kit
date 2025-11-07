@@ -4,6 +4,14 @@
  * Production deployment orchestration for SST + Next.js + DynamoDB
  */
 
+// CRITICAL: Install global error handler FIRST (before any other imports)
+// This prevents Pulumi's error formatter from masking errors with RangeError (DEP-39)
+import { installGlobalErrorHandler } from './lib/safe-error-handler.js';
+installGlobalErrorHandler({
+  exitOnError: true,
+  verbose: process.env.DEBUG === 'true' || process.argv.includes('--verbose'),
+});
+
 import { DeploymentKit } from './deployer.js';
 import { getStatusChecker } from './status/checker.js';
 import { getRecoveryManager } from './recovery/manager.js';
