@@ -17,6 +17,7 @@ import { createNextJsCanaryFeaturesCheck } from './nextjs-canary.js';
 import { createTurbopackMigrationCheck } from './turbopack-migration.js';
 import { createPulumiOutputUsageCheck } from './pulumi-output.js';
 import { createLambdaReservedVarsCheck } from './lambda-reserved-vars.js';
+import { createSstSecretsCheck } from './sst-secrets.js';
 import { getEventEmitter } from '../../dashboard/event-emitter.js';
 import {
   createCheckStartEvent,
@@ -38,6 +39,9 @@ export function getDevChecks(
   requestedPort: number = 3000,
   verbose: boolean = false
 ): DevCheck[] {
+  // Determine dev stage (usually username or "dev")
+  const devStage = process.env.USER || 'dev';
+
   return [
     { name: 'AWS Credentials', check: createAwsCredentialsCheck(projectRoot, config) },
     { name: 'SST Lock', check: createSstLockCheck(projectRoot) },
@@ -45,6 +49,7 @@ export function getDevChecks(
     { name: 'Port Availability', check: createPortAvailabilityCheck(requestedPort) },
     { name: 'SST Config', check: createSstConfigCheck(projectRoot, 'dev') }, // Use 'dev' mode - warnings only for deployment issues
     { name: '.sst Directory Health', check: createSstStateHealthCheck(projectRoot, config) },
+    { name: 'SST Secrets', check: createSstSecretsCheck(projectRoot, devStage) }, // DEP-38 - Validate secrets exist
     { name: 'Lambda Reserved Environment Variables', check: createLambdaReservedVarsCheck(projectRoot, verbose) },
     { name: 'Recursive SST Dev Script', check: createRecursiveSstDevCheck(projectRoot) },
     { name: 'Next.js Canary Features', check: createNextJsCanaryFeaturesCheck(projectRoot) },

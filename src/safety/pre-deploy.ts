@@ -20,6 +20,7 @@ import {
 } from '../lib/sst-deployment-validator.js';
 import { CloudFrontOperations } from '../lib/cloudfront/operations.js';
 import prompts from 'prompts';
+import { validateSstSecrets, projectUsesSecrets } from './sst-secret-validator.js';
 
 const execAsync = promisify(exec);
 
@@ -657,6 +658,61 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Check SST secrets (DEP-38)
+   * Validates that all declared secrets exist for the stage
+   */
+  async function checkSstSecrets(stage: DeploymentStage): Promise<void> {
+    // Skip if project doesn't use secrets
+    if (!projectUsesSecrets(projectRoot)) {
+      checks.push({
+        name: 'SST Secrets',
+        status: 'success',
+        message: 'No secrets declared (skipped)'
+      });
+      return;
+    }
+
+    const spinner = ora('Checking SST secrets...').start();
+    const startTime = Date.now();
+
+    try {
+      const result = await validateSstSecrets(projectRoot, stage);
+
+      if (!result.valid) {
+        spinner.fail('❌ SST secret validation failed');
+        checks.push({
+          name: 'SST Secrets',
+          status: 'failed',
+          message: `Missing ${result.missingSecrets.length} secret(s)`
+        });
+        console.log('\n' + result.error + '\n');
+        throw new Error('Missing required SST secrets');
+      }
+
+      checkCount++;
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      spinner.succeed(`✅ All SST secrets configured (${result.declaredSecrets.length} secrets, ${duration}s)`);
+      checks.push({
+        name: 'SST Secrets',
+        status: 'success',
+        message: `${result.declaredSecrets.length} secret(s) verified`
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message !== 'Missing required SST secrets') {
+        spinner.fail(`❌ SST secret check failed`);
+        checks.push({
+          name: 'SST Secrets',
+          status: 'warning',
+          message: 'Check failed (continuing anyway)'
+        });
+        console.log(chalk.yellow(`⚠️  Could not validate secrets: ${error.message}`));
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  /**
    * Run all pre-deployment checks
    */
   async function run(stage: DeploymentStage): Promise<void> {
@@ -672,6 +728,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
         await runTests();
       }
 
+      await checkSstSecrets(stage); // DEP-38 - Must run before deployment to prevent RangeError
       await checkSslCertificate(stage);
       await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
       await checkCloudFrontCnameConflicts(stage); // DEP-35
@@ -687,5 +744,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSslCertificate, checkRoute53Zone, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSstSecrets, checkSslCertificate, checkRoute53Zone, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
 }

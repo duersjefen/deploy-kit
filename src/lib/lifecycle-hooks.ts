@@ -16,7 +16,7 @@ import chalk from 'chalk';
 import type { DeploymentStage } from '../types.js';
 import { detectPackageManager } from '../utils/package-manager.js';
 
-export type LifecycleHookType = 'pre-deploy' | 'post-deploy' | 'on-failure';
+export type LifecycleHookType = 'pre-deploy' | 'post-deploy' | 'on-failure' | 'pre-dev';
 
 export interface LifecycleHookContext {
   stage: DeploymentStage;
