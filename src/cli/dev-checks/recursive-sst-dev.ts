@@ -4,6 +4,9 @@
  *
  * Issue: SST internally runs `npm run dev` to start your framework, so if your
  * dev script calls `sst dev`, it creates an infinite loop.
+ *
+ * DEP-41: This check is disabled for SST projects with sst.config.ts, as SST
+ * properly handles orchestration when running dev commands in subdirectories.
  */
 
 import chalk from 'chalk';
@@ -31,9 +34,27 @@ function detectFramework(packageJson: PackageJson): string {
   return 'next dev'; // Default for SST
 }
 
+/**
+ * Check if project has SST orchestration configuration
+ *
+ * SST projects with sst.config.ts properly handle dev script orchestration,
+ * even when the root package.json has "dev": "sst dev" and SST runs
+ * commands in subdirectories.
+ */
+function hasSSTConfig(projectRoot: string): boolean {
+  return existsSync(join(projectRoot, 'sst.config.ts'));
+}
+
 export function createRecursiveSstDevCheck(projectRoot: string): () => Promise<CheckResult> {
   return async () => {
     console.log(chalk.gray('🔍 Checking for recursive SST dev script...'));
+
+    // DEP-41: Skip check for SST projects with sst.config.ts
+    // SST handles orchestration correctly when running commands in subdirectories
+    if (hasSSTConfig(projectRoot)) {
+      console.log(chalk.green('✅ SST project detected (orchestration handled by SST)\n'));
+      return { passed: true };
+    }
 
     const packageJsonPath = join(projectRoot, 'package.json');
 

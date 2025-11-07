@@ -713,6 +713,66 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Warn when deploying SST without domain configuration
+   *
+   * Deploying without a domain is valid but results in:
+   * - CloudFront URL only (no custom domain)
+   * - No Route53 DNS records
+   * - No ACM certificate
+   */
+  async function checkDomainConfiguration(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      return; // Only check SST deployments
+    }
+
+    const sstConfig = parseSSTDomainConfig(projectRoot, stage);
+
+    if (!sstConfig || !sstConfig.hasDomain) {
+      console.log(chalk.yellow('\n⚠️  Domain Configuration Warning'));
+      console.log(chalk.yellow('─'.repeat(50)));
+      console.log(chalk.yellow('No domain configured for this deployment.\n'));
+      console.log('Your application will be deployed with:');
+      console.log(chalk.gray('  ✓ CloudFront distribution (e.g., d1234567890.cloudfront.net)'));
+      console.log(chalk.gray('  ✓ Lambda functions and S3 assets'));
+      console.log(chalk.gray('  ✗ No custom domain (e.g., staging.example.com)'));
+      console.log(chalk.gray('  ✗ No Route53 DNS records'));
+      console.log(chalk.gray('  ✗ No ACM certificate\n'));
+
+      console.log('To add a custom domain, update your sst.config.ts:');
+      console.log(chalk.gray('  domain: stage === "production" ? "example.com" : "staging.example.com"\n'));
+
+      checks.push({
+        name: 'Domain Configuration',
+        status: 'warning',
+        message: 'No custom domain configured'
+      });
+
+      const response = await prompts({
+        type: 'confirm',
+        name: 'continue',
+        message: 'Continue deployment without custom domain?',
+        initial: true,
+      });
+
+      if (!response.continue) {
+        checks.push({
+          name: 'Domain Configuration',
+          status: 'failed',
+          message: 'Deployment cancelled by user'
+        });
+        throw new Error('Deployment cancelled - add domain configuration first');
+      }
+    } else {
+      console.log(chalk.gray(`ℹ️  Domain configured: ${sstConfig.domainName || 'Yes'}`));
+      checks.push({
+        name: 'Domain Configuration',
+        status: 'success',
+        message: `Domain: ${sstConfig.domainName || 'Configured'}`
+      });
+    }
+  }
+
+  /**
    * Run all pre-deployment checks
    */
   async function run(stage: DeploymentStage): Promise<void> {
@@ -729,6 +789,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
       }
 
       await checkSstSecrets(stage); // DEP-38 - Must run before deployment to prevent RangeError
+      await checkDomainConfiguration(stage); // Warn when deploying without domain
       await checkSslCertificate(stage);
       await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
       await checkCloudFrontCnameConflicts(stage); // DEP-35
@@ -744,5 +805,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSstSecrets, checkSslCertificate, checkRoute53Zone, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSstSecrets, checkDomainConfiguration, checkSslCertificate, checkRoute53Zone, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
 }
