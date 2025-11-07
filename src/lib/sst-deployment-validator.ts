@@ -76,6 +76,7 @@ export interface Route53ZoneInfo {
  */
 export interface ValidationResult {
   passed: boolean;
+  skipped?: boolean; // True if check was skipped (e.g., no domain configured)
   issue?: string;
   details?: string;
   actionRequired?: string;
@@ -756,12 +757,12 @@ export async function validateRoute53ZoneExistence(
 
     if (!sstConfig || !sstConfig.hasDomain) {
       spinner.succeed('✅ Route53 check skipped (no domain configured)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     if (!sstConfig.usesSstDns) {
       spinner.succeed('✅ Route53 check skipped (not using sst.aws.dns())');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     if (!sstConfig.baseDomain) {
@@ -833,7 +834,7 @@ export async function validateRoute53ZoneReadiness(
     const sstConfig = parseSSTDomainConfig(projectRoot, stage);
 
     if (!sstConfig || !sstConfig.hasDomain || !sstConfig.usesSstDns || !sstConfig.baseDomain) {
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     // Get zone info if not provided
@@ -844,7 +845,7 @@ export async function validateRoute53ZoneReadiness(
     }
 
     if (!localZoneInfo) {
-      return { passed: true }; // Already checked in existence validation
+      return { passed: true, skipped: true }; // Already checked in existence validation
     }
 
     // DEP-22 Gap 1: Check for conflicting DNS records
@@ -987,12 +988,12 @@ export async function validateOverrideRequirement(
 
     if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
       spinner.succeed('✅ Override check skipped (no domain configured)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     if (!sstConfig.usesSstDns) {
       spinner.succeed('✅ Override check skipped (not using sst.aws.dns())');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     // Check if CloudFront distribution exists for this stage
@@ -1006,7 +1007,7 @@ export async function validateOverrideRequirement(
     } catch (error) {
       // If we can't query CloudFront (no AWS creds, etc.), skip check
       spinner.succeed('✅ Override check skipped (cannot query CloudFront)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     // No existing distribution - override not required for new deployments
@@ -1238,7 +1239,7 @@ export async function validateACMCertificate(
 
     if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
       spinner.succeed('✅ ACM check skipped (no domain configured)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     // Check if ACM certificate exists
@@ -1294,7 +1295,7 @@ export async function validateCloudFrontDomainAlias(
 
     if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
       spinner.succeed('✅ CloudFront alias check skipped (no domain configured)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     // Find CloudFront distribution
@@ -1305,8 +1306,8 @@ export async function validateCloudFrontDomainAlias(
     );
 
     if (!dist) {
-      spinner.warn('⚠️  CloudFront distribution not found');
-      return { passed: true }; // Not a critical error
+      spinner.info('ℹ️  CloudFront distribution not found - skipping alias check');
+      return { passed: true, skipped: true }; // Can't validate without distribution
     }
 
     // Check for dev mode (placeholder.sst.dev origin)
@@ -1370,7 +1371,7 @@ export async function validateRoute53DNSRecords(
 
     if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName || !sstConfig.baseDomain) {
       spinner.succeed('✅ DNS records check skipped (no domain configured)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     // Get zone info
@@ -1429,7 +1430,7 @@ export async function validateNextjsServerLambda(
   try {
     if (config.infrastructure !== 'sst-serverless') {
       spinner.succeed('✅ Lambda check skipped (non-SST infrastructure)');
-      return { passed: true };
+      return { passed: true, skipped: true };
     }
 
     const awsRegion = config.stageConfig[stage].awsRegion || 'us-east-1';

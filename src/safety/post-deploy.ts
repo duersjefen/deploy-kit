@@ -194,18 +194,23 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
 
     let allPassed = true;
     for (const { name, result } of results) {
-      const icon = result.passed ? '✅' : '❌';
-      const color = result.passed ? chalk.green : chalk.red;
+      // Distinguish between skipped checks and actual validations
+      if (result.skipped) {
+        console.log(`⊘  ${chalk.gray(name.padEnd(25))} SKIPPED`);
+      } else {
+        const icon = result.passed ? '✅' : '❌';
+        const color = result.passed ? chalk.green : chalk.red;
 
-      console.log(`${icon} ${color(name.padEnd(25))} ${result.passed ? 'OK' : result.issue || 'Failed'}`);
+        console.log(`${icon} ${color(name.padEnd(25))} ${result.passed ? 'OK' : result.issue || 'Failed'}`);
 
-      if (!result.passed) {
-        allPassed = false;
-        if (result.details) {
-          console.log(chalk.gray(`   Details: ${result.details}`));
-        }
-        if (result.actionRequired) {
-          console.log(chalk.yellow(`   Action: ${result.actionRequired}`));
+        if (!result.passed) {
+          allPassed = false;
+          if (result.details) {
+            console.log(chalk.gray(`   Details: ${result.details}`));
+          }
+          if (result.actionRequired) {
+            console.log(chalk.yellow(`   Action: ${result.actionRequired}`));
+          }
         }
       }
     }
