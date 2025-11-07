@@ -43,31 +43,21 @@ export function createSstSecretsCheck(
       if (!result.valid) {
         return {
           passed: false,
-          message: `Missing ${result.missingSecrets.length} SST secret(s) for stage "${stage}"`,
-          details: result.error,
-          fix: {
-            description: 'Set missing secrets using SST CLI',
-            command: result.missingSecrets
-              .map((name) => `npx sst secret set ${name} "your-value" --stage ${stage}`)
-              .join('\n'),
-            autoFixable: false,
-          },
+          issue: `Missing ${result.missingSecrets.length} SST secret(s) for stage "${stage}"`,
+          manualFix: result.error || `Missing secrets: ${result.missingSecrets.join(', ')}`,
         };
       }
 
       return {
         passed: true,
-        message: `All ${result.declaredSecrets.length} SST secret(s) configured for stage "${stage}"`,
-        details: `Validated secrets: ${result.declaredSecrets.join(', ')}`,
       };
     } catch (error) {
       // If validation itself fails (e.g., SST CLI not available), warn but don't block
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         passed: true,
-        message: `Could not validate secrets: ${(error as Error).message}`,
-        details: chalk.yellow(
-          '⚠️  Secrets validation failed. Continuing anyway, but you may encounter errors if secrets are missing.'
-        ),
+        issue: `Could not validate secrets: ${errorMessage}`,
+        manualFix: 'Ensure SST is installed and sst.config.ts is valid. Continuing anyway...',
       };
     }
   };

@@ -26,6 +26,7 @@
     "bin",
     "templates",
     "dashboard-ui/dist",
+    ".claude/ccw.md",
     "tsconfig.json",
     "pnpm-workspace.yaml",
     "README.md"
