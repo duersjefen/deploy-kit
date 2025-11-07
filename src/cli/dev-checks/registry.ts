@@ -28,7 +28,7 @@ import {
 /**
  * Safe fixes that can be auto-applied without user confirmation
  */
-const SAFE_FIX_TYPES = ['recursive_sst_dev', 'nextjs_canary_features', 'sst_locks', 'running_sst_processes'];
+const SAFE_FIX_TYPES = ['recursive_sst_dev', 'nextjs_canary_features', 'sst_locks', 'running_sst_processes', 'sst_secrets_missing'];
 
 /**
  * Create all development pre-flight checks

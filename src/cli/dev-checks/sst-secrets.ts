@@ -41,33 +41,39 @@ export function createSstSecretsCheck(
       const result = await validateSstSecrets(projectRoot, stage as any);
 
       if (!result.valid) {
+        // Build clear error message showing exactly what's missing
+        const secretsList = result.missingSecrets.map(s => `  - ${s}`).join('\n');
+        const fixCommands = result.missingSecrets
+          .map(s => `  npx sst secret set ${s} "your-value" --stage ${stage}`)
+          .join('\n');
+
         return {
           passed: false,
-          message: `Missing ${result.missingSecrets.length} SST secret(s) for stage "${stage}"`,
-          details: result.error,
-          fix: {
-            description: 'Set missing secrets using SST CLI',
-            command: result.missingSecrets
-              .map((name) => `npx sst secret set ${name} "your-value" --stage ${stage}`)
-              .join('\n'),
-            autoFixable: false,
+          issue: `Missing ${result.missingSecrets.length} secret${result.missingSecrets.length > 1 ? 's' : ''} for stage "${stage}"\n\nMissing secrets:\n${secretsList}`,
+          manualFix: `Run these commands to set the missing secrets:\n\n${fixCommands}\n\nOr set all interactively:\n  npx sst secret set --stage ${stage}`,
+          canAutoFix: true,
+          autoFix: async () => {
+            // Run SST CLI in interactive mode to set secrets
+            const { execa } = await import('execa');
+            await execa('npx', ['sst', 'secret', 'set', '--stage', stage], {
+              cwd: projectRoot,
+              stdio: 'inherit', // Pass through stdin/stdout for interactive prompts
+            });
           },
+          errorType: 'sst_secrets_missing', // Mark as safe auto-fix (user interaction required)
         };
       }
 
       return {
         passed: true,
-        message: `All ${result.declaredSecrets.length} SST secret(s) configured for stage "${stage}"`,
-        details: `Validated secrets: ${result.declaredSecrets.join(', ')}`,
       };
     } catch (error) {
       // If validation itself fails (e.g., SST CLI not available), warn but don't block
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         passed: true,
-        message: `Could not validate secrets: ${(error as Error).message}`,
-        details: chalk.yellow(
-          '⚠️  Secrets validation failed. Continuing anyway, but you may encounter errors if secrets are missing.'
-        ),
+        issue: `Could not validate secrets: ${errorMessage}`,
+        manualFix: 'Ensure SST is installed and sst.config.ts is valid. Continuing anyway...',
       };
     }
   };
