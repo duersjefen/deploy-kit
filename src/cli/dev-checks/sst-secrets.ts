@@ -51,6 +51,16 @@ export function createSstSecretsCheck(
           passed: false,
           issue: `Missing ${result.missingSecrets.length} secret${result.missingSecrets.length > 1 ? 's' : ''} for stage "${stage}"\n\nMissing secrets:\n${secretsList}`,
           manualFix: `Run these commands to set the missing secrets:\n\n${fixCommands}\n\nOr set all interactively:\n  npx sst secret set --stage ${stage}`,
+          canAutoFix: true,
+          autoFix: async () => {
+            // Run SST CLI in interactive mode to set secrets
+            const { execa } = await import('execa');
+            await execa('npx', ['sst', 'secret', 'set', '--stage', stage], {
+              cwd: projectRoot,
+              stdio: 'inherit', // Pass through stdin/stdout for interactive prompts
+            });
+          },
+          errorType: 'sst_secrets_missing', // Mark as safe auto-fix (user interaction required)
         };
       }
 
