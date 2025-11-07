@@ -333,7 +333,36 @@ async function runSSTDeployWithStreaming(
       if (code === 0) {
         resolve(stdout);
       } else {
-        reject(new Error(`SST deploy failed with exit code ${code}\n${stderr}`));
+        // Build detailed error message with context from both stdout and stderr
+        let errorMessage = `SST deployment failed (exit code ${code})\n\n`;
+
+        // Extract last relevant lines from stdout (SST errors often appear there)
+        const stdoutLines = stdout.split('\n').filter(l => l.trim().length > 0);
+        const relevantStdout = stdoutLines.slice(-15); // Last 15 non-empty lines
+
+        // Extract error lines from stderr
+        const stderrLines = stderr.split('\n').filter(l => l.trim().length > 0);
+
+        // Show stderr if present (typically has AWS SDK errors)
+        if (stderrLines.length > 0) {
+          errorMessage += '━━━ Error Output (stderr) ━━━\n';
+          errorMessage += stderrLines.slice(-20).join('\n') + '\n\n';
+        }
+
+        // Show recent stdout (SST deployment progress + errors)
+        if (relevantStdout.length > 0) {
+          errorMessage += '━━━ Recent Deployment Output ━━━\n';
+          errorMessage += relevantStdout.join('\n') + '\n\n';
+        }
+
+        // Add helpful context
+        errorMessage += '━━━ Troubleshooting ━━━\n';
+        errorMessage += '• Check AWS credentials and permissions\n';
+        errorMessage += '• Review sst.config.ts for configuration errors\n';
+        errorMessage += '• Check CloudWatch logs for Lambda errors\n';
+        errorMessage += '• Verify domain and DNS settings if applicable\n';
+
+        reject(new Error(errorMessage));
       }
     });
 

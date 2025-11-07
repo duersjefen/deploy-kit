@@ -43,12 +43,15 @@ export function createSstLockCheck(projectRoot: string, stage?: string): () => P
     // Check for remote Pulumi state lock by trying to unlock
     // This is safe - if no lock exists, it just reports "no lock"
     let hasRemoteLock = false;
+    let lockCheckTimedOut = false;
+
     if (!hasLocalLock && stage) {
       try {
         const result = execSync(`npx sst unlock --stage ${stage}`, {
           cwd: projectRoot,
           stdio: 'pipe',
           encoding: 'utf-8',
+          timeout: 10000, // 10 second timeout (DEP-42: reduce from 31s+ to 10s)
         });
         // If unlock succeeds without "no lock" message, there was a lock
         if (!result.toLowerCase().includes('no lock')) {
@@ -56,14 +59,31 @@ export function createSstLockCheck(projectRoot: string, stage?: string): () => P
         }
       } catch (error: any) {
         const errorMsg = error.message || error.stderr?.toString() || '';
-        // If error contains "no lock", that's fine - no lock exists
-        if (!errorMsg.toLowerCase().includes('no lock')) {
-          // Some other error - treat as potential lock issue
-          hasRemoteLock = true;
+
+        // DEP-42: Distinguish between timeout and actual lock errors
+        if (error.killed || errorMsg.toLowerCase().includes('timeout')) {
+          // Timeout - don't treat as lock, just skip check
+          lockCheckTimedOut = true;
+          console.log(chalk.gray('ℹ️  Lock check timed out (network latency) - skipping\n'));
+        } else if (!errorMsg.toLowerCase().includes('no lock')) {
+          // Actual error that's not "no lock" - could be a real lock
+          // But be conservative: only flag if we're very confident
+          const likelyLockKeywords = ['locked', 'lock file', 'state lock', 'concurrent'];
+          const isLikelyLock = likelyLockKeywords.some(keyword =>
+            errorMsg.toLowerCase().includes(keyword)
+          );
+
+          if (isLikelyLock) {
+            hasRemoteLock = true;
+          } else {
+            // Unknown error - log but don't alarm user
+            console.log(chalk.gray(`ℹ️  Could not verify remote lock (${errorMsg.split('\n')[0]}) - proceeding\n`));
+          }
         }
       }
     }
 
+    // Only show lock warning if we're confident there's an actual lock
     if (hasLocalLock || hasRemoteLock) {
       const lockedStage = stage || detectLockedStage(projectRoot);
       const lockType = hasLocalLock ? 'local' : 'remote Pulumi state';
