@@ -144,29 +144,67 @@ export class StructuredLogger {
   }
 
   /**
+   * Format log entry for human-readable terminal output
+   *
+   * @param entry - Log entry to format
+   * @returns Formatted string for terminal
+   */
+  private formatForTerminal(entry: LogEntry): string {
+    const colors = {
+      debug: '\x1b[36m', // Cyan
+      info: '\x1b[34m',  // Blue
+      warn: '\x1b[33m',  // Yellow
+      error: '\x1b[31m', // Red
+      fatal: '\x1b[41m\x1b[97m', // Red background, white text
+    };
+    const reset = '\x1b[0m';
+    const dim = '\x1b[2m';
+
+    const levelIcons = {
+      debug: '🔍',
+      info: 'ℹ️ ',
+      warn: '⚠️ ',
+      error: '❌',
+      fatal: '💀',
+    };
+
+    const time = new Date(entry.timestamp).toLocaleTimeString();
+    const level = entry.level.toUpperCase().padEnd(5);
+    const icon = levelIcons[entry.level];
+
+    let output = `${dim}[${time}]${reset} ${colors[entry.level]}${icon} ${level}${reset} ${entry.message}`;
+
+    // Add context if present (formatted nicely, not as JSON)
+    if (entry.context && Object.keys(entry.context).length > 0) {
+      const contextStr = Object.entries(entry.context)
+        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+        .join(' ');
+      output += `${dim} (${contextStr})${reset}`;
+    }
+
+    // Add error details if present
+    if (entry.error) {
+      output += `\n  ${colors.error}Error: ${entry.error.message}${reset}`;
+      if (entry.error.stack) {
+        const stackLines = entry.error.stack.split('\n').slice(1, 4); // Show first 3 stack frames
+        output += `\n${dim}${stackLines.join('\n')}${reset}`;
+      }
+    }
+
+    return output;
+  }
+
+  /**
    * Output log entry to appropriate destination
    *
    * @param entry - Log entry to output
    */
   private output(entry: LogEntry): void {
     if (this.config.enableConsole) {
-      const json = this.formatAsJson(entry);
-
-      // Color-code console output for readability in development
-      if (this.config.environment === 'development') {
-        const colors = {
-          debug: '\x1b[36m', // Cyan
-          info: '\x1b[37m', // White
-          warn: '\x1b[33m', // Yellow
-          error: '\x1b[31m', // Red
-          fatal: '\x1b[41m', // Red background
-        };
-        const reset = '\x1b[0m';
-        console.log(`${colors[entry.level]}${json}${reset}`);
-      } else {
-        // Production: plain JSON without colors
-        console.log(json);
-      }
+      // Use human-readable format for terminal output
+      // JSON format only for remote logging
+      const formatted = this.formatForTerminal(entry);
+      console.log(formatted);
     }
 
     if (this.config.enableRemote) {
