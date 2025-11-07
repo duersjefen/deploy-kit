@@ -41,8 +41,9 @@ jobs:
         run: |
           COMMIT_MSG="${{ github.event.head_commit.message }}"
 
-          # Check for BREAKING CHANGE or ! in commit
-          if echo "$COMMIT_MSG" | grep -qiE '(BREAKING CHANGE|^[a-z]+!:)'; then
+          # Check for BREAKING CHANGE: in footer or ! after type
+          # Must be: "BREAKING CHANGE:" (with colon) or "type!:" format
+          if echo "$COMMIT_MSG" | grep -qE '(^BREAKING CHANGE:|^[a-z]+!:)'; then
             echo "type=major" >> $GITHUB_OUTPUT
             echo "📢 Detected BREAKING CHANGE → MAJOR version bump"
           # Check for feat: prefix
