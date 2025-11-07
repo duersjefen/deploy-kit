@@ -1,11 +1,15 @@
-name: Publish to npm (Manual)
+name: Publish to npm
 
-# NOTE: This workflow is for MANUAL publishes only
-# Primary workflow: auto-release.yml (automatic version bump + publish on merge)
-# This workflow: Publishes if package.json was manually updated
+# Triggered automatically when package.json is updated (by auto-version-bump workflow)
+# Also supports manual triggering via workflow_dispatch
 
 on:
-  workflow_dispatch:  # Manual trigger only (removed automatic push trigger)
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   publish:
