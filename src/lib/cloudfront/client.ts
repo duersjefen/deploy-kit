@@ -44,6 +44,7 @@ export interface CloudFrontDistribution {
   LastModifiedTime?: Date;
   Enabled: boolean;
   AliasedDomains: string[];
+  FunctionARNs?: string[];
 }
 
 /**
@@ -159,6 +160,9 @@ export class CloudFrontAPIClient {
           LastModifiedTime: dist.LastModifiedTime,
           Enabled: dist.Enabled!,
           AliasedDomains: dist.Aliases?.Items || [],
+          FunctionARNs: dist.DefaultCacheBehavior?.FunctionAssociations?.Items?.map(
+            (fn) => fn.FunctionARN || ''
+          ).filter(Boolean) || [],
         }));
       });
     } catch (error) {
@@ -213,6 +217,9 @@ export class CloudFrontAPIClient {
           LastModifiedTime: dist.LastModifiedTime,
           Enabled: dist.DistributionConfig?.Enabled || false,
           AliasedDomains: dist.DistributionConfig?.Aliases?.Items || [],
+          FunctionARNs: dist.DistributionConfig?.DefaultCacheBehavior?.FunctionAssociations?.Items?.map(
+            (fn) => fn.FunctionARN || ''
+          ).filter(Boolean) || [],
         };
       });
     } catch (error) {

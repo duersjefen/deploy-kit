@@ -1,18 +1,21 @@
 /**
  * CloudFront Infrastructure Analyzer
  * Detects orphaned, misconfigured, and problematic distributions
- * 
+ *
  * Analyzes CloudFront distributions to detect:
  * - Orphaned distributions (not referenced in config or DNS)
  * - Misconfigured distributions (placeholder origins, DNS mismatches)
  * - Stale incomplete deployments (SST deployment failures)
- * 
+ *
  * Generates comprehensive audit reports and determines which distributions
  * are safe to delete. Critical for cleanup after failed deployments.
  */
 
 import type { CloudFrontDistribution } from './client.js';
 import type { ProjectConfig, DNSRecord } from '../../types.js';
+
+// DEP-49: Age threshold to avoid flagging newly created distributions
+const DISTRIBUTION_AGE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface DistributionAnalysis {
   id: string;
@@ -103,25 +106,48 @@ export class CloudFrontAnalyzer {
       return normalizedValue === normalizedDistDomain;
     });
 
+    // DEP-49: Skip distributions created less than 5 minutes ago
+    // (CloudFormation tags may not be applied yet)
+    const distributionAge = distribution.CreatedTime
+      ? Date.now() - distribution.CreatedTime.getTime()
+      : Infinity;
+
+    const isTooNew = distributionAge < DISTRIBUTION_AGE_THRESHOLD_MS;
+
+    if (isTooNew) {
+      // Recently created - skip analysis to avoid false positives
+      analysis.status = 'configured';
+      analysis.severity = 'info';
+      analysis.reasons.push(`Created ${Math.round(distributionAge / 60000)} minutes ago (too new to analyze)`);
+      analysis.recommendations.push('Wait 5-10 minutes for tags to be applied, then re-run orphan check');
+      return analysis;
+    }
+
     // Check for placeholder origin (incomplete configuration)
     const hasPlaceholderOrigin = distribution.OriginDomain.includes('placeholder.sst.dev');
 
+    // DEP-36: Check if distribution has CloudFront Functions (indicates SST Next.js)
+    // SST Next.js distributions ALWAYS use placeholder.sst.dev by design
+    const hasCloudFrontFunctions = distribution.FunctionARNs && distribution.FunctionARNs.length > 0;
+    const isSSTNextjs = hasPlaceholderOrigin && hasCloudFrontFunctions;
+
     // Check if distribution is stale (created > 1 hour ago)
-    const isStale = distribution.CreatedTime
-      ? Date.now() - distribution.CreatedTime.getTime() > 3600000
-      : false;
+    const isStale = distributionAge > 3600000;
 
     // Determine status
     if (inConfig) {
       analysis.status = 'configured';
       analysis.severity = 'info';
 
-      if (hasPlaceholderOrigin) {
+      // DEP-36: Don't flag SST Next.js distributions as misconfigured
+      if (hasPlaceholderOrigin && !isSSTNextjs) {
         analysis.status = 'misconfigured';
         analysis.severity = 'warning';
         analysis.reasons.push('Uses placeholder.sst.dev origin (incomplete configuration)');
         analysis.recommendations.push('Redeploy with fresh SST configuration');
         analysis.recommendations.push('Run: make deploy-staging or make deploy-production');
+      } else if (isSSTNextjs) {
+        analysis.reasons.push('SST Next.js distribution (placeholder.sst.dev is normal)');
       }
     } else if (inDns) {
       // In DNS but not in config - should not happen
