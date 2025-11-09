@@ -184,18 +184,22 @@ export default $config({
     return {
       name: "${answers.projectName}",
       removal: input?.stage === "production" ? "retain" : "remove",
-      home: "aws",${answers.awsProfile ? `
+      home: "aws",
       providers: {
         aws: {
-          region: "${answers.awsRegion}",
-          profile: "${answers.awsProfile}"
+          region: "${answers.awsRegion}",${answers.awsProfile ? `
+          // Deploy-Kit sets AWS_PROFILE env var from .deploy-config.json (takes precedence)
+          // Direct SST usage: Stage-aware fallback (production → "${answers.awsProfile}-production", others → "${answers.awsProfile}")
+          // Override: Set AWS_PROFILE environment variable
+          profile: process.env.AWS_PROFILE ||
+                   (input?.stage === "production" ? "${answers.awsProfile}-production" : "${answers.awsProfile}")` : `
+          // Stage-aware AWS profile fallback (when no profile specified during init)
+          // Production stage → "production" profile, others → "default" profile
+          // Override: Set AWS_PROFILE environment variable
+          profile: process.env.AWS_PROFILE ||
+                   (input?.stage === "production" ? "production" : "default")`}
         }
-      }` : `
-      providers: {
-        aws: {
-          region: "${answers.awsRegion}"
-        }
-      }`}
+      }
     };
   },
   async run() {
