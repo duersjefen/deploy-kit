@@ -113,20 +113,47 @@ domain: stage === "production" ? {
 
   'SST-VAL-012': {
     code: 'SST-VAL-012',
-    title: 'Missing Domain DNS Override - Required for Existing CloudFront Distributions',
-    description: 'When updating existing CloudFront distributions with custom domains, dns.override is required.',
+    title: 'Missing DNS Configuration - Required for Custom Domains',
+    description: 'Custom domains MUST have explicit dns configuration to prevent CloudFront CNAME conflicts and deployment failures. (Severity: error - CHANGED from warning in Issue #220)',
     category: 'domain-config',
-    rootCause: 'SST cannot automatically update DNS for existing CloudFront distributions without explicit override.',
+    rootCause: 'SST requires explicit DNS provider configuration when using custom domains. Without it, CloudFront CNAME conflicts cause deployment to fail with CNAMEAlreadyExists error.',
     badExample: `domain: {
-  name: "example.com",  // ❌ Missing dns.override
+  name: "example.com",  // ❌ Missing dns property - WILL FAIL
   redirects: ["www.example.com"]
 }`,
     goodExample: `domain: {
   name: "example.com",
   redirects: ["www.example.com"],
-  dns: sst.cloudflare.dns()  // ✅ CORRECT - explicit DNS provider
+  dns: sst.aws.dns({           // ✅ CORRECT - explicit DNS with override
+    zone: "Z1234567890ABC",
+    override: true              // Required for existing distributions
+  })
 }`,
-    relatedCodes: ['SST-VAL-011'],
+    relatedCodes: ['SST-VAL-011', 'SST-VAL-012a'],
+    sstDocsUrl: 'https://sst.dev/docs/component/aws/nextjs#domain',
+    deployKitDocsUrl: '#domain-configuration-patterns',
+  },
+
+  'SST-VAL-012a': {
+    code: 'SST-VAL-012a',
+    title: 'Missing dns.override Parameter - Required for Existing CloudFront Distributions',
+    description: 'When updating existing CloudFront distributions, dns.override: true is REQUIRED or deployment will fail with CNAMEAlreadyExists error. (Severity: error). Real-world incident (Issue #220): Project had existing CloudFront distributions. Deployment failed with CNAMEAlreadyExists → manual deletion required → hit SST bug → production downtime.',
+    category: 'domain-config',
+    rootCause: 'SST cannot update DNS for existing CloudFront distributions without explicit override: true. This is a common cause of production deployment failures.',
+    badExample: `domain: {
+  name: "example.com",
+  dns: sst.aws.dns({
+    zone: "Z1234567890ABC"  // ❌ Missing override - WILL FAIL if distribution exists
+  })
+}`,
+    goodExample: `domain: {
+  name: "example.com",
+  dns: sst.aws.dns({
+    zone: "Z1234567890ABC",
+    override: true           // ✅ CORRECT - can update existing distribution
+  })
+}`,
+    relatedCodes: ['SST-VAL-012'],
     sstDocsUrl: 'https://sst.dev/docs/component/aws/nextjs#domain',
     deployKitDocsUrl: '#domain-configuration-patterns',
   },

@@ -163,7 +163,7 @@ export default $config({
       cleanupTestFixtures();
     });
 
-    it('should warn about missing dns property (SST-VAL-012)', () => {
+    it('should error about missing dns property (SST-VAL-012) - Issue #220', () => {
       const config = `
 export default $config({
   app() { return { name: "test" }; },
@@ -183,8 +183,10 @@ export default $config({
       const result = detector.detect(configPath, TEST_DIR);
 
       const violation = result.violations.find(v => v.code === 'SST-VAL-012');
-      assert.ok(violation, 'Should warn about missing dns');
-      assert.strictEqual(violation?.severity, 'warning');
+      assert.ok(violation, 'Should error about missing dns');
+      // CHANGED: severity is now 'error' instead of 'warning' (Issue #220)
+      // Missing dns property WILL cause deployment failure with CloudFront CNAME conflicts
+      assert.strictEqual(violation?.severity, 'error');
 
       cleanupTestFixtures();
     });
