@@ -58,6 +58,7 @@ export interface SSTDomainConfig {
   hasOverride?: boolean; // DEP-26: Whether override:true is present in dns config
   domainName?: string;
   baseDomain?: string;
+  zoneId?: string; // DEP-43: Route53 hosted zone ID
 }
 
 /**
@@ -202,6 +203,14 @@ export function parseSSTDomainConfig(
 
   const baseDomain = domainName ? getBaseDomain(domainName) : undefined;
 
+  // Extract zone ID if explicitly provided (DEP-43)
+  let zoneId: string | undefined;
+  const zoneIdPattern = /zone:\s*['"`](Z[A-Z0-9]+)['"`]/;
+  const zoneIdMatch = contentWithoutComments.match(zoneIdPattern);
+  if (zoneIdMatch) {
+    zoneId = zoneIdMatch[1];
+  }
+
   return {
     hasDomain: domainConfigured,
     usesSstDns,
@@ -209,6 +218,7 @@ export function parseSSTDomainConfig(
     hasOverride,
     domainName,
     baseDomain,
+    zoneId,
   };
 }
 
