@@ -45,7 +45,12 @@ export function createSstLockCheck(projectRoot: string, stage?: string): () => P
     let hasRemoteLock = false;
     let lockCheckTimedOut = false;
 
-    if (!hasLocalLock && stage) {
+    // ISSUE #227 FIX: Skip remote lock check after auto-fix verification
+    // The auto-fix uses `npx sst unlock` correctly, so we just need to verify local lock is gone
+    // This prevents false-positive failures from timeout-prone remote lock detection
+    const isVerificationRun = process.env.DK_SKIP_REMOTE_LOCK_CHECK === 'true';
+
+    if (!hasLocalLock && stage && !isVerificationRun) {
       try {
         const result = execSync(`npx sst unlock --stage ${stage}`, {
           cwd: projectRoot,
@@ -138,7 +143,12 @@ function detectLockedStage(projectRoot: string): string | null {
 }
 
 /**
- * Handle lock with interactive prompt
+ * Handle lock with interactive prompt (Issue #227)
+ *
+ * **Fix for auto-fix verification failures:**
+ * Sets DK_SKIP_REMOTE_LOCK_CHECK=true to skip timeout-prone remote lock detection
+ * during verification. The auto-fix itself works correctly (uses npx sst unlock),
+ * but re-checking remote locks can timeout and cause false-positive failures.
  */
 async function handleLockWithPrompt(projectRoot: string, detectedStage: string | null, stage?: string): Promise<void> {
   console.log(chalk.bold.yellow('\n🔒 SST Lock Detected\n'));
@@ -157,6 +167,9 @@ async function handleLockWithPrompt(projectRoot: string, detectedStage: string |
   if (process.env.CI === 'true' || process.env.NON_INTERACTIVE === 'true' || !process.stdin.isTTY) {
     console.log(chalk.yellow('🔧 Non-interactive mode: Auto-unlocking...'));
     execSync(unlockCmd, { cwd: projectRoot, stdio: 'inherit' });
+
+    // ISSUE #227: Set flag to skip remote lock check during verification
+    process.env.DK_SKIP_REMOTE_LOCK_CHECK = 'true';
     return;
   }
 
@@ -202,6 +215,10 @@ async function handleLockWithPrompt(projectRoot: string, detectedStage: string |
 
       if (verificationPassed) {
         console.log(chalk.green('✅ Lock cleared and verified!\n'));
+
+        // ISSUE #227: Set flag to skip remote lock check during verification
+        // This prevents timeout-prone remote detection from causing false failures
+        process.env.DK_SKIP_REMOTE_LOCK_CHECK = 'true';
       } else {
         // Lock still exists - might be in multiple S3 buckets
         console.log(chalk.yellow('⚠️  Lock cleared but verification failed'));

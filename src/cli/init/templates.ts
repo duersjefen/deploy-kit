@@ -215,6 +215,7 @@ export default $config({
 
     return {
       // site: site.url,
+      // distributionId: site.distributionId,  // Required for Deploy-Kit domain validation (Issue #217)
     };
   },
 });

@@ -21,6 +21,7 @@ import {
 import { CloudFrontOperations } from '../lib/cloudfront/operations.js';
 import prompts from 'prompts';
 import { validateSstSecrets, projectUsesSecrets } from './sst-secret-validator.js';
+import { validateStageNameConsistency } from './stage-name-validator.js';
 
 const execAsync = promisify(exec);
 
@@ -936,6 +937,80 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Check SST stage name consistency (Issue #226)
+   *
+   * Validates that sstStageName in .deploy-config.json matches
+   * stage checks in sst.config.ts to prevent silent configuration skipping.
+   *
+   * **Real-World Problem:**
+   * - .deploy-config.json: sstStageName: "prod"
+   * - sst.config.ts: stage === "production" ? { domain: ... } : undefined
+   * - Result: Domain config skipped → deployment succeeds but domain missing
+   */
+  async function checkStageNameConsistency(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  Stage name check skipped (non-SST infrastructure)'));
+      checks.push({ name: 'SST Stage Name', status: 'warning', message: 'Skipped (non-SST)' });
+      return;
+    }
+
+    // Get sstStageName from stage-specific config
+    const sstStageName = config.stageConfig?.[stage]?.sstStageName;
+
+    // Skip check if no sstStageName configured (defaults to stage)
+    if (!sstStageName || sstStageName === stage) {
+      console.log(chalk.gray('ℹ️  Stage name check skipped (no sstStageName override)'));
+      checks.push({ name: 'SST Stage Name', status: 'success', message: 'Using default stage name' });
+      return;
+    }
+
+    const spinner = ora('Checking SST stage name consistency...').start();
+    const startTime = Date.now();
+
+    try {
+      const result = validateStageNameConsistency(projectRoot, stage, sstStageName);
+
+      if (!result.passed) {
+        spinner.fail('❌ Stage name mismatch detected');
+        console.log(chalk.red('\n❌ SST Stage Name Mismatch\n'));
+        console.log(chalk.yellow(`${result.issue}\n`));
+        console.log(chalk.yellow(`${result.details}\n`));
+        console.log(chalk.cyan('🔧 Action Required:'));
+        console.log(chalk.gray(`${result.actionRequired}\n`));
+
+        checks.push({
+          name: 'SST Stage Name',
+          status: 'failed',
+          message: 'Stage name mismatch in sst.config.ts'
+        });
+
+        throw new Error('Stage name consistency check failed');
+      }
+
+      checkCount++;
+      spinner.succeed(`✅ Stage name consistent (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+      checks.push({
+        name: 'SST Stage Name',
+        status: 'success',
+        message: `Using sstStageName: ${sstStageName}`
+      });
+    } catch (error) {
+      if ((error as Error).message.includes('Stage name consistency check failed')) {
+        throw error; // Re-throw our validation error
+      }
+
+      // Other errors - warn but don't block
+      spinner.warn('⚠️  Could not check stage name consistency');
+      checks.push({
+        name: 'SST Stage Name',
+        status: 'warning',
+        message: 'Check failed (non-blocking)'
+      });
+      console.log(chalk.yellow(`⚠️  Stage name check warning: ${(error as Error).message}`));
+    }
+  }
+
+  /**
    * Run all pre-deployment checks
    */
   async function run(stage: DeploymentStage): Promise<void> {
@@ -951,6 +1026,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
         await runTests();
       }
 
+      await checkStageNameConsistency(stage); // Issue #226 - Validate sstStageName matches sst.config.ts
       await checkSstSecrets(stage); // DEP-38 - Must run before deployment to prevent RangeError
       await checkDomainConfiguration(stage); // Warn when deploying without domain
       await checkSslCertificate(stage);
@@ -969,5 +1045,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkSstSecrets, checkDomainConfiguration, checkSslCertificate, checkRoute53Zone, checkRoute53CnameConflicts, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkStageNameConsistency, checkSstSecrets, checkDomainConfiguration, checkSslCertificate, checkRoute53Zone, checkRoute53CnameConflicts, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
 }
