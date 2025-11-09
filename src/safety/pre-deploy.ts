@@ -636,6 +636,169 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
   }
 
   /**
+   * Check for conflicting Route53 CNAME records (DEP-43)
+   * Detects CNAME records that conflict with SST A/AAAA alias records
+   */
+  async function checkRoute53CnameConflicts(stage: DeploymentStage): Promise<void> {
+    if (config.infrastructure !== 'sst-serverless') {
+      console.log(chalk.gray('ℹ️  Route53 CNAME check skipped (non-SST infrastructure)'));
+      checks.push({ name: 'Route53 CNAME', status: 'warning', message: 'Skipped (non-SST)' });
+      return;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // Parse SST config to extract domain and zone
+      const sstConfig = parseSSTDomainConfig(projectRoot, stage);
+
+      if (!sstConfig || !sstConfig.hasDomain || !sstConfig.domainName) {
+        console.log(chalk.gray('ℹ️  Route53 CNAME check skipped (no domain configured)'));
+        checks.push({ name: 'Route53 CNAME', status: 'warning', message: 'Skipped (no domain)' });
+        return;
+      }
+
+      if (!sstConfig.zoneId) {
+        console.log(chalk.gray('ℹ️  Route53 CNAME check skipped (no zone ID)'));
+        checks.push({ name: 'Route53 CNAME', status: 'warning', message: 'Skipped (no zone)' });
+        return;
+      }
+
+      const spinner = ora(`Checking Route53 CNAME records for ${sstConfig.domainName}...`).start();
+
+      try {
+        // Get DNS records from Route53
+        const cfOps = new CloudFrontOperations(config, config.awsProfile);
+        const dnsRecords = await cfOps.getDNSRecords(sstConfig.zoneId);
+
+        // Check for CNAME records at the configured domain
+        const conflictingCnames = dnsRecords.filter(
+          record => record.type === 'CNAME' && record.name === sstConfig.domainName
+        );
+
+        if (conflictingCnames.length === 0) {
+          checkCount++;
+          spinner.succeed(`✅ No conflicting Route53 CNAME records (${((Date.now() - startTime) / 1000).toFixed(1)}s)`);
+          checks.push({
+            name: 'Route53 CNAME',
+            status: 'success',
+            message: 'No conflicts detected',
+          });
+          return;
+        }
+
+        // Conflicts detected - display details
+        const cnameValue = conflictingCnames[0].value;
+        spinner.fail(`❌ Conflicting Route53 CNAME record detected`);
+
+        console.log(chalk.red(`\n❌ Route53 CNAME Conflict\n`));
+        console.log(chalk.yellow(`Domain: ${sstConfig.domainName}`));
+        console.log(chalk.yellow(`CNAME Target: ${cnameValue}\n`));
+        console.log(chalk.yellow(`Issue: CNAME record exists but SST needs A/AAAA alias records.`));
+        console.log(chalk.yellow(`Route53 doesn't allow both at the same domain name.\n`));
+
+        console.log(chalk.cyan('🔧 Fix Options:\n'));
+        console.log('  1. Auto-delete the CNAME record (Recommended)');
+        console.log('  2. Show manual deletion command');
+        console.log('  3. Abort deployment\n');
+
+        const response = await prompts({
+          type: 'select',
+          name: 'action',
+          message: 'How should I proceed?',
+          choices: [
+            { title: 'Auto-delete the CNAME record', value: 'delete' },
+            { title: 'Show me the manual command', value: 'manual' },
+            { title: 'Abort deployment', value: 'abort' },
+          ],
+          initial: 0,
+        });
+
+        switch (response.action) {
+          case 'delete':
+            console.log(chalk.cyan('\n🔧 Deleting conflicting CNAME record...\n'));
+            // Delete the CNAME record using AWS SDK
+            try {
+              await cfOps.deleteCnameRecord(sstConfig.zoneId, sstConfig.domainName, cnameValue, conflictingCnames[0].ttl || 300);
+              console.log(chalk.green(`✅ CNAME record deleted successfully! Deployment can proceed.\n`));
+              checkCount++;
+              checks.push({
+                name: 'Route53 CNAME',
+                status: 'success',
+                message: 'Conflict resolved (CNAME deleted)',
+              });
+            } catch (deleteError) {
+              console.log(chalk.red(`❌ Failed to delete CNAME record: ${deleteError instanceof Error ? deleteError.message : 'Unknown error'}`));
+              checks.push({
+                name: 'Route53 CNAME',
+                status: 'failed',
+                message: 'Auto-delete failed',
+              });
+              throw new Error('Failed to delete conflicting CNAME record');
+            }
+            break;
+
+          case 'manual':
+            console.log(chalk.cyan('\n📋 Manual Deletion Command:\n'));
+            console.log(chalk.gray(`aws route53 change-resource-record-sets \\`));
+            console.log(chalk.gray(`  --hosted-zone-id ${sstConfig.zoneId} \\`));
+            console.log(chalk.gray(`  --change-batch '{`));
+            console.log(chalk.gray(`    "Changes": [{`));
+            console.log(chalk.gray(`      "Action": "DELETE",`));
+            console.log(chalk.gray(`      "ResourceRecordSet": {`));
+            console.log(chalk.gray(`        "Name": "${sstConfig.domainName}",`));
+            console.log(chalk.gray(`        "Type": "CNAME",`));
+            console.log(chalk.gray(`        "TTL": ${conflictingCnames[0].ttl || 300},`));
+            console.log(chalk.gray(`        "ResourceRecords": [{"Value": "${cnameValue}"}]`));
+            console.log(chalk.gray(`      }`));
+            console.log(chalk.gray(`    }]`));
+            console.log(chalk.gray(`  }'`));
+            console.log(chalk.gray(`\nThen retry: npx deploy-kit deploy ${stage}\n`));
+            checks.push({
+              name: 'Route53 CNAME',
+              status: 'failed',
+              message: 'Manual deletion required',
+            });
+            throw new Error('Manual CNAME deletion required before deployment');
+
+          default:
+            checks.push({
+              name: 'Route53 CNAME',
+              status: 'failed',
+              message: 'Deployment aborted by user',
+            });
+            throw new Error('Deployment aborted due to Route53 CNAME conflict');
+        }
+      } catch (checkError) {
+        // Re-throw if it's one of our expected errors
+        if (
+          (checkError as Error).message.includes('Deployment aborted') ||
+          (checkError as Error).message.includes('Manual CNAME deletion required')
+        ) {
+          throw checkError;
+        }
+
+        // Otherwise, treat as warning
+        spinner.warn('⚠️  Could not check Route53 CNAME records');
+        checks.push({
+          name: 'Route53 CNAME',
+          status: 'warning',
+          message: 'Check failed (non-blocking)',
+        });
+        console.log(chalk.yellow(`⚠️  Route53 CNAME check warning: ${(checkError as Error).message}`));
+      }
+    } catch (error) {
+      console.log(chalk.red(`❌ Route53 CNAME check failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
+      checks.push({
+        name: 'Route53 CNAME',
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Print check summary
    */
   function printSummary(): void {
@@ -868,6 +1031,7 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
       await checkDomainConfiguration(stage); // Warn when deploying without domain
       await checkSslCertificate(stage);
       await checkRoute53Zone(stage); // DEP-19 Phase 1 + DEP-20
+      await checkRoute53CnameConflicts(stage); // DEP-43
       await checkCloudFrontCnameConflicts(stage); // DEP-35
       await checkOverrideRequirement(stage); // DEP-26
       await checkACMCertificatePreDeploy(stage); // DEP-22 Phase 3
@@ -881,5 +1045,5 @@ export function getPreDeploymentChecks(config: ProjectConfig, projectRoot: strin
     }
   }
 
-  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkStageNameConsistency, checkSstSecrets, checkDomainConfiguration, checkSslCertificate, checkRoute53Zone, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
+  return { checkGitStatus, checkAwsCredentials, runTests, checkLambdaReservedVars, checkStageNameConsistency, checkSstSecrets, checkDomainConfiguration, checkSslCertificate, checkRoute53Zone, checkRoute53CnameConflicts, checkCloudFrontCnameConflicts, checkOverrideRequirement, checkACMCertificatePreDeploy, run };
 }

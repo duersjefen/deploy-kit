@@ -201,4 +201,60 @@ export class Route53DNSClient {
       ttl: record.TTL || 300,
     }));
   }
+
+  /**
+   * Delete a CNAME record from Route53 (DEP-43)
+   * Removes CNAME records that prevent SST from creating A/AAAA alias records
+   *
+   * @param zoneId - Hosted zone ID
+   * @param domain - Domain name with the CNAME record
+   * @param cnameValue - Current CNAME record value
+   * @param ttl - TTL of the CNAME record
+   * @throws {Error} If AWS CLI command fails
+   *
+   * @example
+   * ```typescript
+   * await client.deleteCnameRecord('Z123', 'staging.example.com', 'd123.cloudfront.net', 300);
+   * ```
+   */
+  async deleteCnameRecord(
+    zoneId: string,
+    domain: string,
+    cnameValue: string,
+    ttl: number
+  ): Promise<void> {
+    const env = {
+      ...process.env,
+      ...(this.awsProfile && { AWS_PROFILE: this.awsProfile }),
+    };
+
+    // Remove '/hostedzone/' prefix if present
+    const cleanZoneId = zoneId.replace('/hostedzone/', '');
+
+    // Build the change batch JSON
+    const changeBatch = JSON.stringify({
+      Changes: [
+        {
+          Action: 'DELETE',
+          ResourceRecordSet: {
+            Name: domain,
+            Type: 'CNAME',
+            TTL: ttl,
+            ResourceRecords: [{ Value: cnameValue }],
+          },
+        },
+      ],
+    });
+
+    try {
+      await execAsync(
+        `aws route53 change-resource-record-sets --hosted-zone-id ${cleanZoneId} --change-batch '${changeBatch}'`,
+        { env }
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to delete CNAME record for ${domain}: ${(error as Error).message}`
+      );
+    }
+  }
 }

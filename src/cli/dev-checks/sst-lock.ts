@@ -182,12 +182,59 @@ async function handleLockWithPrompt(projectRoot: string, detectedStage: string |
   if (shouldUnlock) {
     try {
       execSync(unlockCmd, { cwd: projectRoot, stdio: 'pipe' });
-      console.log(chalk.green('✅ Lock cleared successfully!\n'));
+      console.log(chalk.gray('🔄 Verifying lock clearance...\n'));
 
-      // ISSUE #227: Set flag to skip remote lock check during verification
-      // This prevents timeout-prone remote detection from causing false failures
-      process.env.DK_SKIP_REMOTE_LOCK_CHECK = 'true';
+      // Wait for S3 eventual consistency (DEP-48)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Verify lock was actually cleared
+      const verifyCmd = stageToUse
+        ? `npx sst unlock --stage ${stageToUse}`
+        : 'npx sst unlock';
+
+      let verificationPassed = false;
+      try {
+        const verifyResult = execSync(verifyCmd, {
+          cwd: projectRoot,
+          stdio: 'pipe',
+          encoding: 'utf-8',
+          timeout: 10000,
+        });
+
+        // If unlock says "no lock", verification passed
+        if (verifyResult.toLowerCase().includes('no lock')) {
+          verificationPassed = true;
+        }
+      } catch (verifyError: any) {
+        const verifyMsg = verifyError.message || verifyError.stderr?.toString() || '';
+        // Also check error message for "no lock"
+        if (verifyMsg.toLowerCase().includes('no lock')) {
+          verificationPassed = true;
+        }
+      }
+
+      if (verificationPassed) {
+        console.log(chalk.green('✅ Lock cleared and verified!\n'));
+
+        // ISSUE #227: Set flag to skip remote lock check during verification
+        // This prevents timeout-prone remote detection from causing false failures
+        process.env.DK_SKIP_REMOTE_LOCK_CHECK = 'true';
+      } else {
+        // Lock still exists - might be in multiple S3 buckets
+        console.log(chalk.yellow('⚠️  Lock cleared but verification failed'));
+        console.log(chalk.gray('This usually means locks exist in multiple SST state buckets.\n'));
+        console.log(chalk.bold.cyan('Manual fix required:'));
+        console.log(chalk.gray(`1. List all SST state buckets: aws s3 ls | grep sst-state-`));
+        console.log(chalk.gray(`2. Clear locks from ALL buckets:`));
+        console.log(chalk.gray(`   for bucket in $(aws s3 ls | grep sst-state- | awk '{print $3}'); do`));
+        console.log(chalk.gray(`     aws s3 rm "s3://$bucket/lock/PROJECT/STAGE.json" 2>/dev/null`));
+        console.log(chalk.gray(`   done\n`));
+        throw new Error('Lock verification failed - manual cleanup required');
+      }
     } catch (error) {
+      if (error instanceof Error && error.message.includes('verification failed')) {
+        throw error;
+      }
       console.log(chalk.yellow('⚠️  Auto-unlock failed'));
       console.log(chalk.gray(`Please run manually: ${unlockCmd}\n`));
       throw error;

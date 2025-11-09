@@ -30,6 +30,7 @@ const execAsync = promisify(exec);
 export class CloudFrontOperations {
   private config: ProjectConfig;
   private awsProfile?: string;
+  private awsRegion: string;
 
   /**
    * Create a new CloudFront operations manager
@@ -40,6 +41,8 @@ export class CloudFrontOperations {
   constructor(config: ProjectConfig, awsProfile?: string) {
     this.config = config;
     this.awsProfile = awsProfile;
+    // CloudFront is global, but Route53 operations use us-east-1 by default
+    this.awsRegion = 'us-east-1';
   }
 
   /**
@@ -512,6 +515,43 @@ export class CloudFrontOperations {
         console.error(chalk.red(`    ❌ Failed to delete ${conflict.distributionId}: ${(error as Error).message}`));
         throw error;
       }
+    }
+  }
+
+  /**
+   * Get DNS records from Route53
+   *
+   * @param zoneId - Route53 hosted zone ID
+   * @returns Array of DNS records
+   */
+  async getDNSRecords(zoneId: string): Promise<DNSRecord[]> {
+    const dnsClient = new Route53DNSClient(this.awsProfile);
+    return await dnsClient.listRecordSets(zoneId);
+  }
+
+  /**
+   * Delete a conflicting CNAME record from Route53 (DEP-43)
+   * Removes CNAME records that prevent SST from creating A/AAAA alias records
+   *
+   * @param zoneId - Route53 hosted zone ID
+   * @param domain - Domain name with the CNAME record
+   * @param cnameValue - Current CNAME record value
+   * @param ttl - TTL of the CNAME record
+   */
+  async deleteCnameRecord(
+    zoneId: string,
+    domain: string,
+    cnameValue: string,
+    ttl: number
+  ): Promise<void> {
+    const dnsClient = new Route53DNSClient(this.awsProfile);
+
+    try {
+      await dnsClient.deleteCnameRecord(zoneId, domain, cnameValue, ttl);
+    } catch (error) {
+      throw new Error(
+        `Failed to delete CNAME record for ${domain}: ${(error as Error).message}`
+      );
     }
   }
 }
