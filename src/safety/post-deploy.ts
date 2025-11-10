@@ -10,6 +10,8 @@ import {
   validateNextjsServerLambda,
 } from '../lib/sst-deployment-validator.js';
 import { runEnhancedPostDeployValidation } from './enhanced-post-deploy.js';
+import { verifySSTDeployment, autoFixSSTBugs } from '../health/sst-workarounds.js';
+import * as readline from 'readline';
 
 const execAsync = promisify(exec);
 
@@ -227,9 +229,96 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
   }
 
   /**
+   * Prompt user for yes/no answer
+   */
+  async function promptUser(question: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+      rl.question(chalk.cyan(`\n${question} (y/n): `), (answer) => {
+        rl.close();
+        resolve(answer.toLowerCase().trim() === 'y' || answer.toLowerCase().trim() === 'yes');
+      });
+    });
+  }
+
+  /**
+   * Check for SST 3.17 bugs and optionally auto-fix
+   */
+  async function checkSSTBugs(stage: DeploymentStage, autoFix: boolean = false): Promise<void> {
+    // Only run for SST projects
+    if (config.infrastructure !== 'sst-serverless') {
+      return;
+    }
+
+    // Run SST bug detection
+    const report = await verifySSTDeployment(config, stage, projectRoot);
+
+    // If no bugs found, return early
+    if (!report.bugDetected) {
+      return;
+    }
+
+    // Bugs found - decide whether to auto-fix
+    const bugsWithAutoFix = report.bugs.filter(b => b.autoFixAvailable);
+    const bugsWithoutAutoFix = report.bugs.filter(b => !b.autoFixAvailable);
+
+    // If auto-fix enabled, fix automatically
+    if (autoFix && bugsWithAutoFix.length > 0) {
+      console.log(chalk.yellow('\n⚡ Auto-fix enabled - attempting to fix issues...\n'));
+      const fixed = await autoFixSSTBugs(config, stage, projectRoot, bugsWithAutoFix);
+
+      if (fixed.length === bugsWithAutoFix.length) {
+        console.log(chalk.green(`\n✅ All fixable bugs resolved (${fixed.length}/${bugsWithAutoFix.length})\n`));
+      } else {
+        console.log(chalk.yellow(`\n⚠️  Some bugs could not be fixed (${fixed.length}/${bugsWithAutoFix.length})\n`));
+      }
+
+      // If bugs without auto-fix remain, warn user
+      if (bugsWithoutAutoFix.length > 0) {
+        console.log(chalk.red(`\n❌ ${bugsWithoutAutoFix.length} bug(s) require manual intervention\n`));
+        throw new Error('SST deployment has critical bugs requiring manual fixes');
+      }
+
+      return;
+    }
+
+    // Auto-fix not enabled - prompt user
+    if (bugsWithAutoFix.length > 0) {
+      const shouldFix = await promptUser('🔧 Attempt auto-fix for detected issues?');
+
+      if (shouldFix) {
+        const fixed = await autoFixSSTBugs(config, stage, projectRoot, bugsWithAutoFix);
+
+        if (fixed.length === bugsWithAutoFix.length) {
+          console.log(chalk.green(`\n✅ All fixable bugs resolved (${fixed.length}/${bugsWithAutoFix.length})\n`));
+        } else {
+          console.log(chalk.yellow(`\n⚠️  Some bugs could not be fixed (${fixed.length}/${bugsWithAutoFix.length})\n`));
+        }
+
+        // If bugs without auto-fix remain, warn user
+        if (bugsWithoutAutoFix.length > 0) {
+          console.log(chalk.red(`\n❌ ${bugsWithoutAutoFix.length} bug(s) require manual intervention\n`));
+          throw new Error('SST deployment has critical bugs requiring manual fixes');
+        }
+      } else {
+        console.log(chalk.yellow('\n⚠️  Skipping auto-fix - deployment may not work correctly\n'));
+        throw new Error('SST deployment has bugs - fix manually or run with --auto-fix');
+      }
+    } else {
+      // All bugs require manual intervention
+      console.log(chalk.red(`\n❌ All ${report.bugs.length} bug(s) require manual intervention\n`));
+      throw new Error('SST deployment has critical bugs requiring manual fixes');
+    }
+  }
+
+  /**
    * Run all post-deployment checks
    */
-  async function run(stage: DeploymentStage): Promise<void> {
+  async function run(stage: DeploymentStage, options: { autoFix?: boolean; skipSSTBugChecks?: boolean } = {}): Promise<void> {
     console.log(chalk.bold(`Post-deployment validation for ${stage}:\n`));
 
     try {
@@ -261,17 +350,27 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
         }
       }
 
+      // SST 3.17 bug detection (unless explicitly skipped)
+      if (!options.skipSSTBugChecks) {
+        await checkSSTBugs(stage, options.autoFix);
+      }
+
       console.log(chalk.green(`\n✅ Post-deployment validation complete!\n`));
     } catch (error) {
       console.log(chalk.yellow(`\n⚠️  Post-deployment validation had issues (check manually)\n`));
       console.log(chalk.yellow(`   Error: ${error instanceof Error ? error.message : String(error)}\n`));
-      // Throw error for domain validation failures - these are critical
-      if (error instanceof Error && (error.message.includes('SST domain configuration') || error.message.includes('Enhanced validation failed'))) {
+      // Throw error for domain validation failures and SST bugs - these are critical
+      if (error instanceof Error && (
+        error.message.includes('SST domain configuration') ||
+        error.message.includes('Enhanced validation failed') ||
+        error.message.includes('SST deployment has') ||
+        error.message.includes('critical bugs')
+      )) {
         throw error;
       }
       // Don't throw for other post-deploy checks - they are informational
     }
   }
 
-  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, run };
+  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, checkSSTBugs, run };
 }

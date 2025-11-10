@@ -133,7 +133,7 @@ export class DeploymentKit {
    * console.log(result.durationSeconds); // 127
    * ```
    */
-  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
+  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; autoFix?: boolean; skipSSTBugChecks?: boolean; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
     const isDryRun = options?.isDryRun || false;
     const startTimeDate = new Date();
     const startTime = startTimeDate.getTime();
@@ -353,7 +353,10 @@ export class DeploymentKit {
       console.log(chalk.gray('  Testing health checks and CloudFront configuration\n'));
 
       if (!isDryRun) {
-        await this.postChecks.run(stage);
+        await this.postChecks.run(stage, {
+          autoFix: options?.autoFix,
+          skipSSTBugChecks: options?.skipSSTBugChecks,
+        });
       }
       result.details.healthChecksOk = true;
 
