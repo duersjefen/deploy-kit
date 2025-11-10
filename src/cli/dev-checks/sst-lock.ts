@@ -87,24 +87,36 @@ function detectLockedStage(projectRoot: string): string | null {
 }
 
 /**
- * Handle lock with interactive prompt (DEP-49: Simplified)
+ * Handle lock with interactive prompt (DEP-49: Require stage)
  *
- * **Simplified Approach:**
- * - Run `npx sst unlock --stage {stage}` to clear both local and remote locks
- * - Verify by checking local lock file is gone
- * - No complex verification logic, no environment flags
+ * **CRITICAL FIX:**
+ * NEVER run `npx sst unlock` without --stage flag!
+ * Without --stage, SST defaults to username, overwriting .sst/stage file
+ *
+ * **Approach:**
+ * - If stage detected → Run `npx sst unlock --stage {stage}`
+ * - If no stage → Show manual command, require user to specify stage
  */
 async function handleLockWithPrompt(projectRoot: string, detectedStage: string | null, stage?: string): Promise<void> {
   console.log(chalk.bold.yellow('\n🔒 SST Lock Detected\n'));
   console.log(chalk.gray('A previous session didn\'t exit cleanly, leaving a lock file.\n'));
 
   const stageToUse = stage || detectedStage;
-  if (stageToUse) {
-    console.log(chalk.gray(`Stage: ${chalk.white(stageToUse)}`));
+
+  // CRITICAL: If no stage detected, do NOT run npx sst unlock without --stage
+  // Running without --stage makes SST default to username, overwriting .sst/stage
+  if (!stageToUse) {
+    console.log(chalk.red('⚠️  Cannot auto-unlock: Stage could not be detected\n'));
+    console.log(chalk.yellow('To prevent corrupting .sst/stage file, you must specify the stage:\n'));
+    console.log(chalk.gray('  npx sst unlock --stage <YOUR_STAGE>\n'));
+    console.log(chalk.gray('Common stages: production, staging, dev\n'));
+    throw new Error('Stage detection failed - manual unlock required');
   }
+
+  console.log(chalk.gray(`Stage: ${chalk.white(stageToUse)}`));
   console.log(chalk.gray('Location: .sst/lock\n'));
 
-  const unlockCmd = stageToUse ? `npx sst unlock --stage ${stageToUse}` : 'npx sst unlock';
+  const unlockCmd = `npx sst unlock --stage ${stageToUse}`;
 
   // Check if we're in non-interactive mode
   if (process.env.CI === 'true' || process.env.NON_INTERACTIVE === 'true' || !process.stdin.isTTY) {
