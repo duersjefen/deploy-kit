@@ -10,6 +10,7 @@ import {
   validateNextjsServerLambda,
 } from '../lib/sst-deployment-validator.js';
 import { runEnhancedPostDeployValidation } from './enhanced-post-deploy.js';
+import { validateSSTDeployment, fixDeploymentIssues } from '../health/sst-validation.js';
 
 const execAsync = promisify(exec);
 
@@ -227,9 +228,77 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
   }
 
   /**
+   * Validate SST deployment configuration and optionally auto-fix issues
+   */
+  async function validateSSTConfiguration(stage: DeploymentStage, autoFix: boolean = false): Promise<void> {
+    // Only run for SST projects
+    if (config.infrastructure !== 'sst-serverless') {
+      return;
+    }
+
+    // Run SST deployment validation
+    const report = await validateSSTDeployment(config, stage, projectRoot);
+
+    // If no issues found, return early
+    if (!report.issuesDetected) {
+      return;
+    }
+
+    // Issues found - check severity
+    const fixableIssues = report.issues.filter(i => i.autoFixAvailable);
+    const manualIssues = report.issues.filter(i => !i.autoFixAvailable);
+    const warnings = report.issues.filter(i => i.severity === 'warning');
+
+    // If auto-fix enabled, fix automatically
+    if (autoFix && fixableIssues.length > 0) {
+      console.log(chalk.yellow('\n⚡ Auto-fix enabled - attempting to resolve issues...\n'));
+      const fixed = await fixDeploymentIssues(config, stage, projectRoot, fixableIssues);
+
+      if (fixed.length === fixableIssues.length) {
+        console.log(chalk.green(`\n✅ All fixable issues resolved (${fixed.length}/${fixableIssues.length})\n`));
+      } else {
+        console.log(chalk.yellow(`\n⚠️  Some issues could not be fixed (${fixed.length}/${fixableIssues.length})\n`));
+      }
+
+      // If manual issues remain, inform user (but don't fail - they're just warnings)
+      if (manualIssues.length > 0) {
+        console.log(chalk.yellow(`\nℹ️  ${manualIssues.length} issue(s) require manual attention (see guidance above)\n`));
+      }
+
+      return;
+    }
+
+    // If only info-level issues, just inform and continue
+    const criticalIssues = warnings.length;
+    if (criticalIssues === 0) {
+      console.log(chalk.cyan('\nℹ️  Deployment has informational notices - review guidance above if needed\n'));
+      return;
+    }
+
+    // Auto-fix not enabled and there are fixable warnings - offer to fix
+    if (fixableIssues.length > 0) {
+      // In CI or when TTY not available, just warn
+      if (!process.stdin.isTTY || process.env.CI === 'true') {
+        console.log(chalk.yellow('\n⚠️  Deployment has fixable warnings - run with --auto-fix to resolve automatically\n'));
+        return;
+      }
+
+      // Interactive prompt (handled by fixDeploymentIssues with TTY detection)
+      const fixed = await fixDeploymentIssues(config, stage, projectRoot, fixableIssues);
+
+      if (fixed.length > 0) {
+        console.log(chalk.green(`\n✅ Fixed ${fixed.length} issue(s)\n`));
+      }
+    } else {
+      // All issues require manual attention
+      console.log(chalk.yellow(`\nℹ️  ${report.issues.length} issue(s) require manual attention (see guidance above)\n`));
+    }
+  }
+
+  /**
    * Run all post-deployment checks
    */
-  async function run(stage: DeploymentStage): Promise<void> {
+  async function run(stage: DeploymentStage, options: { autoFix?: boolean; skipSSTValidation?: boolean } = {}): Promise<void> {
     console.log(chalk.bold(`Post-deployment validation for ${stage}:\n`));
 
     try {
@@ -261,17 +330,25 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
         }
       }
 
+      // SST deployment validation (unless explicitly skipped)
+      if (!options.skipSSTValidation) {
+        await validateSSTConfiguration(stage, options.autoFix);
+      }
+
       console.log(chalk.green(`\n✅ Post-deployment validation complete!\n`));
     } catch (error) {
       console.log(chalk.yellow(`\n⚠️  Post-deployment validation had issues (check manually)\n`));
       console.log(chalk.yellow(`   Error: ${error instanceof Error ? error.message : String(error)}\n`));
       // Throw error for domain validation failures - these are critical
-      if (error instanceof Error && (error.message.includes('SST domain configuration') || error.message.includes('Enhanced validation failed'))) {
+      if (error instanceof Error && (
+        error.message.includes('SST domain configuration') ||
+        error.message.includes('Enhanced validation failed')
+      )) {
         throw error;
       }
       // Don't throw for other post-deploy checks - they are informational
     }
   }
 
-  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, run };
+  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, validateSSTConfiguration, run };
 }

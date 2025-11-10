@@ -389,6 +389,10 @@ async function cli() {
       const withMaintenanceMode = args.includes('--with-maintenance-mode');
       const maintenancePagePath = args.find(a => a.startsWith('--maintenance-page='))?.split('=')[1];
 
+      // Parse SST validation flags
+      const autoFix = args.includes('--auto-fix');
+      const skipSSTValidation = args.includes('--skip-sst-validation');
+
       const maintenanceOptions = withMaintenanceMode ? {
         customPagePath: maintenancePagePath,
       } : undefined;
@@ -400,7 +404,7 @@ async function cli() {
         verbose,
       });
 
-      const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, skipPreChecks: true, maintenance: maintenanceOptions });
+      const result = await kit.deploy(stage, { isDryRun, showDiff, benchmark, skipPreChecks: true, autoFix, skipSSTValidation, maintenance: maintenanceOptions });
 
       // Complete stage 3 (SST Deployment)
       progress.completeStage(3, result.success);
@@ -575,6 +579,8 @@ function printHelpMessage(): void {
   console.log('                  --skip-checks        Skip quality checks');
   console.log('                  --dry-run            Preview without deploying');
   console.log('                  --show-diff          Show AWS resource changes');
+  console.log('                  --auto-fix           Auto-fix SST deployment issues');
+  console.log('                  --skip-sst-validation Skip SST validation');
   console.log('                  --verbose            Detailed logging');
   console.log('                  --benchmark          Show performance report');
   console.log('                  --log-level=LEVEL    debug, info, warn, error');
