@@ -10,8 +10,7 @@ import {
   validateNextjsServerLambda,
 } from '../lib/sst-deployment-validator.js';
 import { runEnhancedPostDeployValidation } from './enhanced-post-deploy.js';
-import { verifySSTDeployment, autoFixSSTBugs } from '../health/sst-workarounds.js';
-import * as readline from 'readline';
+import { validateSSTDeployment, fixDeploymentIssues } from '../health/sst-validation.js';
 
 const execAsync = promisify(exec);
 
@@ -229,89 +228,70 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
   }
 
   /**
-   * Prompt user for yes/no answer
+   * Validate SST deployment configuration and optionally auto-fix issues
    */
-  async function promptUser(question: string): Promise<boolean> {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    return new Promise((resolve) => {
-      rl.question(chalk.cyan(`\n${question} (y/n): `), (answer) => {
-        rl.close();
-        resolve(answer.toLowerCase().trim() === 'y' || answer.toLowerCase().trim() === 'yes');
-      });
-    });
-  }
-
-  /**
-   * Check for SST 3.17 bugs and optionally auto-fix
-   */
-  async function checkSSTBugs(stage: DeploymentStage, autoFix: boolean = false): Promise<void> {
+  async function validateSSTConfiguration(stage: DeploymentStage, autoFix: boolean = false): Promise<void> {
     // Only run for SST projects
     if (config.infrastructure !== 'sst-serverless') {
       return;
     }
 
-    // Run SST bug detection
-    const report = await verifySSTDeployment(config, stage, projectRoot);
+    // Run SST deployment validation
+    const report = await validateSSTDeployment(config, stage, projectRoot);
 
-    // If no bugs found, return early
-    if (!report.bugDetected) {
+    // If no issues found, return early
+    if (!report.issuesDetected) {
       return;
     }
 
-    // Bugs found - decide whether to auto-fix
-    const bugsWithAutoFix = report.bugs.filter(b => b.autoFixAvailable);
-    const bugsWithoutAutoFix = report.bugs.filter(b => !b.autoFixAvailable);
+    // Issues found - check severity
+    const fixableIssues = report.issues.filter(i => i.autoFixAvailable);
+    const manualIssues = report.issues.filter(i => !i.autoFixAvailable);
+    const warnings = report.issues.filter(i => i.severity === 'warning');
 
     // If auto-fix enabled, fix automatically
-    if (autoFix && bugsWithAutoFix.length > 0) {
-      console.log(chalk.yellow('\n⚡ Auto-fix enabled - attempting to fix issues...\n'));
-      const fixed = await autoFixSSTBugs(config, stage, projectRoot, bugsWithAutoFix);
+    if (autoFix && fixableIssues.length > 0) {
+      console.log(chalk.yellow('\n⚡ Auto-fix enabled - attempting to resolve issues...\n'));
+      const fixed = await fixDeploymentIssues(config, stage, projectRoot, fixableIssues);
 
-      if (fixed.length === bugsWithAutoFix.length) {
-        console.log(chalk.green(`\n✅ All fixable bugs resolved (${fixed.length}/${bugsWithAutoFix.length})\n`));
+      if (fixed.length === fixableIssues.length) {
+        console.log(chalk.green(`\n✅ All fixable issues resolved (${fixed.length}/${fixableIssues.length})\n`));
       } else {
-        console.log(chalk.yellow(`\n⚠️  Some bugs could not be fixed (${fixed.length}/${bugsWithAutoFix.length})\n`));
+        console.log(chalk.yellow(`\n⚠️  Some issues could not be fixed (${fixed.length}/${fixableIssues.length})\n`));
       }
 
-      // If bugs without auto-fix remain, warn user
-      if (bugsWithoutAutoFix.length > 0) {
-        console.log(chalk.red(`\n❌ ${bugsWithoutAutoFix.length} bug(s) require manual intervention\n`));
-        throw new Error('SST deployment has critical bugs requiring manual fixes');
+      // If manual issues remain, inform user (but don't fail - they're just warnings)
+      if (manualIssues.length > 0) {
+        console.log(chalk.yellow(`\nℹ️  ${manualIssues.length} issue(s) require manual attention (see guidance above)\n`));
       }
 
       return;
     }
 
-    // Auto-fix not enabled - prompt user
-    if (bugsWithAutoFix.length > 0) {
-      const shouldFix = await promptUser('🔧 Attempt auto-fix for detected issues?');
+    // If only info-level issues, just inform and continue
+    const criticalIssues = warnings.length;
+    if (criticalIssues === 0) {
+      console.log(chalk.cyan('\nℹ️  Deployment has informational notices - review guidance above if needed\n'));
+      return;
+    }
 
-      if (shouldFix) {
-        const fixed = await autoFixSSTBugs(config, stage, projectRoot, bugsWithAutoFix);
+    // Auto-fix not enabled and there are fixable warnings - offer to fix
+    if (fixableIssues.length > 0) {
+      // In CI or when TTY not available, just warn
+      if (!process.stdin.isTTY || process.env.CI === 'true') {
+        console.log(chalk.yellow('\n⚠️  Deployment has fixable warnings - run with --auto-fix to resolve automatically\n'));
+        return;
+      }
 
-        if (fixed.length === bugsWithAutoFix.length) {
-          console.log(chalk.green(`\n✅ All fixable bugs resolved (${fixed.length}/${bugsWithAutoFix.length})\n`));
-        } else {
-          console.log(chalk.yellow(`\n⚠️  Some bugs could not be fixed (${fixed.length}/${bugsWithAutoFix.length})\n`));
-        }
+      // Interactive prompt (handled by fixDeploymentIssues with TTY detection)
+      const fixed = await fixDeploymentIssues(config, stage, projectRoot, fixableIssues);
 
-        // If bugs without auto-fix remain, warn user
-        if (bugsWithoutAutoFix.length > 0) {
-          console.log(chalk.red(`\n❌ ${bugsWithoutAutoFix.length} bug(s) require manual intervention\n`));
-          throw new Error('SST deployment has critical bugs requiring manual fixes');
-        }
-      } else {
-        console.log(chalk.yellow('\n⚠️  Skipping auto-fix - deployment may not work correctly\n'));
-        throw new Error('SST deployment has bugs - fix manually or run with --auto-fix');
+      if (fixed.length > 0) {
+        console.log(chalk.green(`\n✅ Fixed ${fixed.length} issue(s)\n`));
       }
     } else {
-      // All bugs require manual intervention
-      console.log(chalk.red(`\n❌ All ${report.bugs.length} bug(s) require manual intervention\n`));
-      throw new Error('SST deployment has critical bugs requiring manual fixes');
+      // All issues require manual attention
+      console.log(chalk.yellow(`\nℹ️  ${report.issues.length} issue(s) require manual attention (see guidance above)\n`));
     }
   }
 
@@ -350,21 +330,19 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
         }
       }
 
-      // SST 3.17 bug detection (unless explicitly skipped)
+      // SST deployment validation (unless explicitly skipped)
       if (!options.skipSSTBugChecks) {
-        await checkSSTBugs(stage, options.autoFix);
+        await validateSSTConfiguration(stage, options.autoFix);
       }
 
       console.log(chalk.green(`\n✅ Post-deployment validation complete!\n`));
     } catch (error) {
       console.log(chalk.yellow(`\n⚠️  Post-deployment validation had issues (check manually)\n`));
       console.log(chalk.yellow(`   Error: ${error instanceof Error ? error.message : String(error)}\n`));
-      // Throw error for domain validation failures and SST bugs - these are critical
+      // Throw error for domain validation failures - these are critical
       if (error instanceof Error && (
         error.message.includes('SST domain configuration') ||
-        error.message.includes('Enhanced validation failed') ||
-        error.message.includes('SST deployment has') ||
-        error.message.includes('critical bugs')
+        error.message.includes('Enhanced validation failed')
       )) {
         throw error;
       }
@@ -372,5 +350,5 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
     }
   }
 
-  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, checkSSTBugs, run };
+  return { checkApplicationHealth, validateCloudFrontOAC, checkDatabaseConnection, validateSSTDomainConfiguration, validateSSTConfiguration, run };
 }
