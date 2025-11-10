@@ -133,7 +133,7 @@ export class DeploymentKit {
    * console.log(result.durationSeconds); // 127
    * ```
    */
-  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; autoFix?: boolean; skipSSTBugChecks?: boolean; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
+  async deploy(stage: DeploymentStage, options?: { isDryRun?: boolean; showDiff?: boolean; benchmark?: boolean; skipPreChecks?: boolean; autoFix?: boolean; skipSSTValidation?: boolean; maintenance?: { customPagePath?: string } }): Promise<DeploymentResult> {
     const isDryRun = options?.isDryRun || false;
     const startTimeDate = new Date();
     const startTime = startTimeDate.getTime();
@@ -355,7 +355,7 @@ export class DeploymentKit {
       if (!isDryRun) {
         await this.postChecks.run(stage, {
           autoFix: options?.autoFix,
-          skipSSTBugChecks: options?.skipSSTBugChecks,
+          skipSSTValidation: options?.skipSSTValidation,
         });
       }
       result.details.healthChecksOk = true;

@@ -298,7 +298,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
   /**
    * Run all post-deployment checks
    */
-  async function run(stage: DeploymentStage, options: { autoFix?: boolean; skipSSTBugChecks?: boolean } = {}): Promise<void> {
+  async function run(stage: DeploymentStage, options: { autoFix?: boolean; skipSSTValidation?: boolean } = {}): Promise<void> {
     console.log(chalk.bold(`Post-deployment validation for ${stage}:\n`));
 
     try {
@@ -331,7 +331,7 @@ export function getPostDeploymentChecks(config: ProjectConfig, projectRoot: stri
       }
 
       // SST deployment validation (unless explicitly skipped)
-      if (!options.skipSSTBugChecks) {
+      if (!options.skipSSTValidation) {
         await validateSSTConfiguration(stage, options.autoFix);
       }
 

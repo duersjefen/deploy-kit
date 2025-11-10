@@ -46,6 +46,9 @@ interface SSTDeploymentState {
   protocolPolicy?: string;
   kvsArn?: string;
   kvsItemCount?: number | null;
+  certificateArn?: string;
+  certificateStatus?: string;
+  certificateDomain?: string;
 }
 
 /**
@@ -85,10 +88,139 @@ async function parseIntendedArchitecture(projectRoot: string): Promise<SSTIntent
  * Queries AWS to get the current state of deployed infrastructure.
  * Returns partial information gracefully (undefined for missing components).
  */
+/**
+ * Parse AWS CLI error and provide helpful guidance
+ * 
+ * Detects common AWS error types and returns user-friendly guidance
+ */
+/**
+ * Simple in-memory cache for AWS deployment state
+ * Reduces AWS API calls during validation
+ */
+interface CachedState {
+  state: SSTDeploymentState;
+  timestamp: number;
+}
+
+const deploymentStateCache = new Map<string, CachedState>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get cached deployment state if available and not expired
+ */
+function getCachedState(cacheKey: string): SSTDeploymentState | null {
+  const cached = deploymentStateCache.get(cacheKey);
+  if (!cached) return null;
+
+  const age = Date.now() - cached.timestamp;
+  if (age > CACHE_TTL) {
+    deploymentStateCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.state;
+}
+
+/**
+ * Store deployment state in cache
+ */
+function setCachedState(cacheKey: string, state: SSTDeploymentState): void {
+  deploymentStateCache.set(cacheKey, {
+    state,
+    timestamp: Date.now(),
+  });
+}
+
+/**
+ * Clear expired cache entries
+ */
+export function clearExpiredCache(): void {
+  const now = Date.now();
+  for (const [key, cached] of deploymentStateCache.entries()) {
+    if (now - cached.timestamp > CACHE_TTL) {
+      deploymentStateCache.delete(key);
+    }
+  }
+}
+
+function parseAWSError(error: Error, operation: string): { type: string; guidance: string } {
+  const message = error.message;
+
+  // Access Denied - IAM permissions issue
+  if (message.includes('AccessDenied') || message.includes('UnauthorizedOperation')) {
+    return {
+      type: 'access-denied',
+      guidance: `AWS IAM permissions missing for ${operation}. Check AWS credentials and IAM policies.`,
+    };
+  }
+
+  // Resource Not Found - normal for new deployments
+  if (message.includes('NoSuchEntity') || message.includes('ResourceNotFoundException') || message.includes('FunctionUrlConfigNotFound')) {
+    return {
+      type: 'not-found',
+      guidance: `Resource not yet created (normal for new deployments). ${operation} will be checked again.`,
+    };
+  }
+
+  // Rate Limiting - too many requests
+  if (message.includes('Throttling') || message.includes('TooManyRequests') || message.includes('RequestLimitExceeded')) {
+    return {
+      type: 'throttling',
+      guidance: `AWS API rate limit exceeded. Wait 30 seconds and try again.`,
+    };
+  }
+
+  // Invalid Parameters - configuration issue
+  if (message.includes('InvalidParameterValue') || message.includes('ValidationException')) {
+    return {
+      type: 'invalid-input',
+      guidance: `Invalid AWS parameter in ${operation}. Check sst.config.ts configuration.`,
+    };
+  }
+
+  // Service Unavailable - AWS outage
+  if (message.includes('ServiceUnavailable') || message.includes('InternalError')) {
+    return {
+      type: 'service-unavailable',
+      guidance: `AWS service temporarily unavailable. Check AWS status page or retry in 5 minutes.`,
+    };
+  }
+
+  // Invalid Distribution - CloudFront not ready
+  if (message.includes('InvalidDistribution') || message.includes('NoSuchDistribution')) {
+    return {
+      type: 'distribution-not-ready',
+      guidance: `CloudFront distribution not yet propagated (normal after deployment). Wait 5-15 minutes.`,
+    };
+  }
+
+  // Timeout - command took too long
+  if (message.includes('timed out') || message.includes('ETIMEDOUT')) {
+    return {
+      type: 'timeout',
+      guidance: `AWS command timed out. Check network connectivity or increase timeout.`,
+    };
+  }
+
+  // Generic error
+  return {
+    type: 'unknown',
+    guidance: `AWS error in ${operation}: ${message.split('\\n')[0]}`,
+  };
+}
+
 async function getDeploymentState(
   config: ProjectConfig,
   stage: DeploymentStage
 ): Promise<SSTDeploymentState> {
+  // Check cache first
+  const cacheKey = `${config.projectName || 'app'}-${stage}`;
+  const cachedState = getCachedState(cacheKey);
+  if (cachedState) {
+    console.log(chalk.gray('   Using cached deployment state (5min TTL)'));
+    return cachedState;
+  }
+
   const state: SSTDeploymentState = {};
 
   const env = {
@@ -123,6 +255,37 @@ async function getDeploymentState(
           { env, timeout }
         );
         state.protocolPolicy = protocolOutput.trim();
+
+        // Also check ACM certificate
+        try {
+          const { stdout: certArnOutput } = await execAsync(
+            `aws cloudfront get-distribution --id ${state.distributionId} --query 'Distribution.DistributionConfig.ViewerCertificate.ACMCertificateArn' --output text`,
+            { env, timeout }
+          );
+
+          const certArn = certArnOutput.trim();
+          if (certArn && certArn !== 'None') {
+            state.certificateArn = certArn;
+
+            // Get certificate status and domain
+            const { stdout: certStatusOutput } = await execAsync(
+              `aws acm describe-certificate --certificate-arn ${certArn} --query 'Certificate.Status' --output text`,
+              { env, timeout }
+            );
+            state.certificateStatus = certStatusOutput.trim();
+
+            const { stdout: certDomainOutput } = await execAsync(
+              `aws acm describe-certificate --certificate-arn ${certArn} --query 'Certificate.DomainName' --output text`,
+              { env, timeout }
+            );
+            state.certificateDomain = certDomainOutput.trim();
+          }
+        } catch (error) {
+          const { type } = parseAWSError(error as Error, 'acm-certificate');
+          if (type !== 'not-found') {
+            console.log(chalk.gray(`   Note: Could not check SSL certificate (${type})`));
+          }
+        }
       }
     }
 
@@ -143,8 +306,13 @@ async function getDeploymentState(
           { env, timeout }
         );
         state.functionUrl = urlOutput.trim();
-      } catch {
-        // Function URL not configured - this is normal if not using url: true
+      } catch (error) {
+        const { type } = parseAWSError(error as Error, 'get-function-url-config');
+        // Function URL not configured is normal if not using url: true
+        // Only log if it's a real error (not just "not found")
+        if (type !== 'not-found') {
+          console.log(chalk.gray(`   Note: Could not check Function URL (${type})`));
+        }
         state.functionUrl = undefined;
       }
     }
@@ -182,15 +350,29 @@ async function getDeploymentState(
             state.kvsItemCount = itemCount === 'None' || itemCount === 'null' ? null : parseInt(itemCount);
           }
         }
-      } catch {
-        // No CloudFront Function or KVS - not critical
+      } catch (error) {
+        const { type } = parseAWSError(error as Error, 'cloudfront-function/kvs');
+        // No CloudFront Function or KVS is normal for many deployments
+        if (type !== 'not-found' && type !== 'distribution-not-ready') {
+          console.log(chalk.gray(`   Note: Could not check CloudFront Function/KVS (${type})`));
+        }
       }
     }
 
   } catch (error) {
-    // Errors are expected for resources that don't exist yet
-    // Return partial state - validation logic will handle it
+    // Parse error to provide helpful guidance
+    const { type, guidance } = parseAWSError(error as Error, 'deployment-state');
+    
+    // Only log non-trivial errors
+    if (type !== 'not-found') {
+      console.log(chalk.yellow(`\n⚠️  AWS query issue: ${guidance}\n`));
+    }
+    
+    // Return partial state - validation logic will handle missing resources
   }
+
+  // Store in cache for future calls
+  setCachedState(cacheKey, state);
 
   return state;
 }
@@ -320,6 +502,69 @@ async function validateProtocolPolicy(
 }
 
 /**
+ * Validate SSL/TLS certificate configuration
+ */
+async function validateSSLCertificate(
+  config: ProjectConfig,
+  stage: DeploymentStage,
+  state: SSTDeploymentState,
+  spinner: Ora
+): Promise<SSTValidationIssue | null> {
+  // If no distribution, skip certificate check
+  if (!state.distributionId) {
+    spinner.info('ℹ️  SSL certificate check skipped (no CloudFront distribution)');
+    return null;
+  }
+
+  // Check if certificate exists
+  if (!state.certificateArn) {
+    return {
+      type: 'config-mismatch',
+      severity: 'warning',
+      description: 'SSL certificate not found',
+      details: 'CloudFront distribution exists but no ACM certificate configured.',
+      guidance: 'Check SST domain configuration in sst.config.ts. Certificate may still be provisioning.',
+      autoFixAvailable: false,
+    };
+  }
+
+  // Check certificate status
+  if (state.certificateStatus !== 'ISSUED') {
+    const statusGuidance =
+      state.certificateStatus === 'PENDING_VALIDATION'
+        ? 'Add DNS CNAME records to validate certificate ownership.'
+        : state.certificateStatus === 'FAILED'
+        ? 'Certificate validation failed. Check domain ownership and DNS configuration.'
+        : `Unexpected certificate status: ${state.certificateStatus}`;
+
+    return {
+      type: 'incomplete-deployment',
+      severity: 'warning',
+      description: `SSL certificate not issued (status: ${state.certificateStatus})`,
+      details: `Certificate ${state.certificateArn} is in ${state.certificateStatus} state.`,
+      guidance: statusGuidance,
+      autoFixAvailable: false,
+    };
+  }
+
+  // Verify certificate domain matches configured domain
+  const configuredDomain = config.stageConfig[stage].domain || `${stage}.${config.mainDomain}`;
+  if (state.certificateDomain && !state.certificateDomain.includes(configuredDomain)) {
+    return {
+      type: 'config-mismatch',
+      severity: 'warning',
+      description: 'SSL certificate domain mismatch',
+      details: `Certificate is for ${state.certificateDomain}, but configured domain is ${configuredDomain}.`,
+      guidance: 'Verify domain configuration in sst.config.ts or update certificate.',
+      autoFixAvailable: false,
+    };
+  }
+
+  spinner.succeed(`✅ SSL certificate valid: ${state.certificateDomain} (ISSUED)`);
+  return null;
+}
+
+/**
  * Validate KeyValueStore population
  *
  * Only checks if user configured KVS. An empty KVS is only a problem if the
@@ -408,6 +653,7 @@ export async function validateSSTDeployment(
     { name: 'CloudFront Origin', fn: () => validateCloudFrontOrigin(intent, state, ora().start()) },
     { name: 'Origin Protocol Policy', fn: () => validateProtocolPolicy(intent, state, ora().start()) },
     { name: 'KeyValueStore', fn: () => validateKeyValueStore(intent, state, ora().start()) },
+    { name: 'SSL Certificate', fn: () => validateSSLCertificate(config, stage, state, ora().start()) },
   ];
 
   console.log('');
